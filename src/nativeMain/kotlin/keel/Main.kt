@@ -67,11 +67,85 @@ private fun checkVersion(config: KeelConfig) {
     }
 }
 
+private const val LOCK_FILE = "keel.lock"
+
+private fun createResolverDeps(client: io.ktor.client.HttpClient) = object : ResolverDeps {
+    override fun fileExists(path: String): Boolean = keel.fileExists(path)
+    override fun ensureDirectoryRecursive(path: String) = keel.ensureDirectoryRecursive(path)
+    override fun downloadFile(url: String, destPath: String) = downloadFileWith(client, url, destPath)
+    override fun computeSha256(filePath: String) = keel.computeSha256(filePath)
+}
+
+private fun resolveDependencies(config: KeelConfig): String? {
+    if (config.dependencies.isEmpty()) {
+        if (fileExists(LOCK_FILE)) {
+            deleteFile(LOCK_FILE)
+        }
+        return null
+    }
+
+    val home = homeDirectory().getOrElse { error ->
+        eprintln("error: ${error.message}")
+        exitProcess(1)
+    }
+    val cacheBase = "$home/.keel/cache"
+
+    // 既存ロックファイルの読み込み
+    val existingLock = if (fileExists(LOCK_FILE)) {
+        val lockJson = readFileAsString(LOCK_FILE).getOrElse { error ->
+            eprintln("warning: could not read $LOCK_FILE: ${error.path}")
+            null
+        }
+        lockJson?.let {
+            parseLockfile(it).getOrElse { error ->
+                when (error) {
+                    is LockfileError.ParseFailed -> eprintln("warning: ${error.message}")
+                    is LockfileError.UnsupportedVersion -> eprintln("warning: unsupported lock file version ${error.version}")
+                }
+                null
+            }
+        }
+    } else null
+
+    println("resolving dependencies...")
+    val resolveResult = withHttpClient { client ->
+        resolve(config, existingLock, cacheBase, createResolverDeps(client))
+    }.getOrElse { error ->
+        when (error) {
+            is ResolveError.InvalidDependency -> eprintln("error: invalid dependency '${error.input}'")
+            is ResolveError.Sha256Mismatch -> {
+                eprintln("error: sha256 mismatch for ${error.groupArtifact}")
+                eprintln("  expected: ${error.expected}")
+                eprintln("  got:      ${error.actual}")
+                eprintln("delete the cached jar and rebuild to re-download")
+            }
+            is ResolveError.DownloadFailed -> eprintln("error: failed to download ${error.groupArtifact}")
+            is ResolveError.HashComputeFailed -> eprintln("error: failed to compute hash for ${error.groupArtifact}")
+            is ResolveError.DirectoryCreateFailed -> eprintln("error: could not create directory ${error.path}")
+        }
+        exitProcess(1)
+    }
+
+    // ロックファイルの書き込み
+    if (resolveResult.lockChanged) {
+        val lockfile = buildLockfileFromResolved(config, resolveResult.deps)
+        val lockJson = serializeLockfile(lockfile)
+        writeFileAsString(LOCK_FILE, lockJson).getOrElse { error ->
+            eprintln("error: could not write ${error.path}")
+            exitProcess(1)
+        }
+    }
+
+    val paths = resolveResult.deps.map { it.cachePath }
+    return buildClasspath(paths).ifEmpty { null }
+}
+
 private fun doBuild(): KeelConfig {
     val config = loadProjectConfig()
     checkVersion(config)
 
-    val cmd = buildCommand(config)
+    val classpath = resolveDependencies(config)
+    val cmd = buildCommand(config, classpath)
     ensureDirectory(BUILD_DIR).getOrElse { error ->
         eprintln("error: could not create directory ${error.path}")
         exitProcess(1)

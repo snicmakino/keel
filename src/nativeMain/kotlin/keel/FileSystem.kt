@@ -44,6 +44,65 @@ fun ensureDirectory(path: String): Result<Unit, MkdirFailed> {
     }
 }
 
+data class WriteFailed(val path: String)
+
+@OptIn(ExperimentalForeignApi::class)
+fun writeFileAsString(path: String, content: String): Result<Unit, WriteFailed> {
+    val fp = fopen(path, "w") ?: return Err(WriteFailed(path))
+    try {
+        val bytes = content.encodeToByteArray()
+        if (bytes.isNotEmpty()) {
+            val written = bytes.usePinned { pinned ->
+                fwrite(pinned.addressOf(0), 1u, bytes.size.toULong(), fp)
+            }
+            if (written != bytes.size.toULong()) {
+                return Err(WriteFailed(path))
+            }
+        }
+        return Ok(Unit)
+    } finally {
+        fclose(fp)
+    }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> {
+    if (fileExists(path)) return Ok(Unit)
+    val isAbsolute = path.startsWith("/")
+    val parts = path.split("/").filter { it.isNotEmpty() }
+    var current = ""
+    for (part in parts) {
+        current = when {
+            current.isEmpty() && isAbsolute -> "/$part"
+            current.isEmpty() -> part
+            else -> "$current/$part"
+        }
+        if (!fileExists(current)) {
+            if (mkdir(current, 0b111111101u) != 0) {
+                return Err(MkdirFailed(current))
+            }
+        }
+    }
+    return Ok(Unit)
+}
+
+@OptIn(ExperimentalForeignApi::class)
+fun deleteFile(path: String) {
+    remove(path)
+}
+
+data class HomeNotFound(val message: String = "HOME environment variable is not set")
+
+@OptIn(ExperimentalForeignApi::class)
+fun homeDirectory(): Result<String, HomeNotFound> {
+    val home = getenv("HOME")?.toKString()
+    return if (home.isNullOrEmpty()) {
+        Err(HomeNotFound())
+    } else {
+        Ok(home)
+    }
+}
+
 @OptIn(ExperimentalForeignApi::class)
 fun eprintln(msg: String) {
     val bytes = (msg + "\n").encodeToByteArray()

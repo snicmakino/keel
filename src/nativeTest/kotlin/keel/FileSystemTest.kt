@@ -102,6 +102,73 @@ class FileSystemTest {
         assertIs<MkdirFailed>(result.getError())
     }
 
+    @Test
+    fun writeFileAsStringCreatesFile() {
+        val path = "/tmp/keel_test_write.txt"
+        remove(path)
+        try {
+            val result = writeFileAsString(path, "hello write")
+            assertNotNull(result.get())
+            assertEquals("hello write", assertNotNull(readFileAsString(path).get()))
+        } finally {
+            remove(path)
+        }
+    }
+
+    @Test
+    fun writeFileAsStringOverwritesExisting() {
+        val path = "/tmp/keel_test_write_overwrite.txt"
+        writeTestFile(path, "old content")
+        try {
+            writeFileAsString(path, "new content")
+            assertEquals("new content", assertNotNull(readFileAsString(path).get()))
+        } finally {
+            remove(path)
+        }
+    }
+
+    @Test
+    fun writeFileAsStringReturnsErrOnInvalidPath() {
+        val result = writeFileAsString("/nonexistent_root/file.txt", "data")
+        assertIs<WriteFailed>(result.getError())
+    }
+
+    @Test
+    fun ensureDirectoryRecursiveCreatesNestedDirs() {
+        val base = "/tmp/keel_test_recursive"
+        val path = "$base/a/b/c"
+        try {
+            val result = ensureDirectoryRecursive(path)
+            assertNotNull(result.get())
+            assertTrue(fileExists(path))
+        } finally {
+            platform.posix.rmdir("$base/a/b/c")
+            platform.posix.rmdir("$base/a/b")
+            platform.posix.rmdir("$base/a")
+            platform.posix.rmdir(base)
+        }
+    }
+
+    @Test
+    fun ensureDirectoryRecursiveSucceedsWhenAlreadyExists() {
+        val path = "/tmp/keel_test_recursive_exists"
+        platform.posix.mkdir(path, 0b111111101u)
+        try {
+            val result = ensureDirectoryRecursive(path)
+            assertNotNull(result.get())
+        } finally {
+            platform.posix.rmdir(path)
+        }
+    }
+
+    @Test
+    fun homeDirectoryReturnsOk() {
+        val result = homeDirectory()
+        val home = assertNotNull(result.get())
+        assertTrue(home.isNotEmpty())
+        assertTrue(fileExists(home))
+    }
+
     private fun writeTestFile(path: String, content: String) {
         val fp = platform.posix.fopen(path, "w") ?: error("could not create test file: $path")
         if (content.isNotEmpty()) {
