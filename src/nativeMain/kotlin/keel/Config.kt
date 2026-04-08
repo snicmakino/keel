@@ -1,11 +1,16 @@
 package keel
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
-class ConfigParseException(message: String, cause: Throwable? = null) : Exception(message, cause)
+sealed class ConfigError {
+    data class ParseFailed(val message: String) : ConfigError()
+}
 
 @Serializable
 data class KeelConfig(
@@ -21,12 +26,12 @@ data class KeelConfig(
 
 private val json = Json { ignoreUnknownKeys = true }
 
-fun parseConfig(jsonString: String): KeelConfig {
-    try {
-        return json.decodeFromString<KeelConfig>(jsonString)
+fun parseConfig(jsonString: String): Result<KeelConfig, ConfigError> {
+    return try {
+        Ok(json.decodeFromString<KeelConfig>(jsonString))
     } catch (e: SerializationException) {
-        throw ConfigParseException("failed to parse keel.json: ${e.message}", e)
+        Err(ConfigError.ParseFailed("failed to parse keel.json: ${e.message}"))
     } catch (e: IllegalArgumentException) {
-        throw ConfigParseException("failed to parse keel.json: ${e.message}", e)
+        Err(ConfigError.ParseFailed("failed to parse keel.json: ${e.message}"))
     }
 }

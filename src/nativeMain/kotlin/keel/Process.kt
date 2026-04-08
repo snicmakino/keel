@@ -1,15 +1,27 @@
 package keel
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import kotlinx.cinterop.*
 import platform.posix.*
 
+sealed class ProcessError {
+    data object EmptyArgs : ProcessError()
+    data object ForkFailed : ProcessError()
+    data object WaitFailed : ProcessError()
+    data class NonZeroExit(val exitCode: Int) : ProcessError()
+    data object SignalKilled : ProcessError()
+    data object PopenFailed : ProcessError()
+}
+
 @OptIn(ExperimentalForeignApi::class)
-fun executeCommand(args: List<String>): Int {
-    if (args.isEmpty()) return -1
+fun executeCommand(args: List<String>): Result<Int, ProcessError> {
+    if (args.isEmpty()) return Err(ProcessError.EmptyArgs)
 
     val pid = fork()
     if (pid < 0) {
-        return -1
+        return Err(ProcessError.ForkFailed)
     }
     if (pid == 0) {
         // child process
@@ -28,21 +40,22 @@ fun executeCommand(args: List<String>): Int {
     memScoped {
         val status = alloc<IntVar>()
         while (waitpid(pid, status.ptr, 0) == -1) {
-            if (errno != EINTR) return -1
+            if (errno != EINTR) return Err(ProcessError.WaitFailed)
         }
         val raw = status.value
         // WIFEXITED: (status & 0x7F) == 0
         return if ((raw and 0x7F) == 0) {
-            (raw shr 8) and 0xFF  // WEXITSTATUS
+            val exitCode = (raw shr 8) and 0xFF
+            if (exitCode == 0) Ok(0) else Err(ProcessError.NonZeroExit(exitCode))
         } else {
-            -1  // killed by signal
+            Err(ProcessError.SignalKilled)
         }
     }
 }
 
 @OptIn(ExperimentalForeignApi::class)
-fun executeAndCapture(command: String): Pair<Int, String> {
-    val fp = popen(command, "r") ?: return Pair(-1, "")
+fun executeAndCapture(command: String): Result<String, ProcessError> {
+    val fp = popen(command, "r") ?: return Err(ProcessError.PopenFailed)
     val output = StringBuilder()
     memScoped {
         val buffer = allocArray<ByteVar>(4096)
@@ -56,7 +69,11 @@ fun executeAndCapture(command: String): Pair<Int, String> {
     val exitCode = if ((status and 0x7F) == 0) {
         (status shr 8) and 0xFF
     } else {
-        -1
+        return Err(ProcessError.SignalKilled)
     }
-    return Pair(exitCode, output.toString())
+    return if (exitCode == 0) {
+        Ok(output.toString())
+    } else {
+        Err(ProcessError.NonZeroExit(exitCode))
+    }
 }

@@ -1,11 +1,18 @@
 package keel
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import kotlinx.cinterop.*
 import platform.posix.*
 
+data class OpenFailed(val path: String)
+
+data class MkdirFailed(val path: String)
+
 @OptIn(ExperimentalForeignApi::class)
-fun readFileAsString(path: String): String {
-    val fp = fopen(path, "r") ?: throw ConfigParseException("could not read $path")
+fun readFileAsString(path: String): Result<String, OpenFailed> {
+    val fp = fopen(path, "r") ?: return Err(OpenFailed(path))
     try {
         val chunks = mutableListOf<String>()
         memScoped {
@@ -16,7 +23,7 @@ fun readFileAsString(path: String): String {
                 chunks.add(buffer.readBytes(bytesRead.toInt()).decodeToString())
             }
         }
-        return chunks.joinToString("")
+        return Ok(chunks.joinToString(""))
     } finally {
         fclose(fp)
     }
@@ -28,9 +35,12 @@ fun fileExists(path: String): Boolean {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-fun ensureDirectory(path: String) {
-    if (!fileExists(path)) {
-        mkdir(path, 0b111111101u) // 0755
+fun ensureDirectory(path: String): Result<Unit, MkdirFailed> {
+    if (fileExists(path)) return Ok(Unit)
+    return if (mkdir(path, 0b111111101u) == 0) { // 0755
+        Ok(Unit)
+    } else {
+        Err(MkdirFailed(path))
     }
 }
 

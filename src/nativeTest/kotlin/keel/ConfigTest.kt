@@ -1,8 +1,12 @@
 package keel
 
+import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class ConfigTest {
 
@@ -19,8 +23,9 @@ class ConfigTest {
         }
         """.trimIndent()
 
-        val config = parseConfig(json)
+        val result = parseConfig(json)
 
+        val config = assertNotNull(result.get())
         assertEquals("my-app", config.name)
         assertEquals("0.1.0", config.version)
         assertEquals("2.1.0", config.kotlin)
@@ -45,7 +50,7 @@ class ConfigTest {
         }
         """.trimIndent()
 
-        val config = parseConfig(json)
+        val config = assertNotNull(parseConfig(json).get())
         assertEquals("21", config.jvmTarget)
     }
 
@@ -66,7 +71,7 @@ class ConfigTest {
         }
         """.trimIndent()
 
-        val config = parseConfig(json)
+        val config = assertNotNull(parseConfig(json).get())
         assertEquals(2, config.dependencies.size)
         assertEquals("1.9.0", config.dependencies["org.jetbrains.kotlinx:kotlinx-coroutines-core"])
         assertEquals("4.12.0", config.dependencies["com.squareup.okhttp3:okhttp"])
@@ -85,12 +90,12 @@ class ConfigTest {
         }
         """.trimIndent()
 
-        val config = parseConfig(json)
+        val config = assertNotNull(parseConfig(json).get())
         assertEquals(listOf("src", "generated"), config.sources)
     }
 
     @Test
-    fun missingRequiredFieldThrows() {
+    fun missingRequiredFieldReturnsErr() {
         val json = """
         {
             "version": "0.1.0",
@@ -101,16 +106,18 @@ class ConfigTest {
         }
         """.trimIndent()
 
-        assertFailsWith<ConfigParseException> {
-            parseConfig(json)
-        }
+        val result = parseConfig(json)
+
+        assertNull(result.get())
+        assertIs<ConfigError.ParseFailed>(result.getError())
     }
 
     @Test
-    fun invalidJsonThrows() {
-        assertFailsWith<ConfigParseException> {
-            parseConfig("not json")
-        }
+    fun invalidJsonReturnsErr() {
+        val result = parseConfig("not json")
+
+        assertNull(result.get())
+        assertIs<ConfigError.ParseFailed>(result.getError())
     }
 
     @Test
@@ -126,12 +133,12 @@ class ConfigTest {
         }
         """.trimIndent()
 
-        val config = parseConfig(json)
+        val config = assertNotNull(parseConfig(json).get())
         assertEquals(emptyList(), config.sources)
     }
 
     @Test
-    fun wrongFieldTypeThrows() {
+    fun wrongFieldTypeReturnsErr() {
         val json = """
         {
             "name": 123,
@@ -143,20 +150,22 @@ class ConfigTest {
         }
         """.trimIndent()
 
-        assertFailsWith<ConfigParseException> {
-            parseConfig(json)
-        }
+        val result = parseConfig(json)
+
+        assertNull(result.get())
+        assertIs<ConfigError.ParseFailed>(result.getError())
     }
 
     @Test
-    fun jsonArrayRootThrows() {
-        assertFailsWith<ConfigParseException> {
-            parseConfig("[1, 2, 3]")
-        }
+    fun jsonArrayRootReturnsErr() {
+        val result = parseConfig("[1, 2, 3]")
+
+        assertNull(result.get())
+        assertIs<ConfigError.ParseFailed>(result.getError())
     }
 
     @Test
-    fun wrongDependencyValueTypeThrows() {
+    fun wrongDependencyValueTypeReturnsErr() {
         val json = """
         {
             "name": "my-app",
@@ -171,9 +180,10 @@ class ConfigTest {
         }
         """.trimIndent()
 
-        assertFailsWith<ConfigParseException> {
-            parseConfig(json)
-        }
+        val result = parseConfig(json)
+
+        assertNull(result.get())
+        assertIs<ConfigError.ParseFailed>(result.getError())
     }
 
     @Test
@@ -190,7 +200,7 @@ class ConfigTest {
         }
         """.trimIndent()
 
-        val config = parseConfig(json)
+        val config = assertNotNull(parseConfig(json).get())
         assertEquals("my-app", config.name)
     }
 }

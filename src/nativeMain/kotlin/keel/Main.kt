@@ -1,5 +1,6 @@
 package keel
 
+import com.github.michaelbull.result.getOrElse
 import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
@@ -31,24 +32,29 @@ private fun printUsage() {
 }
 
 private fun loadProjectConfig(): KeelConfig {
-    val jsonString = try {
-        readFileAsString("keel.json")
-    } catch (e: ConfigParseException) {
-        eprintln("error: ${e.message}")
+    val jsonString = readFileAsString("keel.json").getOrElse { error ->
+        eprintln("error: could not read ${error.path}")
         exitProcess(1)
     }
-    return try {
-        parseConfig(jsonString)
-    } catch (e: ConfigParseException) {
-        eprintln("error: ${e.message}")
+    return parseConfig(jsonString).getOrElse { error ->
+        when (error) {
+            is ConfigError.ParseFailed -> eprintln("error: ${error.message}")
+        }
         exitProcess(1)
     }
 }
 
 private fun checkVersion(config: KeelConfig) {
-    val (exitCode, output) = executeAndCapture("kotlinc -version 2>&1")
-    if (exitCode != 0) {
-        eprintln("warning: could not determine kotlinc version")
+    val output = executeAndCapture("kotlinc -version 2>&1").getOrElse { error ->
+        when (error) {
+            is ProcessError.NonZeroExit,
+            is ProcessError.PopenFailed,
+            is ProcessError.SignalKilled -> eprintln("warning: could not determine kotlinc version")
+            // executeAndCaptureでは発生しない
+            is ProcessError.EmptyArgs,
+            is ProcessError.ForkFailed,
+            is ProcessError.WaitFailed -> eprintln("warning: could not determine kotlinc version")
+        }
         return
     }
     val installedVersion = parseKotlincVersion(output)
@@ -66,12 +72,22 @@ private fun doBuild(): KeelConfig {
     checkVersion(config)
 
     val cmd = buildCommand(config)
-    ensureDirectory(BUILD_DIR)
+    ensureDirectory(BUILD_DIR).getOrElse { error ->
+        eprintln("error: could not create directory ${error.path}")
+        exitProcess(1)
+    }
 
     println("compiling ${config.name}...")
-    val exitCode = executeCommand(cmd.args)
-    if (exitCode != 0) {
-        eprintln("error: compilation failed with exit code $exitCode")
+    executeCommand(cmd.args).getOrElse { error ->
+        when (error) {
+            is ProcessError.NonZeroExit -> eprintln("error: compilation failed with exit code ${error.exitCode}")
+            is ProcessError.EmptyArgs -> eprintln("error: no command to execute")
+            is ProcessError.ForkFailed -> eprintln("error: failed to start compiler process")
+            is ProcessError.WaitFailed -> eprintln("error: failed waiting for compiler process")
+            is ProcessError.SignalKilled -> eprintln("error: compiler process was killed")
+            // executeCommandでは発生しない
+            is ProcessError.PopenFailed -> eprintln("error: failed to start compiler process")
+        }
         exitProcess(1)
     }
     println("built ${cmd.outputPath}")
@@ -86,8 +102,15 @@ private fun doRun(config: KeelConfig) {
         exitProcess(1)
     }
 
-    val exitCode = executeCommand(cmd.args)
-    if (exitCode != 0) {
-        exitProcess(exitCode)
+    executeCommand(cmd.args).getOrElse { error ->
+        when (error) {
+            is ProcessError.NonZeroExit -> exitProcess(error.exitCode)
+            is ProcessError.EmptyArgs,
+            is ProcessError.ForkFailed,
+            is ProcessError.WaitFailed,
+            is ProcessError.SignalKilled -> exitProcess(1)
+            // executeCommandでは発生しない
+            is ProcessError.PopenFailed -> exitProcess(1)
+        }
     }
 }
