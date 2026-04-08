@@ -15,6 +15,8 @@ fun main(args: Array<String>) {
             val (config, classpath) = doBuild()
             doRun(config, classpath)
         }
+        "clean" -> doClean()
+        "--version", "version" -> println(versionString())
         else -> {
             eprintln("error: unknown command '${args[0]}'")
             printUsage()
@@ -27,8 +29,22 @@ private fun printUsage() {
     eprintln("usage: keel <command>")
     eprintln("")
     eprintln("commands:")
-    eprintln("  build    Compile the project")
-    eprintln("  run      Build and run the project")
+    eprintln("  build      Compile the project")
+    eprintln("  run        Build and run the project")
+    eprintln("  clean      Remove build artifacts")
+    eprintln("  version    Show version information")
+}
+
+private fun doClean() {
+    if (!fileExists(BUILD_DIR)) {
+        println("nothing to clean")
+        return
+    }
+    removeDirectoryRecursive(BUILD_DIR).getOrElse { error ->
+        eprintln("error: could not remove ${error.path}")
+        exitProcess(1)
+    }
+    println("removed $BUILD_DIR/")
 }
 
 private fun loadProjectConfig(): KeelConfig {

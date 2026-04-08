@@ -3,6 +3,7 @@ package keel
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.getOrElse
 import kotlinx.cinterop.*
 import platform.posix.*
 
@@ -89,6 +90,38 @@ fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> {
 @OptIn(ExperimentalForeignApi::class)
 fun deleteFile(path: String) {
     remove(path)
+}
+
+data class RemoveFailed(val path: String)
+
+@OptIn(ExperimentalForeignApi::class)
+fun removeDirectoryRecursive(path: String): Result<Unit, RemoveFailed> {
+    val dir = opendir(path) ?: return Err(RemoveFailed(path))
+    try {
+        while (true) {
+            val entry = readdir(dir) ?: break
+            val name = entry.pointed.d_name.toKString()
+            if (name == "." || name == "..") continue
+            val childPath = "$path/$name"
+            if (isDirectory(childPath)) {
+                removeDirectoryRecursive(childPath).getOrElse { return Err(it) }
+            } else {
+                if (remove(childPath) != 0) return Err(RemoveFailed(childPath))
+            }
+        }
+    } finally {
+        closedir(dir)
+    }
+    return if (rmdir(path) == 0) Ok(Unit) else Err(RemoveFailed(path))
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun isDirectory(path: String): Boolean {
+    memScoped {
+        val statBuf = alloc<stat>()
+        if (stat(path, statBuf.ptr) != 0) return false
+        return (statBuf.st_mode.toInt() and S_IFMT) == S_IFDIR
+    }
 }
 
 data class HomeNotFound(val message: String = "HOME environment variable is not set")
