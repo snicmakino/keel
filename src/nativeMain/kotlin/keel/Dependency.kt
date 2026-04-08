@@ -24,22 +24,22 @@ fun parseCoordinate(groupArtifact: String, version: String): Result<Coordinate, 
     return Ok(Coordinate(group, artifact, version))
 }
 
-/**
- * Builds a Maven Central download URL.
- * Dots in group are converted to slashes: `org.example:lib:1.0` → `https://repo1.maven.org/maven2/org/example/lib/1.0/lib-1.0.jar`
- */
-fun buildDownloadUrl(coord: Coordinate): String {
+private fun buildMavenUrl(coord: Coordinate, extension: String): String {
     val groupPath = coord.group.replace('.', '/')
-    return "https://repo1.maven.org/maven2/$groupPath/${coord.artifact}/${coord.version}/${coord.artifact}-${coord.version}.jar"
+    return "https://repo1.maven.org/maven2/$groupPath/${coord.artifact}/${coord.version}/${coord.artifact}-${coord.version}.$extension"
 }
 
-/**
- * Builds a relative cache path under `~/.keel/cache/`.
- * Example: `org.example:lib:1.0` → `org/example/lib/1.0/lib-1.0.jar`
- */
-fun buildCachePath(coord: Coordinate): String {
+private fun buildRelativePath(coord: Coordinate, extension: String): String {
     val groupPath = coord.group.replace('.', '/')
-    return "$groupPath/${coord.artifact}/${coord.version}/${coord.artifact}-${coord.version}.jar"
+    return "$groupPath/${coord.artifact}/${coord.version}/${coord.artifact}-${coord.version}.$extension"
 }
+
+fun buildDownloadUrl(coord: Coordinate): String = buildMavenUrl(coord, "jar")
+
+fun buildCachePath(coord: Coordinate): String = buildRelativePath(coord, "jar")
+
+fun buildPomDownloadUrl(coord: Coordinate): String = buildMavenUrl(coord, "pom")
+
+fun buildPomCachePath(coord: Coordinate): String = buildRelativePath(coord, "pom")
 
 fun buildClasspath(paths: List<String>): String = paths.joinToString(":")

@@ -97,4 +97,34 @@ class DependencyTest {
     fun buildClasspathEmptyReturnsEmpty() {
         assertEquals("", buildClasspath(emptyList()))
     }
+
+    @Test
+    fun buildPomDownloadUrlProducesCorrectMavenCentralUrl() {
+        val coord = Coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.9.0")
+        val url = buildPomDownloadUrl(coord)
+        assertEquals(
+            "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.pom",
+            url
+        )
+    }
+
+    @Test
+    fun buildPomDownloadUrlWithSingleSegmentGroup() {
+        val coord = Coordinate("junit", "junit", "4.13.2")
+        val url = buildPomDownloadUrl(coord)
+        assertEquals(
+            "https://repo1.maven.org/maven2/junit/junit/4.13.2/junit-4.13.2.pom",
+            url
+        )
+    }
+
+    @Test
+    fun buildPomCachePathProducesRelativePath() {
+        val coord = Coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.9.0")
+        val path = buildPomCachePath(coord)
+        assertEquals(
+            "org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.pom",
+            path
+        )
+    }
 }

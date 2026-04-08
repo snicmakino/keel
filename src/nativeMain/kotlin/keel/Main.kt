@@ -74,6 +74,7 @@ private fun createResolverDeps(client: io.ktor.client.HttpClient) = object : Res
     override fun ensureDirectoryRecursive(path: String) = keel.ensureDirectoryRecursive(path)
     override fun downloadFile(url: String, destPath: String) = downloadFileWith(client, url, destPath)
     override fun computeSha256(filePath: String) = keel.computeSha256(filePath)
+    override fun readFileContent(path: String) = readFileAsString(path)
 }
 
 private fun resolveDependencies(config: KeelConfig): String? {

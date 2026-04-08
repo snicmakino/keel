@@ -30,11 +30,15 @@ class ResolverTest {
     @Test
     fun resolveDownloadsAndComputesHash() {
         val config = configWithDeps(mapOf("com.example:lib" to "1.0.0"))
+        val pomXml = simplePom("com.example", "lib", "1.0.0")
         val deps = fakeDeps(
             cachedFiles = mutableSetOf(),
             downloadedFiles = mutableMapOf(),
             sha256Results = mapOf(
                 "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar" to "abc123"
+            ),
+            fileContents = mapOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom" to pomXml
             )
         )
         val result = resolve(config, null, "/tmp/cache", deps)
@@ -57,19 +61,28 @@ class ResolverTest {
                 "com.example:lib" to LockEntry("1.0.0", "abc123")
             )
         )
+        val pomXml = """
+            <project><groupId>com.example</groupId><artifactId>lib</artifactId><version>1.0.0</version></project>
+        """.trimIndent()
         val downloaded = mutableMapOf<String, String>()
         val deps = fakeDeps(
-            cachedFiles = mutableSetOf("/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar"),
+            cachedFiles = mutableSetOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar",
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom"
+            ),
             downloadedFiles = downloaded,
             sha256Results = mapOf(
                 "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar" to "abc123"
+            ),
+            fileContents = mapOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom" to pomXml
             )
         )
         val result = resolve(config, lock, "/tmp/cache", deps)
         val resolved = assertNotNull(result.get())
         assertEquals(1, resolved.deps.size)
         assertFalse(resolved.lockChanged)
-        // Verify no downloads occurred
+        // Verify no JAR downloads occurred
         assertTrue(downloaded.isEmpty())
     }
 
@@ -84,10 +97,17 @@ class ResolverTest {
                 "com.example:lib" to LockEntry("1.0.0", "expected_hash")
             )
         )
+        val pomXml = simplePom("com.example", "lib", "1.0.0")
         val deps = fakeDeps(
-            cachedFiles = mutableSetOf("/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar"),
+            cachedFiles = mutableSetOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar",
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom"
+            ),
             sha256Results = mapOf(
                 "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar" to "actual_different_hash"
+            ),
+            fileContents = mapOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom" to pomXml
             )
         )
         val result = resolve(config, lock, "/tmp/cache", deps)
@@ -106,10 +126,17 @@ class ResolverTest {
                 "com.example:removed" to LockEntry("2.0.0", "def456")
             )
         )
+        val pomXml = simplePom("com.example", "lib", "1.0.0")
         val deps = fakeDeps(
-            cachedFiles = mutableSetOf("/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar"),
+            cachedFiles = mutableSetOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar",
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom"
+            ),
             sha256Results = mapOf(
                 "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar" to "abc123"
+            ),
+            fileContents = mapOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom" to pomXml
             )
         )
         val result = resolve(config, lock, "/tmp/cache", deps)
@@ -128,10 +155,14 @@ class ResolverTest {
                 "com.example:lib" to LockEntry("1.0.0", "old_hash")
             )
         )
+        val pomXml = simplePom("com.example", "lib", "2.0.0")
         val deps = fakeDeps(
             cachedFiles = mutableSetOf(),
             sha256Results = mapOf(
                 "/tmp/cache/com/example/lib/2.0.0/lib-2.0.0.jar" to "new_hash"
+            ),
+            fileContents = mapOf(
+                "/tmp/cache/com/example/lib/2.0.0/lib-2.0.0.pom" to pomXml
             )
         )
         val result = resolve(config, lock, "/tmp/cache", deps)
@@ -159,10 +190,17 @@ class ResolverTest {
                 "com.example:lib" to LockEntry("1.0.0", "abc123")
             )
         )
+        val pomXml = simplePom("com.example", "lib", "1.0.0")
         val deps = fakeDeps(
-            cachedFiles = mutableSetOf("/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar"),
+            cachedFiles = mutableSetOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar",
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom"
+            ),
             sha256Results = mapOf(
                 "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar" to "abc123"
+            ),
+            fileContents = mapOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom" to pomXml
             )
         )
         val result = resolve(config, lock, "/tmp/cache", deps)
@@ -181,10 +219,17 @@ class ResolverTest {
                 "com.example:lib" to LockEntry("1.0.0", "abc123")
             )
         )
+        val pomXml = simplePom("com.example", "lib", "1.0.0")
         val deps = fakeDeps(
-            cachedFiles = mutableSetOf("/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar"),
+            cachedFiles = mutableSetOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar",
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom"
+            ),
             sha256Results = mapOf(
                 "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.jar" to "abc123"
+            ),
+            fileContents = mapOf(
+                "/tmp/cache/com/example/lib/1.0.0/lib-1.0.0.pom" to pomXml
             )
         )
         val result = resolve(config, lock, "/tmp/cache", deps)
@@ -202,6 +247,8 @@ class ResolverTest {
                 Err(DownloadError.HttpFailed(url, 404))
             override fun computeSha256(filePath: String): Result<String, Sha256Error> =
                 Err(Sha256Error(filePath))
+            override fun readFileContent(path: String): Result<String, OpenFailed> =
+                Err(OpenFailed(path))
         }
         val result = resolve(config, null, "/tmp/cache", deps)
         val error = assertIs<ResolveError.DownloadFailed>(result.getError())
@@ -212,22 +259,27 @@ class ResolverTest {
     fun buildLockfileFromResolvedDeps() {
         val config = testConfig().copy(kotlin = "2.1.0", jvmTarget = "17")
         val deps = listOf(
-            ResolvedDep("com.example:lib", "1.0.0", "abc123", "/cache/lib.jar"),
-            ResolvedDep("org.example:other", "2.0.0", "def456", "/cache/other.jar")
+            ResolvedDep("com.example:lib", "1.0.0", "abc123", "/cache/lib.jar", transitive = false),
+            ResolvedDep("org.example:other", "2.0.0", "def456", "/cache/other.jar", transitive = true)
         )
         val lockfile = buildLockfileFromResolved(config, deps)
-        assertEquals(1, lockfile.version)
+        assertEquals(2, lockfile.version)
         assertEquals("2.1.0", lockfile.kotlin)
         assertEquals("17", lockfile.jvmTarget)
         assertEquals(2, lockfile.dependencies.size)
-        assertEquals(LockEntry("1.0.0", "abc123"), lockfile.dependencies["com.example:lib"])
+        assertEquals(LockEntry("1.0.0", "abc123", transitive = false), lockfile.dependencies["com.example:lib"])
+        assertEquals(LockEntry("2.0.0", "def456", transitive = true), lockfile.dependencies["org.example:other"])
     }
+
+    private fun simplePom(group: String, artifact: String, version: String): String =
+        "<project><groupId>$group</groupId><artifactId>$artifact</artifactId><version>$version</version></project>"
 
     // Fake side-effect injection for testing
     private fun fakeDeps(
         cachedFiles: MutableSet<String> = mutableSetOf(),
         downloadedFiles: MutableMap<String, String> = mutableMapOf(),
-        sha256Results: Map<String, String> = emptyMap()
+        sha256Results: Map<String, String> = emptyMap(),
+        fileContents: Map<String, String> = emptyMap()
     ): ResolverDeps {
         return object : ResolverDeps {
             val downloadedFiles = downloadedFiles
@@ -246,6 +298,12 @@ class ResolverTest {
                 val hash = sha256Results[filePath]
                     ?: return Err(Sha256Error(filePath))
                 return Ok(hash)
+            }
+
+            override fun readFileContent(path: String): Result<String, OpenFailed> {
+                val content = fileContents[path]
+                    ?: return Err(OpenFailed(path))
+                return Ok(content)
             }
         }
     }

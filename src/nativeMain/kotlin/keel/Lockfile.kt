@@ -13,20 +13,21 @@ sealed class LockfileError {
     data class UnsupportedVersion(val version: Int) : LockfileError()
 }
 
-data class LockEntry(val version: String, val sha256: String)
+data class LockEntry(val version: String, val sha256: String, val transitive: Boolean = false)
 
 /**
- * Domain model for keel.lock. Serialized as JSON:
+ * Domain model for keel.lock. Serialized as JSON (v2):
  * ```json
  * {
- *   "version": 1,
+ *   "version": 2,
  *   "kotlin": "2.1.0",
  *   "jvm_target": "17",
  *   "dependencies": {
- *     "group:artifact": { "version": "1.0.0", "sha256": "..." }
+ *     "group:artifact": { "version": "1.0.0", "sha256": "...", "transitive": false }
  *   }
  * }
  * ```
+ * V1 lockfiles (without `transitive` field) are accepted with `transitive` defaulting to `false`.
  */
 data class Lockfile(
     val version: Int,
@@ -38,7 +39,8 @@ data class Lockfile(
 @Serializable
 private data class LockEntryJson(
     val version: String,
-    val sha256: String
+    val sha256: String,
+    val transitive: Boolean = false
 )
 
 @Serializable
@@ -62,7 +64,7 @@ fun parseLockfile(jsonString: String): Result<Lockfile, LockfileError> {
     } catch (e: IllegalArgumentException) {
         return Err(LockfileError.ParseFailed("failed to parse keel.lock: ${e.message}"))
     }
-    if (parsed.version != 1) {
+    if (parsed.version !in 1..2) {
         return Err(LockfileError.UnsupportedVersion(parsed.version))
     }
     return Ok(
@@ -71,7 +73,7 @@ fun parseLockfile(jsonString: String): Result<Lockfile, LockfileError> {
             kotlin = parsed.kotlin,
             jvmTarget = parsed.jvmTarget,
             dependencies = parsed.dependencies.mapValues { (_, v) ->
-                LockEntry(v.version, v.sha256)
+                LockEntry(v.version, v.sha256, v.transitive)
             }
         )
     )
@@ -79,7 +81,7 @@ fun parseLockfile(jsonString: String): Result<Lockfile, LockfileError> {
 
 fun serializeLockfile(lockfile: Lockfile): String {
     val sorted = lockfile.dependencies.entries.sortedBy { it.key }.associate { (k, v) ->
-        k to LockEntryJson(v.version, v.sha256)
+        k to LockEntryJson(v.version, v.sha256, v.transitive)
     }
     val json = LockfileJson(
         version = lockfile.version,

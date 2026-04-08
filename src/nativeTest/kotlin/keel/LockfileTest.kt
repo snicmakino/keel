@@ -105,4 +105,83 @@ class LockfileTest {
         val reparsed = assertNotNull(parseLockfile(serialized).get())
         assertEquals(lockfile, reparsed)
     }
+
+    @Test
+    fun parseV2LockfileWithTransitiveField() {
+        val json = """
+            {
+                "version": 2,
+                "kotlin": "2.1.0",
+                "jvm_target": "17",
+                "dependencies": {
+                    "org.jetbrains.kotlinx:kotlinx-coroutines-core": {
+                        "version": "1.9.0",
+                        "sha256": "abc123",
+                        "transitive": false
+                    },
+                    "org.jetbrains.kotlin:kotlin-stdlib": {
+                        "version": "2.1.0",
+                        "sha256": "def456",
+                        "transitive": true
+                    }
+                }
+            }
+        """.trimIndent()
+        val lockfile = assertNotNull(parseLockfile(json).get())
+        assertEquals(2, lockfile.version)
+        assertEquals(false, lockfile.dependencies["org.jetbrains.kotlinx:kotlinx-coroutines-core"]!!.transitive)
+        assertEquals(true, lockfile.dependencies["org.jetbrains.kotlin:kotlin-stdlib"]!!.transitive)
+    }
+
+    @Test
+    fun parseV1LockfileDefaultsTransitiveToFalse() {
+        val json = """
+            {
+                "version": 1,
+                "kotlin": "2.1.0",
+                "jvm_target": "17",
+                "dependencies": {
+                    "junit:junit": {
+                        "version": "4.13.2",
+                        "sha256": "ccc333"
+                    }
+                }
+            }
+        """.trimIndent()
+        val lockfile = assertNotNull(parseLockfile(json).get())
+        assertEquals(false, lockfile.dependencies["junit:junit"]!!.transitive)
+    }
+
+    @Test
+    fun serializeV2LockfileIncludesTransitiveField() {
+        val lockfile = Lockfile(
+            version = 2,
+            kotlin = "2.1.0",
+            jvmTarget = "17",
+            dependencies = mapOf(
+                "org.example:lib" to LockEntry("1.0.0", "aaa111", transitive = false),
+                "org.example:transitive-lib" to LockEntry("2.0.0", "bbb222", transitive = true)
+            )
+        )
+        val serialized = serializeLockfile(lockfile)
+        val reparsed = assertNotNull(parseLockfile(serialized).get())
+        assertEquals(false, reparsed.dependencies["org.example:lib"]!!.transitive)
+        assertEquals(true, reparsed.dependencies["org.example:transitive-lib"]!!.transitive)
+    }
+
+    @Test
+    fun serializeV2RoundTrip() {
+        val lockfile = Lockfile(
+            version = 2,
+            kotlin = "2.1.0",
+            jvmTarget = "17",
+            dependencies = mapOf(
+                "a:b" to LockEntry("1.0", "hash1", transitive = false),
+                "c:d" to LockEntry("2.0", "hash2", transitive = true)
+            )
+        )
+        val serialized = serializeLockfile(lockfile)
+        val reparsed = assertNotNull(parseLockfile(serialized).get())
+        assertEquals(lockfile, reparsed)
+    }
 }

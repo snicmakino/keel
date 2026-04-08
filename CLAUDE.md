@@ -32,11 +32,14 @@ Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 | Builder.kt | Build kotlinc command args (pure function) |
 | Runner.kt | Build java -jar command args (pure function) |
 | VersionCheck.kt | Parse kotlinc version string (pure function) |
-| Dependency.kt | Maven coordinate parsing, URL/cache path construction (pure function) |
-| Lockfile.kt | Parse/serialize keel.lock (JSON) |
+| Dependency.kt | Maven coordinate parsing, JAR/POM URL/cache path construction (pure function) |
+| Lockfile.kt | Parse/serialize keel.lock v1/v2 (JSON) |
 | Downloader.kt | HTTP file download via Ktor Client (Curl engine) |
 | Sha256.kt | SHA256 hash computation |
-| Resolver.kt | Dependency resolution orchestration |
+| PomParser.kt | POM XML parsing, property interpolation (pure function) |
+| VersionCompare.kt | Maven version comparison (pure function) |
+| TransitiveResolver.kt | BFS transitive dependency resolution with scope/optional filtering |
+| Resolver.kt | Dependency resolution orchestration, delegates to TransitiveResolver |
 | Main.kt | CLI entrypoint, module integration |
 
 ## Error Handling Policy
