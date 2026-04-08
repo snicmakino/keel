@@ -4,12 +4,18 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 
+data class PomExclusion(
+    val groupId: String,
+    val artifactId: String
+)
+
 data class PomDependency(
     val groupId: String,
     val artifactId: String,
     val version: String?,
     val scope: String?,
-    val optional: Boolean
+    val optional: Boolean,
+    val exclusions: List<PomExclusion> = emptyList()
 )
 
 data class PomParent(
@@ -98,7 +104,17 @@ private fun parseDependencyElement(elem: XmlElement, interpolationMap: Map<Strin
     val version = elem.childText("version")?.let { interpolate(it, interpolationMap) }
     val scope = elem.childText("scope")?.let { interpolate(it, interpolationMap) }
     val optional = elem.childText("optional")?.let { interpolate(it, interpolationMap) } == "true"
-    return PomDependency(groupId, artifactId, version, scope, optional)
+    val exclusions = elem.child("exclusions")
+        ?.children
+        ?.filter { it.name == "exclusion" }
+        ?.map { ex ->
+            PomExclusion(
+                groupId = interpolate(ex.childText("groupId") ?: "", interpolationMap),
+                artifactId = interpolate(ex.childText("artifactId") ?: "", interpolationMap)
+            )
+        }
+        ?: emptyList()
+    return PomDependency(groupId, artifactId, version, scope, optional, exclusions)
 }
 
 private fun interpolate(value: String, properties: Map<String, String>): String {

@@ -15,6 +15,12 @@ data class DependencyNode(
     val direct: Boolean
 )
 
+private data class QueueEntry(
+    val groupArtifact: String,
+    val version: String,
+    val exclusions: Set<PomExclusion>
+)
+
 /**
  * Pure dependency graph resolution via BFS.
  *
@@ -27,6 +33,7 @@ data class DependencyNode(
  * - Among transitive deps, highest version wins
  * - Scopes: only `compile` and `runtime` are included
  * - Optional dependencies are skipped
+ * - Exclusions propagate transitively through the dependency chain
  * - Cycles are detected via visited set
  * - Parent POM chain is followed for dependencyManagement version lookup
  *
@@ -40,26 +47,26 @@ fun resolveGraph(
 ): Result<List<DependencyNode>, ResolveError> {
     // Track resolved versions: groupArtifact -> (version, isDirect)
     val resolvedVersions = mutableMapOf<String, Pair<String, Boolean>>()
-    val queue = ArrayDeque<Pair<String, String>>() // (groupArtifact, version)
+    val queue = ArrayDeque<QueueEntry>()
     val visited = mutableSetOf<String>() // "groupArtifact:version"
 
-    // Seed with direct deps
+    // Seed with direct deps (no exclusions at the root level)
     for ((groupArtifact, version) in directDeps) {
         parseCoordinate(groupArtifact, version).getOrElse {
             return Err(ResolveError.InvalidDependency(groupArtifact))
         }
         resolvedVersions[groupArtifact] = Pair(version, true)
-        queue.addLast(Pair(groupArtifact, version))
+        queue.addLast(QueueEntry(groupArtifact, version, emptySet()))
     }
 
     // BFS
     while (queue.isNotEmpty()) {
-        val (groupArtifact, version) = queue.removeFirst()
-        val visitKey = "$groupArtifact:$version"
+        val entry = queue.removeFirst()
+        val visitKey = "${entry.groupArtifact}:${entry.version}"
         if (visitKey in visited) continue
         visited.add(visitKey)
 
-        val pomInfo = pomLookup(groupArtifact, version) ?: continue
+        val pomInfo = pomLookup(entry.groupArtifact, entry.version) ?: continue
 
         // Collect dependencyManagement from this POM and its parent chain
         val depMgmt = collectDepMgmt(pomInfo, pomLookup)
@@ -70,6 +77,10 @@ fun resolveGraph(
             if (pomDep.optional) continue
 
             val depGroupArtifact = "${pomDep.groupId}:${pomDep.artifactId}"
+
+            // Check if this dep is excluded by inherited exclusions
+            if (isExcluded(pomDep.groupId, pomDep.artifactId, entry.exclusions)) continue
+
             val depVersion = pomDep.version
                 ?: depMgmt[depGroupArtifact]
                 ?: continue
@@ -81,8 +92,11 @@ fun resolveGraph(
                 if (compareVersions(depVersion, existingVersion) <= 0) continue
             }
 
+            // Merge inherited exclusions with this dep's own exclusions
+            val mergedExclusions = entry.exclusions + pomDep.exclusions.toSet()
+
             resolvedVersions[depGroupArtifact] = Pair(depVersion, false)
-            queue.addLast(Pair(depGroupArtifact, depVersion))
+            queue.addLast(QueueEntry(depGroupArtifact, depVersion, mergedExclusions))
         }
     }
 
@@ -90,6 +104,17 @@ fun resolveGraph(
         DependencyNode(groupArtifact, versionAndDirect.first, versionAndDirect.second)
     }
     return Ok(nodes)
+}
+
+/**
+ * Checks if a dependency is excluded by the given exclusion set.
+ * Supports wildcards: `*` matches any group or artifact.
+ */
+private fun isExcluded(groupId: String, artifactId: String, exclusions: Set<PomExclusion>): Boolean {
+    return exclusions.any { ex ->
+        (ex.groupId == "*" || ex.groupId == groupId) &&
+            (ex.artifactId == "*" || ex.artifactId == artifactId)
+    }
 }
 
 private fun isIncludedScope(scope: String?): Boolean {

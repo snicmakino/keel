@@ -7,6 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class PomParserTest {
 
@@ -257,5 +258,92 @@ class PomParserTest {
         val pom = assertNotNull(parsePom(xml).get())
         assertEquals("com.example", pom.dependencies[0].groupId)
         assertEquals("1.0.0", pom.dependencies[0].version)
+    }
+
+    @Test
+    fun parsePomWithExclusions() {
+        val xml = """
+            <project>
+                <groupId>com.example</groupId>
+                <artifactId>mylib</artifactId>
+                <version>1.0.0</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.example</groupId>
+                        <artifactId>lib</artifactId>
+                        <version>2.0.0</version>
+                        <exclusions>
+                            <exclusion>
+                                <groupId>org.unwanted</groupId>
+                                <artifactId>bad-lib</artifactId>
+                            </exclusion>
+                            <exclusion>
+                                <groupId>org.also-unwanted</groupId>
+                                <artifactId>another</artifactId>
+                            </exclusion>
+                        </exclusions>
+                    </dependency>
+                </dependencies>
+            </project>
+        """.trimIndent()
+
+        val pom = assertNotNull(parsePom(xml).get())
+        val dep = pom.dependencies[0]
+        assertEquals(2, dep.exclusions.size)
+        assertEquals("org.unwanted", dep.exclusions[0].groupId)
+        assertEquals("bad-lib", dep.exclusions[0].artifactId)
+        assertEquals("org.also-unwanted", dep.exclusions[1].groupId)
+        assertEquals("another", dep.exclusions[1].artifactId)
+    }
+
+    @Test
+    fun parsePomWithWildcardExclusion() {
+        val xml = """
+            <project>
+                <groupId>com.example</groupId>
+                <artifactId>mylib</artifactId>
+                <version>1.0.0</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.example</groupId>
+                        <artifactId>lib</artifactId>
+                        <version>1.0.0</version>
+                        <exclusions>
+                            <exclusion>
+                                <groupId>*</groupId>
+                                <artifactId>*</artifactId>
+                            </exclusion>
+                        </exclusions>
+                    </dependency>
+                </dependencies>
+            </project>
+        """.trimIndent()
+
+        val pom = assertNotNull(parsePom(xml).get())
+        val dep = pom.dependencies[0]
+        assertEquals(1, dep.exclusions.size)
+        assertEquals("*", dep.exclusions[0].groupId)
+        assertEquals("*", dep.exclusions[0].artifactId)
+    }
+
+    @Test
+    fun parsePomWithNoExclusionsDefaultsToEmpty() {
+        val xml = """
+            <project>
+                <groupId>com.example</groupId>
+                <artifactId>mylib</artifactId>
+                <version>1.0.0</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>junit</groupId>
+                        <artifactId>junit</artifactId>
+                        <version>4.13.2</version>
+                    </dependency>
+                </dependencies>
+            </project>
+        """.trimIndent()
+
+        val pom = assertNotNull(parsePom(xml).get())
+        assertTrue(pom.dependencies[0].exclusions.isEmpty())
     }
 }

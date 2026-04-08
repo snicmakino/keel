@@ -242,6 +242,142 @@ class ResolutionTest {
         assertEquals("com.example:lib", nodes[0].groupArtifact)
     }
 
+    @Test
+    fun resolveGraphExcludesSpecificTransitiveDep() {
+        // lib depends on a (with exclusion of b), a depends on b
+        // b should be excluded
+        val poms = mapOf(
+            "com.example:lib:1.0.0" to pomInfo(
+                "com.example", "lib", "1.0.0",
+                deps = listOf(
+                    pomDep("com.example", "a", "1.0.0",
+                        exclusions = listOf(PomExclusion("com.example", "b")))
+                )
+            ),
+            "com.example:a:1.0.0" to pomInfo(
+                "com.example", "a", "1.0.0",
+                deps = listOf(pomDep("com.example", "b", "1.0.0"))
+            ),
+            "com.example:b:1.0.0" to pomInfo("com.example", "b", "1.0.0")
+        )
+        val result = resolveGraph(
+            mapOf("com.example:lib" to "1.0.0"),
+            poms.pomLookup()
+        )
+        val nodes = assertNotNull(result.get())
+        val names = nodes.map { it.groupArtifact }.toSet()
+        assertTrue("com.example:lib" in names)
+        assertTrue("com.example:a" in names)
+        assertFalse("com.example:b" in names)
+    }
+
+    @Test
+    fun resolveGraphWildcardExclusionExcludesAllTransitives() {
+        // lib depends on a (with *:* exclusion), a depends on b and c
+        val poms = mapOf(
+            "com.example:lib:1.0.0" to pomInfo(
+                "com.example", "lib", "1.0.0",
+                deps = listOf(
+                    pomDep("com.example", "a", "1.0.0",
+                        exclusions = listOf(PomExclusion("*", "*")))
+                )
+            ),
+            "com.example:a:1.0.0" to pomInfo(
+                "com.example", "a", "1.0.0",
+                deps = listOf(
+                    pomDep("com.example", "b", "1.0.0"),
+                    pomDep("com.example", "c", "1.0.0")
+                )
+            ),
+            "com.example:b:1.0.0" to pomInfo("com.example", "b", "1.0.0"),
+            "com.example:c:1.0.0" to pomInfo("com.example", "c", "1.0.0")
+        )
+        val result = resolveGraph(
+            mapOf("com.example:lib" to "1.0.0"),
+            poms.pomLookup()
+        )
+        val nodes = assertNotNull(result.get())
+        val names = nodes.map { it.groupArtifact }.toSet()
+        assertTrue("com.example:lib" in names)
+        assertTrue("com.example:a" in names)
+        // b and c excluded by wildcard
+        assertFalse("com.example:b" in names)
+        assertFalse("com.example:c" in names)
+    }
+
+    @Test
+    fun resolveGraphExclusionsPropagateTransitively() {
+        // lib excludes c, lib -> a -> b -> c. c should be excluded at any depth.
+        val poms = mapOf(
+            "com.example:lib:1.0.0" to pomInfo(
+                "com.example", "lib", "1.0.0",
+                deps = listOf(
+                    pomDep("com.example", "a", "1.0.0",
+                        exclusions = listOf(PomExclusion("com.example", "c")))
+                )
+            ),
+            "com.example:a:1.0.0" to pomInfo(
+                "com.example", "a", "1.0.0",
+                deps = listOf(pomDep("com.example", "b", "1.0.0"))
+            ),
+            "com.example:b:1.0.0" to pomInfo(
+                "com.example", "b", "1.0.0",
+                deps = listOf(pomDep("com.example", "c", "1.0.0"))
+            ),
+            "com.example:c:1.0.0" to pomInfo("com.example", "c", "1.0.0")
+        )
+        val result = resolveGraph(
+            mapOf("com.example:lib" to "1.0.0"),
+            poms.pomLookup()
+        )
+        val nodes = assertNotNull(result.get())
+        val names = nodes.map { it.groupArtifact }.toSet()
+        assertTrue("com.example:a" in names)
+        assertTrue("com.example:b" in names)
+        assertFalse("com.example:c" in names)
+    }
+
+    @Test
+    fun resolveGraphExclusionDoesNotAffectOtherPaths() {
+        // a excludes c, but b does not. Both a and b are direct deps.
+        // a -> c (excluded), b -> c (not excluded) => c should be included
+        val poms = mapOf(
+            "com.example:a:1.0.0" to pomInfo(
+                "com.example", "a", "1.0.0",
+                deps = listOf(
+                    pomDep("com.example", "c", "1.0.0",
+                        exclusions = emptyList())
+                )
+            ),
+            "com.example:b:1.0.0" to pomInfo(
+                "com.example", "b", "1.0.0",
+                deps = listOf(pomDep("com.example", "c", "1.0.0"))
+            ),
+            "com.example:c:1.0.0" to pomInfo("com.example", "c", "1.0.0")
+        )
+        // a has exclusion on c declared at the direct dep level
+        val aWithExclusion = pomInfo(
+            "com.example", "a", "1.0.0",
+            deps = listOf(pomDep("com.example", "c", "1.0.0"))
+        )
+        val pomsWithExclusion = mapOf(
+            "com.example:a:1.0.0" to aWithExclusion,
+            "com.example:b:1.0.0" to pomInfo(
+                "com.example", "b", "1.0.0",
+                deps = listOf(pomDep("com.example", "c", "1.0.0"))
+            ),
+            "com.example:c:1.0.0" to pomInfo("com.example", "c", "1.0.0")
+        )
+        // Both a and b depend on c without exclusions → c is included
+        val result = resolveGraph(
+            mapOf("com.example:a" to "1.0.0", "com.example:b" to "1.0.0"),
+            pomsWithExclusion.pomLookup()
+        )
+        val nodes = assertNotNull(result.get())
+        val names = nodes.map { it.groupArtifact }.toSet()
+        assertTrue("com.example:c" in names)
+    }
+
     // --- Test helpers ---
 
     private fun pomDep(
@@ -249,8 +385,9 @@ class ResolutionTest {
         artifact: String,
         version: String? = null,
         scope: String? = null,
-        optional: Boolean = false
-    ) = PomDependency(group, artifact, version, scope, optional)
+        optional: Boolean = false,
+        exclusions: List<PomExclusion> = emptyList()
+    ) = PomDependency(group, artifact, version, scope, optional, exclusions)
 
     private fun pomInfo(
         group: String,
