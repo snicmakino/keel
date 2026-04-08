@@ -16,5 +16,12 @@ fun generateMainKt(): String = buildString {
     appendLine("}")
 }
 
-fun inferProjectName(dirPath: String): String =
-    dirPath.trimEnd('/').substringAfterLast('/')
+fun inferProjectName(dirPath: String): String {
+    val name = dirPath.trimEnd('/').substringAfterLast('/')
+    return name.ifEmpty { "project" }
+}
+
+private val validProjectNamePattern = Regex("""^[a-zA-Z0-9][a-zA-Z0-9._-]*$""")
+
+fun isValidProjectName(name: String): Boolean =
+    name.isNotEmpty() && validProjectNamePattern.matches(name)

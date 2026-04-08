@@ -2,6 +2,7 @@ package keel
 
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getError
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -9,17 +10,25 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class CleanTest {
+    private val testDir = "build_test_clean"
+
+    @AfterTest
+    fun cleanup() {
+        if (fileExists(testDir)) {
+            removeDirectoryRecursive(testDir)
+        }
+    }
+
     @Test
     fun removeDirectoryDeletesDirectoryAndContents() {
-        val dir = "build_test_clean"
-        ensureDirectoryRecursive("$dir/sub")
-        writeFileAsString("$dir/file.txt", "hello")
-        writeFileAsString("$dir/sub/nested.txt", "world")
-        assertTrue(fileExists(dir))
+        ensureDirectoryRecursive("$testDir/sub")
+        writeFileAsString("$testDir/file.txt", "hello")
+        writeFileAsString("$testDir/sub/nested.txt", "world")
+        assertTrue(fileExists(testDir))
 
-        val result = removeDirectoryRecursive(dir)
+        val result = removeDirectoryRecursive(testDir)
         assertNotNull(result.get())
-        assertFalse(fileExists(dir))
+        assertFalse(fileExists(testDir))
     }
 
     @Test

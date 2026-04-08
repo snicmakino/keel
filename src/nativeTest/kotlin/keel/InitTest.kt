@@ -2,6 +2,7 @@ package keel
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class InitTest {
@@ -37,5 +38,32 @@ class InitTest {
     fun projectNameFromDirName() {
         assertEquals("my-app", inferProjectName("/home/user/projects/my-app"))
         assertEquals("hello", inferProjectName("/tmp/hello"))
+    }
+
+    @Test
+    fun projectNameFromRootFallsBackToDefault() {
+        assertEquals("project", inferProjectName("/"))
+    }
+
+    @Test
+    fun projectNameFromEmptyStringFallsBackToDefault() {
+        assertEquals("project", inferProjectName(""))
+    }
+
+    @Test
+    fun validProjectNames() {
+        assertTrue(isValidProjectName("my-app"))
+        assertTrue(isValidProjectName("hello"))
+        assertTrue(isValidProjectName("app_v2"))
+        assertTrue(isValidProjectName("My.Project"))
+    }
+
+    @Test
+    fun invalidProjectNames() {
+        assertFalse(isValidProjectName(""))
+        assertFalse(isValidProjectName("my\"app"))
+        assertFalse(isValidProjectName("my app"))
+        assertFalse(isValidProjectName("-start-with-dash"))
+        assertFalse(isValidProjectName(".hidden"))
     }
 }

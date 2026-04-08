@@ -26,4 +26,9 @@ class FormatTest {
     fun formatRoundsToOneTenth() {
         assertEquals("1.2s", formatDuration(1234.milliseconds))
     }
+
+    @Test
+    fun formatZeroDuration() {
+        assertEquals("0.0s", formatDuration(0.milliseconds))
+    }
 }

@@ -73,6 +73,12 @@ private fun doInit(args: List<String>) {
         inferProjectName(cwd)
     }
 
+    if (!isValidProjectName(projectName)) {
+        eprintln("error: invalid project name '$projectName'")
+        eprintln("  project name must start with a letter or digit and contain only letters, digits, '.', '-', '_'")
+        exitProcess(EXIT_CONFIG_ERROR)
+    }
+
     writeFileAsString(KEEL_TOML, generateKeelToml(projectName)).getOrElse { error ->
         eprintln("error: could not write ${error.path}")
         exitProcess(EXIT_BUILD_ERROR)

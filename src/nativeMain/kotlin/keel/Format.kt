@@ -3,9 +3,9 @@ package keel
 import kotlin.time.Duration
 
 fun formatDuration(duration: Duration): String {
-    val totalSeconds = duration.inWholeMilliseconds / 100 / 10.0
-    val minutes = (totalSeconds / 60).toInt()
-    val seconds = totalSeconds - minutes * 60
-    val secStr = "${(seconds * 10).toInt() / 10.0}s"
+    val tenths = duration.inWholeMilliseconds / 100
+    val minutes = (tenths / 600).toInt()
+    val secondsTenths = tenths - minutes * 600
+    val secStr = "${secondsTenths / 10}.${secondsTenths % 10}s"
     return if (minutes > 0) "${minutes}m $secStr" else secStr
 }
