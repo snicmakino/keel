@@ -1,0 +1,8 @@
+{
+  "name": "hello",
+  "version": "0.1.0",
+  "kotlin": "2.3.20",
+  "target": "jvm",
+  "main": "com.example.MainKt",
+  "sources": ["src"]
+}

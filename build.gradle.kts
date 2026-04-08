@@ -1,30 +1,36 @@
-// build.gradle.kts
-import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
-
 plugins {
-    kotlin("multiplatform") version "2.3.20"
+    kotlin("multiplatform") version "2.1.0"
+    kotlin("plugin.serialization") version "2.1.0"
 }
 
 repositories {
-    // Specify the source to download the main bundle
-    // Maven Central is used by default
     mavenCentral()
 }
 
 kotlin {
-    // macosArm64()    // on macOS
-    linuxX64()        // on Linux (x86_64)
-    // mingwX64()     // on Windows
-
-    targets.withType<KotlinNativeTarget>().configureEach {
+    linuxX64 {
         binaries {
-            executable()
+            executable {
+                entryPoint = "keel.main"
+            }
+        }
+    }
+
+    sourceSets {
+        val linuxX64Main by getting {
+            dependencies {
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+            }
+        }
+        val linuxX64Test by getting {
+            dependencies {
+                implementation(kotlin("test"))
+            }
         }
     }
 }
 
 tasks.withType<Wrapper> {
-    gradleVersion = "9.3.0"
+    gradleVersion = "8.12"
     distributionType = Wrapper.DistributionType.BIN
 }
-
