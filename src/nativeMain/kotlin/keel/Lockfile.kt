@@ -49,7 +49,10 @@ private data class LockfileJson(
     val dependencies: Map<String, LockEntryJson>
 )
 
-private val lockfileJson = Json { prettyPrint = true }
+private val lockfileJson = Json {
+    prettyPrint = true
+    prettyPrintIndent = "  "
+}
 
 fun parseLockfile(jsonString: String): Result<Lockfile, LockfileError> {
     val parsed = try {
