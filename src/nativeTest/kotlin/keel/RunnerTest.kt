@@ -26,4 +26,19 @@ class RunnerTest {
         val cmd = runCommand(testConfig(name = "hello-world"), null)
         assertEquals("build/hello-world.jar", cmd.jarPath)
     }
+
+    @Test
+    fun runCommandWithAppArgs() {
+        val cmd = runCommand(testConfig(), null, listOf("--port", "8080"))
+        assertEquals(
+            listOf("java", "-cp", "build/my-app.jar", "com.example.MainKt", "--port", "8080"),
+            cmd.args
+        )
+    }
+
+    @Test
+    fun runCommandWithEmptyAppArgs() {
+        val cmd = runCommand(testConfig(), null, emptyList())
+        assertEquals(listOf("java", "-cp", "build/my-app.jar", "com.example.MainKt"), cmd.args)
+    }
 }

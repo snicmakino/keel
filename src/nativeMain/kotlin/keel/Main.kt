@@ -5,6 +5,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.toKString
 import platform.posix.getcwd
 import kotlin.system.exitProcess
+import kotlin.time.TimeSource
 
 fun main(args: Array<String>) {
     if (args.isEmpty()) {
@@ -16,15 +17,19 @@ fun main(args: Array<String>) {
         "init" -> doInit(args.drop(1))
         "build" -> doBuild()
         "run" -> {
+            val appArgs = args.toList().let { all ->
+                val sep = all.indexOf("--")
+                if (sep >= 0) all.subList(sep + 1, all.size) else emptyList()
+            }
             val (config, classpath) = doBuild()
-            doRun(config, classpath)
+            doRun(config, classpath, appArgs)
         }
         "clean" -> doClean()
         "--version", "version" -> println(versionString())
         else -> {
             eprintln("error: unknown command '${args[0]}'")
             printUsage()
-            exitProcess(1)
+            exitProcess(EXIT_BUILD_ERROR)
         }
     }
 }
@@ -47,7 +52,7 @@ private const val SRC_DIR = "src"
 private fun doInit(args: List<String>) {
     if (fileExists(KEEL_TOML)) {
         eprintln("error: $KEEL_TOML already exists")
-        exitProcess(1)
+        exitProcess(EXIT_CONFIG_ERROR)
     }
 
     val projectName = if (args.isNotEmpty()) {
@@ -56,21 +61,21 @@ private fun doInit(args: List<String>) {
         val cwd = getcwd(null, 0u)?.toKString()
         if (cwd == null) {
             eprintln("error: could not determine current directory")
-            exitProcess(1)
+            exitProcess(EXIT_BUILD_ERROR)
         }
         inferProjectName(cwd)
     }
 
     writeFileAsString(KEEL_TOML, generateKeelToml(projectName)).getOrElse { error ->
         eprintln("error: could not write ${error.path}")
-        exitProcess(1)
+        exitProcess(EXIT_BUILD_ERROR)
     }
     println("created $KEEL_TOML")
 
     if (!fileExists(SRC_DIR)) {
         ensureDirectory(SRC_DIR).getOrElse { error ->
             eprintln("error: could not create directory ${error.path}")
-            exitProcess(1)
+            exitProcess(EXIT_BUILD_ERROR)
         }
     }
 
@@ -78,7 +83,7 @@ private fun doInit(args: List<String>) {
     if (!fileExists(mainKtPath)) {
         writeFileAsString(mainKtPath, generateMainKt()).getOrElse { error ->
             eprintln("error: could not write ${error.path}")
-            exitProcess(1)
+            exitProcess(EXIT_BUILD_ERROR)
         }
         println("created $mainKtPath")
     }
@@ -93,7 +98,7 @@ private fun doClean() {
     }
     removeDirectoryRecursive(BUILD_DIR).getOrElse { error ->
         eprintln("error: could not remove ${error.path}")
-        exitProcess(1)
+        exitProcess(EXIT_BUILD_ERROR)
     }
     println("removed $BUILD_DIR/")
 }
@@ -101,13 +106,13 @@ private fun doClean() {
 private fun loadProjectConfig(): KeelConfig {
     val tomlString = readFileAsString("keel.toml").getOrElse { error ->
         eprintln("error: could not read ${error.path}")
-        exitProcess(1)
+        exitProcess(EXIT_CONFIG_ERROR)
     }
     return parseConfig(tomlString).getOrElse { error ->
         when (error) {
             is ConfigError.ParseFailed -> eprintln("error: ${error.message}")
         }
-        exitProcess(1)
+        exitProcess(EXIT_CONFIG_ERROR)
     }
 }
 
@@ -154,7 +159,7 @@ private fun resolveDependencies(config: KeelConfig): String? {
 
     val home = homeDirectory().getOrElse { error ->
         eprintln("error: ${error.message}")
-        exitProcess(1)
+        exitProcess(EXIT_DEPENDENCY_ERROR)
     }
     val cacheBase = "$home/.keel/cache"
 
@@ -191,7 +196,7 @@ private fun resolveDependencies(config: KeelConfig): String? {
             is ResolveError.HashComputeFailed -> eprintln("error: failed to compute hash for ${error.groupArtifact}")
             is ResolveError.DirectoryCreateFailed -> eprintln("error: could not create directory ${error.path}")
         }
-        exitProcess(1)
+        exitProcess(EXIT_DEPENDENCY_ERROR)
     }
 
     // Write lockfile
@@ -200,7 +205,7 @@ private fun resolveDependencies(config: KeelConfig): String? {
         val lockJson = serializeLockfile(lockfile)
         writeFileAsString(LOCK_FILE, lockJson).getOrElse { error ->
             eprintln("error: could not write ${error.path}")
-            exitProcess(1)
+            exitProcess(EXIT_DEPENDENCY_ERROR)
         }
     }
 
@@ -211,6 +216,7 @@ private fun resolveDependencies(config: KeelConfig): String? {
 private data class BuildResult(val config: KeelConfig, val classpath: String?)
 
 private fun doBuild(): BuildResult {
+    val startMark = TimeSource.Monotonic.markNow()
     val config = loadProjectConfig()
     checkVersion(config)
 
@@ -218,7 +224,7 @@ private fun doBuild(): BuildResult {
     val cmd = buildCommand(config, classpath)
     ensureDirectory(BUILD_DIR).getOrElse { error ->
         eprintln("error: could not create directory ${error.path}")
-        exitProcess(1)
+        exitProcess(EXIT_BUILD_ERROR)
     }
 
     println("compiling ${config.name}...")
@@ -232,18 +238,19 @@ private fun doBuild(): BuildResult {
             // Not reachable via executeCommand
             is ProcessError.PopenFailed -> eprintln("error: failed to start compiler process")
         }
-        exitProcess(1)
+        exitProcess(EXIT_BUILD_ERROR)
     }
-    println("built ${cmd.outputPath}")
+    val elapsed = startMark.elapsedNow()
+    println("built ${cmd.outputPath} in ${formatDuration(elapsed)}")
     return BuildResult(config, classpath)
 }
 
-private fun doRun(config: KeelConfig, classpath: String?) {
-    val cmd = runCommand(config, classpath)
+private fun doRun(config: KeelConfig, classpath: String?, appArgs: List<String> = emptyList()) {
+    val cmd = runCommand(config, classpath, appArgs)
 
     if (!fileExists(cmd.jarPath)) {
         eprintln("error: ${cmd.jarPath} not found. Run 'keel build' first.")
-        exitProcess(1)
+        exitProcess(EXIT_BUILD_ERROR)
     }
 
     executeCommand(cmd.args).getOrElse { error ->
@@ -252,9 +259,9 @@ private fun doRun(config: KeelConfig, classpath: String?) {
             is ProcessError.EmptyArgs,
             is ProcessError.ForkFailed,
             is ProcessError.WaitFailed,
-            is ProcessError.SignalKilled -> exitProcess(1)
+            is ProcessError.SignalKilled -> exitProcess(EXIT_BUILD_ERROR)
             // Not reachable via executeCommand
-            is ProcessError.PopenFailed -> exitProcess(1)
+            is ProcessError.PopenFailed -> exitProcess(EXIT_BUILD_ERROR)
         }
     }
 }
