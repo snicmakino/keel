@@ -10,20 +10,18 @@ import kotlin.test.assertNull
 
 class ConfigTest {
 
+    private val minimalToml = """
+        name = "my-app"
+        version = "0.1.0"
+        kotlin = "2.1.0"
+        target = "jvm"
+        main = "com.example.MainKt"
+        sources = ["src"]
+    """.trimIndent()
+
     @Test
     fun parseMinimalConfig() {
-        val json = """
-        {
-            "name": "my-app",
-            "version": "0.1.0",
-            "kotlin": "2.1.0",
-            "target": "jvm",
-            "main": "com.example.MainKt",
-            "sources": ["src"]
-        }
-        """.trimIndent()
-
-        val result = parseConfig(json)
+        val result = parseConfig(minimalToml)
 
         val config = assertNotNull(result.get())
         assertEquals("my-app", config.name)
@@ -38,40 +36,36 @@ class ConfigTest {
 
     @Test
     fun parseConfigWithExplicitJvmTarget() {
-        val json = """
-        {
-            "name": "my-app",
-            "version": "0.1.0",
-            "kotlin": "2.1.0",
-            "target": "jvm",
-            "jvm_target": "21",
-            "main": "com.example.MainKt",
-            "sources": ["src"]
-        }
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "jvm"
+            jvm_target = "21"
+            main = "com.example.MainKt"
+            sources = ["src"]
         """.trimIndent()
 
-        val config = assertNotNull(parseConfig(json).get())
+        val config = assertNotNull(parseConfig(toml).get())
         assertEquals("21", config.jvmTarget)
     }
 
     @Test
     fun parseConfigWithDependencies() {
-        val json = """
-        {
-            "name": "my-app",
-            "version": "0.1.0",
-            "kotlin": "2.1.0",
-            "target": "jvm",
-            "main": "com.example.MainKt",
-            "sources": ["src"],
-            "dependencies": {
-                "org.jetbrains.kotlinx:kotlinx-coroutines-core": "1.9.0",
-                "com.squareup.okhttp3:okhttp": "4.12.0"
-            }
-        }
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "jvm"
+            main = "com.example.MainKt"
+            sources = ["src"]
+
+            [dependencies]
+            "org.jetbrains.kotlinx:kotlinx-coroutines-core" = "1.9.0"
+            "com.squareup.okhttp3:okhttp" = "4.12.0"
         """.trimIndent()
 
-        val config = assertNotNull(parseConfig(json).get())
+        val config = assertNotNull(parseConfig(toml).get())
         assertEquals(2, config.dependencies.size)
         assertEquals("1.9.0", config.dependencies["org.jetbrains.kotlinx:kotlinx-coroutines-core"])
         assertEquals("4.12.0", config.dependencies["com.squareup.okhttp3:okhttp"])
@@ -79,42 +73,38 @@ class ConfigTest {
 
     @Test
     fun parseConfigWithMultipleSources() {
-        val json = """
-        {
-            "name": "my-app",
-            "version": "0.1.0",
-            "kotlin": "2.1.0",
-            "target": "jvm",
-            "main": "com.example.MainKt",
-            "sources": ["src", "generated"]
-        }
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "jvm"
+            main = "com.example.MainKt"
+            sources = ["src", "generated"]
         """.trimIndent()
 
-        val config = assertNotNull(parseConfig(json).get())
+        val config = assertNotNull(parseConfig(toml).get())
         assertEquals(listOf("src", "generated"), config.sources)
     }
 
     @Test
     fun missingRequiredFieldReturnsErr() {
-        val json = """
-        {
-            "version": "0.1.0",
-            "kotlin": "2.1.0",
-            "target": "jvm",
-            "main": "com.example.MainKt",
-            "sources": ["src"]
-        }
+        val toml = """
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "jvm"
+            main = "com.example.MainKt"
+            sources = ["src"]
         """.trimIndent()
 
-        val result = parseConfig(json)
+        val result = parseConfig(toml)
 
         assertNull(result.get())
         assertIs<ConfigError.ParseFailed>(result.getError())
     }
 
     @Test
-    fun invalidJsonReturnsErr() {
-        val result = parseConfig("not json")
+    fun invalidTomlReturnsErr() {
+        val result = parseConfig("not valid toml [[[")
 
         assertNull(result.get())
         assertIs<ConfigError.ParseFailed>(result.getError())
@@ -122,43 +112,31 @@ class ConfigTest {
 
     @Test
     fun emptySourcesArray() {
-        val json = """
-        {
-            "name": "my-app",
-            "version": "0.1.0",
-            "kotlin": "2.1.0",
-            "target": "jvm",
-            "main": "com.example.MainKt",
-            "sources": []
-        }
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "jvm"
+            main = "com.example.MainKt"
+            sources = []
         """.trimIndent()
 
-        val config = assertNotNull(parseConfig(json).get())
+        val config = assertNotNull(parseConfig(toml).get())
         assertEquals(emptyList(), config.sources)
     }
 
     @Test
     fun wrongFieldTypeReturnsErr() {
-        val json = """
-        {
-            "name": 123,
-            "version": "0.1.0",
-            "kotlin": "2.1.0",
-            "target": "jvm",
-            "main": "com.example.MainKt",
-            "sources": ["src"]
-        }
+        val toml = """
+            name = 123
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "jvm"
+            main = "com.example.MainKt"
+            sources = ["src"]
         """.trimIndent()
 
-        val result = parseConfig(json)
-
-        assertNull(result.get())
-        assertIs<ConfigError.ParseFailed>(result.getError())
-    }
-
-    @Test
-    fun jsonArrayRootReturnsErr() {
-        val result = parseConfig("[1, 2, 3]")
+        val result = parseConfig(toml)
 
         assertNull(result.get())
         assertIs<ConfigError.ParseFailed>(result.getError())
@@ -166,21 +144,19 @@ class ConfigTest {
 
     @Test
     fun wrongDependencyValueTypeReturnsErr() {
-        val json = """
-        {
-            "name": "my-app",
-            "version": "0.1.0",
-            "kotlin": "2.1.0",
-            "target": "jvm",
-            "main": "com.example.MainKt",
-            "sources": ["src"],
-            "dependencies": {
-                "org.example:lib": 123
-            }
-        }
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "jvm"
+            main = "com.example.MainKt"
+            sources = ["src"]
+
+            [dependencies]
+            "org.example:lib" = 123
         """.trimIndent()
 
-        val result = parseConfig(json)
+        val result = parseConfig(toml)
 
         assertNull(result.get())
         assertIs<ConfigError.ParseFailed>(result.getError())
@@ -188,19 +164,33 @@ class ConfigTest {
 
     @Test
     fun unknownFieldsAreIgnored() {
-        val json = """
-        {
-            "name": "my-app",
-            "version": "0.1.0",
-            "kotlin": "2.1.0",
-            "target": "jvm",
-            "main": "com.example.MainKt",
-            "sources": ["src"],
-            "unknown_field": "value"
-        }
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "jvm"
+            main = "com.example.MainKt"
+            sources = ["src"]
+            unknown_field = "value"
         """.trimIndent()
 
-        val config = assertNotNull(parseConfig(json).get())
+        val config = assertNotNull(parseConfig(toml).get())
+        assertEquals("my-app", config.name)
+    }
+
+    @Test
+    fun commentsAreIgnored() {
+        val toml = """
+            # Project configuration
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "jvm"
+            main = "com.example.MainKt"
+            sources = ["src"] # main source directory
+        """.trimIndent()
+
+        val config = assertNotNull(parseConfig(toml).get())
         assertEquals("my-app", config.name)
     }
 }

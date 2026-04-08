@@ -1,43 +1,51 @@
-# keel_kt
+# keel
 
-Kotlin/Native (linuxX64) 製の軽量ビルドツール。Zig版keelのKotlin移植。
-keel.jsonを読み込み、kotlincによるコンパイルとjava -jarによる実行を行う。
+Lightweight build tool written in Kotlin/Native (linuxX64). A Kotlin port of keel (Zig).
+Reads `keel.toml`, compiles with `kotlinc`, and runs with `java -jar`.
 
-## ビルド・テスト
+## Build & Test
 
 ```bash
-./gradlew build              # ビルド + テスト + バイナリ生成
-./gradlew linuxX64Test       # テストのみ
-./gradlew compileKotlinLinuxX64  # コンパイルのみ
+./gradlew build              # Build + test + binary
+./gradlew linuxX64Test       # Tests only
+./gradlew compileKotlinLinuxX64  # Compile only
 ```
 
-バイナリ: `build/bin/linuxX64/debugExecutable/keel_kt.kexe`
+Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 
-## 技術スタック
+## Tech Stack
 
 - Kotlin 2.3.20 / Kotlin/Native (linuxX64)
-- kotlinx-serialization-json: keel.json パース
-- kotlin-result (michael-bull) 2.3.1: エラー処理
+- ktoml 0.7.1: keel.toml parsing
+- kotlinx-serialization-json: keel.lock parsing
+- kotlin-result (michael-bull) 2.3.1: error handling
+- ktor-client-curl 3.4.2: HTTP downloads
+- kotlincrypto sha2-256 0.2.7: SHA256 hashing
 
-## アーキテクチャ
+## Architecture
 
-| ファイル | 役割 |
+| File | Role |
 |---|---|
-| Config.kt | keel.json のパース、KeelConfig データクラス |
-| FileSystem.kt | ファイル読み込み、ディレクトリ作成、stderr出力 |
-| Process.kt | fork/execvp によるコマンド実行、popen によるキャプチャ |
-| Builder.kt | kotlinc コマンド引数の組み立て（純粋関数） |
-| Runner.kt | java -jar コマンド引数の組み立て（純粋関数） |
-| VersionCheck.kt | kotlinc バージョン文字列のパース（純粋関数） |
-| Main.kt | CLI エントリーポイント、各モジュールの統合 |
+| Config.kt | Parse keel.toml, KeelConfig data class |
+| FileSystem.kt | File I/O, directory creation, stderr output |
+| Process.kt | Command execution via fork/execvp, output capture via popen |
+| Builder.kt | Build kotlinc command args (pure function) |
+| Runner.kt | Build java -jar command args (pure function) |
+| VersionCheck.kt | Parse kotlinc version string (pure function) |
+| Dependency.kt | Maven coordinate parsing, URL/cache path construction (pure function) |
+| Lockfile.kt | Parse/serialize keel.lock (JSON) |
+| Downloader.kt | HTTP file download via Ktor Client (Curl engine) |
+| Sha256.kt | SHA256 hash computation |
+| Resolver.kt | Dependency resolution orchestration |
+| Main.kt | CLI entrypoint, module integration |
 
-## エラー処理の方針
+## Error Handling Policy
 
-**原則として Exception の throw は禁止。** kotlin-result の `Result<V, E>` でエラーを表現する。
+**Exception throwing is prohibited.** Use kotlin-result `Result<V, E>` for error representation.
 
-- 関数ごとに返しうるエラー型だけを戻り値の型パラメータに指定する
-- sealed class は共通の親エラーが意味を持つ場合のみ使い、独立したエラーは個別の data class にする
-- 消費側は `getOrElse` + `when` で全バリアントを網羅する
+- Specify only the error types a function can return as type parameters
+- Use sealed class only when a common parent error is meaningful; use individual data class for independent errors
+- Consumers use `getOrElse` + `when` to exhaustively match all variants
 
 ```
 parseConfig()     → Result<KeelConfig, ConfigError>
@@ -47,10 +55,10 @@ executeCommand()   → Result<Int, ProcessError>
 executeAndCapture() → Result<String, ProcessError>
 ```
 
-## コーディング規約
+## Coding Conventions
 
-- TDD (Red → Green → Refactor) で進める
-- テストファイルは `src/nativeTest/kotlin/keel/` に `XxxTest.kt` の命名で配置
-- 純粋関数（Builder, Runner, VersionCheck）はResult不要。副作用のある関数にResultを適用する
-- POSIX API は `@OptIn(ExperimentalForeignApi::class)` を関数レベルで付与
-- コミットメッセージは英語で書く
+- Follow TDD (Red → Green → Refactor)
+- Place test files in `src/nativeTest/kotlin/keel/` with `XxxTest.kt` naming
+- Pure functions (Builder, Runner, VersionCheck) don't need Result. Apply Result to side-effectful functions
+- Annotate POSIX API usage with `@OptIn(ExperimentalForeignApi::class)` at function level
+- Write all code, comments, documentation, and commit messages in English

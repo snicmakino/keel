@@ -32,11 +32,11 @@ private fun printUsage() {
 }
 
 private fun loadProjectConfig(): KeelConfig {
-    val jsonString = readFileAsString("keel.json").getOrElse { error ->
+    val tomlString = readFileAsString("keel.toml").getOrElse { error ->
         eprintln("error: could not read ${error.path}")
         exitProcess(1)
     }
-    return parseConfig(jsonString).getOrElse { error ->
+    return parseConfig(tomlString).getOrElse { error ->
         when (error) {
             is ConfigError.ParseFailed -> eprintln("error: ${error.message}")
         }
@@ -63,7 +63,7 @@ private fun checkVersion(config: KeelConfig) {
         return
     }
     if (installedVersion != config.kotlin) {
-        eprintln("warning: keel.json specifies kotlin ${config.kotlin}, but kotlinc $installedVersion is installed")
+        eprintln("warning: keel.toml specifies kotlin ${config.kotlin}, but kotlinc $installedVersion is installed")
     }
 }
 

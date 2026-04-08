@@ -24,6 +24,7 @@ kotlin {
                 implementation("io.ktor:ktor-client-core:3.4.2")
                 implementation("io.ktor:ktor-client-curl:3.4.2")
                 implementation("org.kotlincrypto.hash:sha2-256:0.2.7")
+                implementation("com.akuleshov7:ktoml-core:0.7.1")
             }
         }
         val linuxX64Test by getting {

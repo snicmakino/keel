@@ -1,12 +1,13 @@
 package keel
 
+import com.akuleshov7.ktoml.Toml
+import com.akuleshov7.ktoml.TomlInputConfig
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.json.Json
 
 sealed class ConfigError {
     data class ParseFailed(val message: String) : ConfigError()
@@ -24,14 +25,19 @@ data class KeelConfig(
     val dependencies: Map<String, String> = emptyMap()
 )
 
-private val json = Json { ignoreUnknownKeys = true }
+private val toml = Toml(
+    inputConfig = TomlInputConfig(ignoreUnknownNames = true)
+)
 
-fun parseConfig(jsonString: String): Result<KeelConfig, ConfigError> {
+fun parseConfig(tomlString: String): Result<KeelConfig, ConfigError> {
     return try {
-        Ok(json.decodeFromString<KeelConfig>(jsonString))
+        val config = toml.decodeFromString(KeelConfig.serializer(), tomlString)
+        // ktoml preserves quotes in map keys; strip them
+        val cleanedDeps = config.dependencies.mapKeys { (key, _) -> key.removeSurrounding("\"") }
+        Ok(config.copy(dependencies = cleanedDeps))
     } catch (e: SerializationException) {
-        Err(ConfigError.ParseFailed("failed to parse keel.json: ${e.message}"))
+        Err(ConfigError.ParseFailed("failed to parse keel.toml: ${e.message}"))
     } catch (e: IllegalArgumentException) {
-        Err(ConfigError.ParseFailed("failed to parse keel.json: ${e.message}"))
+        Err(ConfigError.ParseFailed("failed to parse keel.toml: ${e.message}"))
     }
 }
