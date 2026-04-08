@@ -10,7 +10,9 @@ Gradleを介さずに `kotlinc` / `konanc` を直接呼び出す、Kotlin Native
 ```
 keel init      # プロジェクト雛形を生成
 keel build     # コンパイル
-keel run       # 実行
+keel run       # 実行（keel run -- args でアプリ引数も渡せる）
+keel clean     # ビルド成果物を削除
+keel --version # バージョン表示
 ```
 
 ## なぜ作るのか
@@ -30,26 +32,24 @@ keel run       # 実行
 
 ## 設定ファイル（宣言的）
 
-JSON形式を採用する。
+TOML形式を採用する（ktoml 0.7.1でパース）。
 
-- Kotlinエコシステムの開発者にとって馴染みのある形式
-- コメントが書けない制約があるが、設定ファイルの項目は自己説明的な命名で対応する
-- 将来的にTOMLやJSON5への移行・併存は検討しうるが、Phase 1〜3ではJSONで割り切る
+- コメントが書ける、可読性が高い
+- Cargoの `Cargo.toml`、Denoの `deno.json` と同様のアプローチ
+- 未知のフィールドは無視する（前方互換性のため）
 
-```json
-{
-  "name": "my-app",
-  "version": "0.1.0",
-  "kotlin": "2.1.0",
-  "target": "jvm",
-  "jvm_target": "17",
-  "main": "com.example.MainKt",
-  "sources": ["src"],
-  "dependencies": {
-    "org.jetbrains.kotlinx:kotlinx-coroutines-core": "1.9.0",
-    "com.squareup.okhttp3:okhttp": "4.12.0"
-  }
-}
+```toml
+name = "my-app"
+version = "0.1.0"
+kotlin = "2.1.0"
+target = "jvm"
+jvm_target = "17"
+main = "com.example.MainKt"
+sources = ["src"]
+
+[dependencies]
+"org.jetbrains.kotlinx:kotlinx-coroutines-core" = "1.9.0"
+"com.squareup.okhttp3:okhttp" = "4.12.0"
 ```
 
 - `name`: プロジェクト名
@@ -64,21 +64,28 @@ JSON形式を採用する。
 
 依存解決の結果を記録し、環境間でのビルド再現性を保証する。`keel build` 時に自動生成・更新。リポジトリにコミットする想定。
 
-**フォーマット**: 初期はJSONで実装する。ただしJSONはキー順序が保証されずdiffが読みにくくなる問題があるため、出力時にキーをソートし安定した出力を保証する。将来的にdiff-friendlyな独自形式への移行も検討する（Cargoの `Cargo.lock` やGoの `go.sum` のように）。
+**フォーマット**: JSONで実装。出力時にキーをソートし安定した出力を保証する。将来的にdiff-friendlyな独自形式への移行も検討する（Cargoの `Cargo.lock` やGoの `go.sum` のように）。v1からv2へのマイグレーションは自動で行われる（v1は`transitive`フィールドなし、v2で追加）。
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "kotlin": "2.1.0",
   "jvm_target": "17",
   "dependencies": {
     "org.jetbrains.kotlinx:kotlinx-coroutines-core": {
       "version": "1.9.0",
-      "sha256": "abc123..."
+      "sha256": "abc123...",
+      "transitive": false
     },
     "com.squareup.okhttp3:okhttp": {
       "version": "4.12.0",
-      "sha256": "def456..."
+      "sha256": "def456...",
+      "transitive": false
+    },
+    "com.squareup.okio:okio": {
+      "version": "3.9.0",
+      "sha256": "ghi789...",
+      "transitive": true
     }
   }
 }
@@ -90,8 +97,8 @@ JSON形式を採用する。
 - `kotlin`: コンパイラバージョン（異なるバージョンでのビルド時に警告を出せる）
 - `jvm_target`: バイトコードターゲット（JDKメジャーバージョンの不一致を検知）
 - 各依存の `sha256`: ダウンロードしたアーティファクトの整合性検証
-- dependenciesのキーは `group:artifact`（keel.jsonのdependenciesキーと一致させる。バージョン変更時のdiffが読みやすい）
-- `transitive`: Phase 3で追加予定（推移的依存の解決結果）
+- dependenciesのキーは `group:artifact`（keel.tomlのdependenciesキーと一致させる。バージョン変更時のdiffが読みやすい）
+- `transitive`: 推移的依存かどうかのフラグ（v2で追加済み）
 
 **sha256検証ポリシー:**
 
@@ -123,7 +130,7 @@ JSON形式を採用する。
 
 ## 内部動作（概要）
 
-1. `keel.json` を読み込む
+1. `keel.toml` を読み込む
 2. `keel.lock` が存在すればそれに従い、なければ依存解決を実行して `keel.lock` を生成
 3. 依存ライブラリを `~/.keel/cache/` にダウンロード（キャッシュ済みならスキップ、sha256で整合性検証）
 4. クラスパス（JVM）またはライブラリパス（Native）を組み立てる
@@ -132,18 +139,20 @@ JSON形式を採用する。
 
 ## 開発ロードマップ
 
-### Phase 1 — 最小限のビルド
-- `keel.json` を読んで `kotlinc` に渡すだけ
+### Phase 1 — 最小限のビルド ✅
+
+- `keel.toml` を読んで `kotlinc` に渡すだけ
 - 単一ソースディレクトリ、依存なし
 - JVMターゲットのみ
 - `keel build` → `kotlinc -include-runtime -d build/app.jar` で実行可能JAR（fat JAR）を生成
 - `keel run` → `java -jar build/app.jar` で実行
-- PATH上の `kotlinc` のバージョンと `keel.json` の `kotlin` フィールドの不一致を検知・警告
+- PATH上の `kotlinc` のバージョンと `keel.toml` の `kotlin` フィールドの不一致を検知・警告
 - **注意**: `-include-runtime` はkotlin-stdlibをJARに同梱する。依存なしPhaseでもkotlin-stdlib自体はランタイムに必要なため、この方式で対応する
 
-### Phase 2 — 依存解決（直接依存）
-- Maven Centralからjarをフェッチ
-- `~/.keel/cache/` にキャッシュ（sha256で検証）
+### Phase 2 — 依存解決（直接依存） ✅
+
+- Maven Centralからjarをフェッチ（ktor-client-curl）
+- `~/.keel/cache/` にキャッシュ（sha256で検証、kotlincrypto sha2-256）
 - `keel.lock` の生成・読み込み
 - クラスパスを自動組み立て
 
@@ -168,33 +177,47 @@ https://repo1.maven.org/maven2/{group}/{artifact}/{version}/{artifact}-{version}
 例: `org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0`
 → `https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.jar`
 
-Phase 2では直接依存のみのためpom.xmlの取得は不要。
-
 **ビルドフロー（依存あり）:**
 
-1. `keel.json` の `dependencies` を読み込む
+1. `keel.toml` の `dependencies` を読み込む
 2. `keel.lock` が存在する場合:
    - lockのdependenciesと照合
    - 一致 → キャッシュからjarを取得、sha256検証
-   - keel.jsonに追加/削除/バージョン変更あり → 再解決してlock更新
+   - keel.tomlに追加/削除/バージョン変更あり → 再解決してlock更新
 3. `keel.lock` が存在しない場合:
    - 全依存をダウンロード、sha256を計算、`keel.lock` を生成
 4. クラスパスを組み立て: `kotlinc -cp jar1:jar2:... [sources] -include-runtime -d build/{name}.jar`
 
-### Phase 3 — 推移的依存解決
-- pom.xmlのパース（XMLパーサーが必要）
-- 依存ツリーの構築
-- バージョン競合の解決（最新バージョン優先など簡易戦略から）
-- `<exclusions>` やBOMの対応は段階的に
+### Phase 3 — 推移的依存解決 ✅
+
+- pom.xmlのパース（自前XMLパーサー、プロパティ補間対応）
+- BFS依存グラフ探索による推移的依存の解決
+- バージョン競合の解決（最新バージョン優先）
+- Mavenバージョンインターバル（`[1.0,2.0)` 等）の解析・比較
+- `<exclusions>` のサポート
+- POMメタデータのキャッシュ
+- I/Oと純粋ロジックの分離（Resolution.kt = 純粋関数、TransitiveResolver.kt = I/Oオーケストレーション）
+- lockfileをv2に更新（`transitive` フラグ追加）
 
 ### Phase 4 — Kotlin/Nativeサポート（将来検討）
+
 - `target: "native"` 時に `konanc` を呼び出し
 - `.klib` 形式の依存解決
 - Maven上のプラットフォーム別アーティファクト（`-native-linux` 等）の取得
-- **注意**: konanc + .klibのエコシステムは狭く実用的なユースケースが限定的。Phase 3（推移的依存解決）の方がユーザー価値が高いため、優先度は低め
+- **注意**: konanc + .klibのエコシステムは狭く実用的なユースケースが限定的。優先度は低め
 
-### Phase 5 — DX改善
-- `keel init` によるプロジェクト雛形生成
+### Phase 5 — DX改善 🚧 進行中
+
+**実装済み:**
+- `keel init [project-name]` によるプロジェクト雛形生成（keel.toml + src/Main.kt）
+- `keel clean` によるビルド成果物の削除
+- `keel --version` / `keel version` によるバージョン表示
+- `keel run -- args` でアプリへの引数渡し
+- ビルド所要時間の表示（例: "2.3s"、"1m 5.0s"）
+- 標準化された終了コード（0=成功, 1=ビルドエラー, 2=設定エラー, 3=依存エラー, 127=コマンド未発見）
+- プロジェクト名のバリデーション（`[a-zA-Z0-9][a-zA-Z0-9._-]*`）
+
+**未実装:**
 - インクリメンタルビルド（変更ファイルのみ再コンパイル）
 - マルチモジュール対応
 - エラーメッセージの整形・カラー出力
@@ -235,7 +258,7 @@ Phase 2では直接依存のみのためpom.xmlの取得は不要。
 | プロジェクト | 特徴 | keelとの違い |
 |-------------|------|-------------|
 | Gradle | デファクトスタンダード。汎用的だが重い | keelはKotlin専用で軽量 |
-| Maven | XMLベース。予測可能だが冗長 | keelは宣言的JSONで最小構成 |
+| Maven | XMLベース。予測可能だが冗長 | keelは宣言的TOMLで最小構成 |
 | Mill | Scala製。透明性が高い | JVM上で動作。keelは非JVM |
 | Bazel | Google製。大規模向け | セットアップが重い。keelは小〜中規模向け |
 
