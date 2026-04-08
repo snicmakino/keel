@@ -3,6 +3,9 @@ plugins {
     kotlin("plugin.serialization") version "2.3.20"
 }
 
+group = "com.github.snicmakino"
+version = "0.3.0"
+
 repositories {
     mavenCentral()
 }
