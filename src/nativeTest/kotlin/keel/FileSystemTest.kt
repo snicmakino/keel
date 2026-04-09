@@ -169,6 +169,57 @@ class FileSystemTest {
         assertTrue(fileExists(home))
     }
 
+    @Test
+    fun fileMtimeReturnsValueForExistingFile() {
+        val path = "/tmp/keel_test_mtime.txt"
+        writeTestFile(path, "mtime test")
+        try {
+            val mtime = fileMtime(path)
+            assertNotNull(mtime)
+            assertTrue(mtime > 0L)
+        } finally {
+            remove(path)
+        }
+    }
+
+    @Test
+    fun fileMtimeReturnsNullForNonExistentFile() {
+        assertNull(fileMtime("/tmp/keel_nonexistent_mtime.txt"))
+    }
+
+    @Test
+    fun newestMtimeReturnsNewestFileInDirectory() {
+        val dir = "/tmp/keel_test_newest_mtime"
+        platform.posix.mkdir(dir, 0b111111101u)
+        writeTestFile("$dir/a.kt", "a")
+        // ext4 has 1-second mtime granularity; sleep to ensure distinct mtimes
+        platform.posix.sleep(1u)
+        writeTestFile("$dir/b.kt", "b")
+        try {
+            val newest = newestMtime(listOf(dir))
+            val bMtime = fileMtime("$dir/b.kt")
+            assertNotNull(newest)
+            assertNotNull(bMtime)
+            assertEquals(bMtime, newest)
+        } finally {
+            remove("$dir/a.kt")
+            remove("$dir/b.kt")
+            platform.posix.rmdir(dir)
+        }
+    }
+
+    @Test
+    fun newestMtimeReturnsZeroForEmptyDirectory() {
+        val dir = "/tmp/keel_test_newest_empty"
+        platform.posix.mkdir(dir, 0b111111101u)
+        try {
+            val newest = newestMtime(listOf(dir))
+            assertEquals(0L, newest)
+        } finally {
+            platform.posix.rmdir(dir)
+        }
+    }
+
     private fun writeTestFile(path: String, content: String) {
         val fp = platform.posix.fopen(path, "w") ?: error("could not create test file: $path")
         if (content.isNotEmpty()) {

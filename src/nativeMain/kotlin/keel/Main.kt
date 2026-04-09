@@ -578,8 +578,26 @@ private data class BuildResult(val config: KeelConfig, val classpath: String?)
 private fun doBuild(): BuildResult {
     val startMark = TimeSource.Monotonic.markNow()
     val config = loadProjectConfig()
-    checkVersion(config)
 
+    val outputPath = jarPath(config)
+
+    // Check if build is up-to-date via mtime comparison (before dependency resolution)
+    val currentState = BuildState(
+        configMtime = fileMtime(KEEL_TOML) ?: 0L,
+        sourcesNewestMtime = newestMtime(config.sources),
+        outputMtime = fileMtime(outputPath),
+        lockfileMtime = if (fileExists(LOCK_FILE)) fileMtime(LOCK_FILE) else null
+    )
+    val cachedState = readFileAsString(BUILD_STATE_FILE).getOrElse { null }
+        ?.let { parseBuildState(it) }
+
+    if (isBuildUpToDate(current = currentState, cached = cachedState)) {
+        val elapsed = startMark.elapsedNow()
+        println("${config.name} is up to date (${formatDuration(elapsed)})")
+        return BuildResult(config, cachedState!!.classpath)
+    }
+
+    checkVersion(config)
     val classpath = resolveDependencies(config)
     val cmd = buildCommand(config, classpath)
     ensureDirectory(BUILD_DIR).getOrElse { error ->
@@ -600,6 +618,17 @@ private fun doBuild(): BuildResult {
         }
         exitProcess(EXIT_BUILD_ERROR)
     }
+
+    // Save build state after successful compilation
+    val newState = currentState.copy(
+        outputMtime = fileMtime(cmd.outputPath),
+        lockfileMtime = if (fileExists(LOCK_FILE)) fileMtime(LOCK_FILE) else null,
+        classpath = classpath
+    )
+    writeFileAsString(BUILD_STATE_FILE, serializeBuildState(newState)).getOrElse {
+        eprintln("warning: could not write build state file")
+    }
+
     val elapsed = startMark.elapsedNow()
     println("built ${cmd.outputPath} in ${formatDuration(elapsed)}")
     return BuildResult(config, classpath)

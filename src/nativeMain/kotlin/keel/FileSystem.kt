@@ -124,6 +124,35 @@ fun isDirectory(path: String): Boolean {
     }
 }
 
+@OptIn(ExperimentalForeignApi::class)
+fun fileMtime(path: String): Long? {
+    memScoped {
+        val statBuf = alloc<stat>()
+        if (stat(path, statBuf.ptr) != 0) return null
+        return statBuf.st_mtim.tv_sec
+    }
+}
+
+/** Return the newest mtime among all .kt files in the given directories. 0 if no files found. */
+fun newestMtime(directories: List<String>): Long {
+    var newest = 0L
+    for (dir in directories) {
+        collectNewestMtime(dir) { mtime ->
+            if (mtime > newest) newest = mtime
+        }
+    }
+    return newest
+}
+
+private fun collectNewestMtime(directory: String, onFile: (Long) -> Unit) {
+    if (!fileExists(directory)) return
+    val files = listKotlinFiles(directory).getOrElse { return }
+    for (file in files) {
+        val mtime = fileMtime(file) ?: continue
+        onFile(mtime)
+    }
+}
+
 data class ListFilesFailed(val path: String)
 
 @OptIn(ExperimentalForeignApi::class)
