@@ -4,7 +4,6 @@ plugins {
 }
 
 group = "com.github.snicmakino"
-version = "0.3.0"
 
 repositories {
     mavenCentral()

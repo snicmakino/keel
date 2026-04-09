@@ -1,6 +1,6 @@
 # keel
 
-> v0.4.0 — Early-stage project. Expect breaking changes.
+> v0.5.0 — Early-stage project. Expect breaking changes.
 
 A lightweight build tool for Kotlin. Compiles with `kotlinc` directly — no Gradle, no JVM startup tax.
 
@@ -48,6 +48,8 @@ keel build         Compile the project
 keel run           Build and run (keel run -- args for app arguments)
 keel test          Build and run tests (keel test -- args for JUnit Platform arguments)
 keel check         Type-check without producing artifacts
+keel fmt           Format source files with ktfmt
+keel fmt --check   Check formatting (CI mode)
 keel clean         Remove build artifacts
 keel deps tree     Show dependency tree
 keel update        Re-resolve dependencies and update lockfile
@@ -163,6 +165,7 @@ keel aims to be what `go build` is to Go or `cargo build` is to Rust — a fast,
 | 2 | Config error |
 | 3 | Dependency error |
 | 4 | Test error |
+| 5 | Format error |
 | 127 | Command not found |
 
 ## License

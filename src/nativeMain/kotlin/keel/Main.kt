@@ -36,6 +36,7 @@ fun main(args: Array<String>) {
             }
             doTest(testArgs)
         }
+        "fmt" -> doFmt(args.drop(1))
         "clean" -> doClean()
         "deps" -> doDeps(args.drop(1))
         "update" -> doUpdate()
@@ -57,6 +58,7 @@ private fun printUsage() {
     eprintln("  check      Check compilation without producing artifacts")
     eprintln("  run        Build and run the project")
     eprintln("  test       Build and run tests")
+    eprintln("  fmt        Format source files with ktfmt")
     eprintln("  clean      Remove build artifacts")
     eprintln("  deps tree  Show dependency tree")
     eprintln("  update     Re-resolve dependencies and update lockfile")
@@ -294,6 +296,106 @@ private fun checkVersion(config: KeelConfig) {
 }
 
 private const val LOCK_FILE = "keel.lock"
+
+private const val KTFMT_VERSION = "0.54"
+private const val KTFMT_ARTIFACT = "ktfmt"
+private const val KTFMT_GROUP = "com.facebook"
+
+private fun ensureKtfmt(home: String): String {
+    val toolsDir = "$home/.keel/tools"
+    val fileName = "$KTFMT_ARTIFACT-$KTFMT_VERSION-jar-with-dependencies.jar"
+    val ktfmtPath = "$toolsDir/$fileName"
+    if (fileExists(ktfmtPath)) return ktfmtPath
+
+    ensureDirectoryRecursive(toolsDir).getOrElse { error ->
+        eprintln("error: could not create directory ${error.path}")
+        exitProcess(EXIT_FORMAT_ERROR)
+    }
+
+    val groupPath = KTFMT_GROUP.replace('.', '/')
+    val url = "https://repo1.maven.org/maven2/$groupPath/$KTFMT_ARTIFACT/$KTFMT_VERSION/$fileName"
+    println("downloading $KTFMT_ARTIFACT...")
+    downloadFile(url, ktfmtPath).getOrElse { error ->
+        when (error) {
+            is DownloadError.HttpFailed -> eprintln("error: failed to download ktfmt (HTTP ${error.statusCode})")
+            is DownloadError.WriteFailed -> eprintln("error: could not write $ktfmtPath")
+            is DownloadError.NetworkError -> eprintln("error: network error downloading ktfmt: ${error.message}")
+        }
+        exitProcess(EXIT_FORMAT_ERROR)
+    }
+    return ktfmtPath
+}
+
+private fun doFmt(args: List<String>) {
+    val checkOnly = "--check" in args
+
+    val config = loadProjectConfig()
+
+    val home = homeDirectory().getOrElse { error ->
+        eprintln("error: ${error.message}")
+        exitProcess(EXIT_FORMAT_ERROR)
+    }
+    val ktfmtPath = ensureKtfmt(home)
+
+    val files = buildList {
+        for (dir in config.sources) {
+            if (isDirectory(dir)) {
+                addAll(listKotlinFiles(dir).getOrElse { error ->
+                    eprintln("error: could not read directory ${error.path}")
+                    exitProcess(EXIT_FORMAT_ERROR)
+                })
+            }
+        }
+        for (dir in config.testSources) {
+            if (isDirectory(dir)) {
+                addAll(listKotlinFiles(dir).getOrElse { error ->
+                    eprintln("error: could not read directory ${error.path}")
+                    exitProcess(EXIT_FORMAT_ERROR)
+                })
+            }
+        }
+    }
+
+    if (files.isEmpty()) {
+        println("no kotlin files to format")
+        return
+    }
+
+    val cmd = formatCommand(ktfmtPath, files, checkOnly)
+
+    if (checkOnly) {
+        println("checking format...")
+    } else {
+        println("formatting ${files.size} files...")
+    }
+
+    executeCommand(cmd.args).getOrElse { error ->
+        when (error) {
+            is ProcessError.NonZeroExit -> {
+                if (checkOnly) {
+                    eprintln("error: format check failed")
+                } else {
+                    eprintln("error: formatting failed")
+                }
+                exitProcess(EXIT_FORMAT_ERROR)
+            }
+            is ProcessError.EmptyArgs,
+            is ProcessError.ForkFailed,
+            is ProcessError.WaitFailed,
+            is ProcessError.SignalKilled,
+            is ProcessError.PopenFailed -> {
+                eprintln("error: failed to run ktfmt")
+                exitProcess(EXIT_FORMAT_ERROR)
+            }
+        }
+    }
+
+    if (checkOnly) {
+        println("format check passed")
+    } else {
+        println("formatted ${files.size} files")
+    }
+}
 
 private const val JUNIT_CONSOLE_VERSION = "1.11.4"
 private const val JUNIT_CONSOLE_ARTIFACT = "junit-platform-console-standalone"

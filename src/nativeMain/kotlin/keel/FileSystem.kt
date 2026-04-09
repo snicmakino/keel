@@ -116,12 +116,45 @@ fun removeDirectoryRecursive(path: String): Result<Unit, RemoveFailed> {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun isDirectory(path: String): Boolean {
+fun isDirectory(path: String): Boolean {
     memScoped {
         val statBuf = alloc<stat>()
         if (lstat(path, statBuf.ptr) != 0) return false
         return (statBuf.st_mode.toInt() and S_IFMT) == S_IFDIR
     }
+}
+
+data class ListFilesFailed(val path: String)
+
+@OptIn(ExperimentalForeignApi::class)
+fun listKotlinFiles(directory: String): Result<List<String>, ListFilesFailed> {
+    val files = mutableListOf<String>()
+    collectKotlinFiles(directory, files).let { error ->
+        if (error != null) return Err(error)
+    }
+    files.sort()
+    return Ok(files)
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun collectKotlinFiles(directory: String, result: MutableList<String>): ListFilesFailed? {
+    val dir = opendir(directory) ?: return ListFilesFailed(directory)
+    try {
+        while (true) {
+            val entry = readdir(dir) ?: break
+            val name = entry.pointed.d_name.toKString()
+            if (name == "." || name == "..") continue
+            val childPath = "$directory/$name"
+            if (isDirectory(childPath)) {
+                collectKotlinFiles(childPath, result)?.let { return it }
+            } else if (name.endsWith(".kt")) {
+                result.add(childPath)
+            }
+        }
+    } finally {
+        closedir(dir)
+    }
+    return null
 }
 
 data class HomeNotFound(val message: String = "HOME environment variable is not set")

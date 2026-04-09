@@ -44,6 +44,7 @@ Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 | TestDeps.kt | Auto-injected test dependencies based on target platform (pure function) |
 | TestBuilder.kt | Build kotlinc command for test compilation (pure function) |
 | TestRunner.kt | Build java command for test execution via JUnit Platform (pure function) |
+| Formatter.kt | Build ktfmt command args for code formatting (pure function) |
 | Main.kt | CLI entrypoint, module integration |
 
 ## Error Handling Policy
