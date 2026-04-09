@@ -42,4 +42,8 @@ fun buildPomDownloadUrl(coord: Coordinate): String = buildMavenUrl(coord, "pom")
 
 fun buildPomCachePath(coord: Coordinate): String = buildRelativePath(coord, "pom")
 
+fun buildModuleDownloadUrl(coord: Coordinate): String = buildMavenUrl(coord, "module")
+
+fun buildModuleCachePath(coord: Coordinate): String = buildRelativePath(coord, "module")
+
 fun buildClasspath(paths: List<String>): String = paths.joinToString(":")

@@ -21,7 +21,22 @@ fun resolveTransitive(
     deps: ResolverDeps
 ): Result<ResolveResult, ResolveError> {
     // Create POM lookup backed by cache + download
-    val pomLookup = createPomLookup(cacheBase, deps)
+    val basePomLookup = createPomLookup(cacheBase, deps)
+
+    // Track KMP redirects: original groupArtifact -> redirected groupArtifact
+    val redirects = mutableMapOf<String, String>()
+    val moduleLookup = createModuleLookup(cacheBase, deps)
+
+    val pomLookup: (String, String) -> PomInfo? = { groupArtifact, version ->
+        val redirect = moduleLookup(groupArtifact, version)
+        if (redirect != null) {
+            val redirectedGA = "${redirect.group}:${redirect.module}"
+            redirects[groupArtifact] = redirectedGA
+            basePomLookup(redirectedGA, redirect.version)
+        } else {
+            basePomLookup(groupArtifact, version)
+        }
+    }
 
     // Pure resolution
     val nodes = resolveGraph(config.dependencies, pomLookup).getOrElse { error ->
@@ -29,7 +44,7 @@ fun resolveTransitive(
     }
 
     // Download JARs and compute hashes
-    return materialize(nodes, config, existingLock, cacheBase, deps)
+    return materialize(nodes, redirects, config, existingLock, cacheBase, deps)
 }
 
 /**
@@ -71,11 +86,66 @@ internal fun createPomLookup(
 }
 
 /**
+ * Creates a memoized lookup function for Gradle Module Metadata JVM redirects.
+ * Results (including "no redirect") are cached in memory to avoid redundant
+ * .module file downloads for the same coordinate.
+ */
+private fun createModuleLookup(
+    cacheBase: String,
+    deps: ResolverDeps
+): (String, String) -> JvmRedirect? {
+    // Sentinel to distinguish "checked, no redirect" from "not yet checked"
+    val noRedirect = JvmRedirect("", "", "")
+    val cache = mutableMapOf<String, JvmRedirect>()
+
+    return { groupArtifact, version ->
+        val cacheKey = "$groupArtifact:$version"
+        val cached = cache[cacheKey]
+        if (cached != null) {
+            if (cached === noRedirect) null else cached
+        } else {
+            val result = checkModuleFile(groupArtifact, version, cacheBase, deps)
+            cache[cacheKey] = result ?: noRedirect
+            result
+        }
+    }
+}
+
+private fun checkModuleFile(
+    groupArtifact: String,
+    version: String,
+    cacheBase: String,
+    deps: ResolverDeps
+): JvmRedirect? {
+    val parts = groupArtifact.split(":")
+    if (parts.size != 2) return null
+    val coord = Coordinate(parts[0], parts[1], version)
+    val moduleCachePath = "$cacheBase/${buildModuleCachePath(coord)}"
+
+    // Download .module file if not cached on disk
+    if (!deps.fileExists(moduleCachePath)) {
+        val parentDir = moduleCachePath.substringBeforeLast('/')
+        deps.ensureDirectoryRecursive(parentDir).getOrElse { return null }
+        deps.downloadFile(buildModuleDownloadUrl(coord), moduleCachePath).getOrElse { return null }
+    }
+
+    val content = deps.readFileContent(moduleCachePath).getOrElse { return null }
+    return parseJvmRedirect(content)
+}
+
+/**
  * Downloads JARs, computes SHA256 hashes, and checks lockfile for changes.
  * Converts pure [DependencyNode] list into [ResolveResult] with I/O.
+ *
+ * For KMP libraries, [redirects] maps the original groupArtifact (e.g.,
+ * "com.squareup.okhttp3:okhttp") to the JVM-specific artifact (e.g.,
+ * "com.squareup.okhttp3:okhttp-jvm"). The lockfile and ResolvedDep keep
+ * the original groupArtifact as the key, but the SHA256 hash and cache
+ * path correspond to the redirected JAR.
  */
 private fun materialize(
     nodes: List<DependencyNode>,
+    redirects: Map<String, String>,
     config: KeelConfig,
     existingLock: Lockfile?,
     cacheBase: String,
@@ -85,7 +155,9 @@ private fun materialize(
     val resolvedDeps = mutableListOf<ResolvedDep>()
 
     for (node in nodes) {
-        val coord = parseCoordinate(node.groupArtifact, node.version).getOrElse {
+        // Use redirected artifact for JAR download (KMP libraries)
+        val jarGroupArtifact = redirects[node.groupArtifact] ?: node.groupArtifact
+        val coord = parseCoordinate(jarGroupArtifact, node.version).getOrElse {
             return Err(ResolveError.InvalidDependency(node.groupArtifact))
         }
 

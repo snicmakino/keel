@@ -82,8 +82,9 @@ class ResolverTest {
         val resolved = assertNotNull(result.get())
         assertEquals(1, resolved.deps.size)
         assertFalse(resolved.lockChanged)
-        // Verify no JAR downloads occurred
-        assertTrue(downloaded.isEmpty())
+        // Verify no JAR downloads occurred (module metadata downloads are expected)
+        val jarDownloads = downloaded.keys.filter { it.endsWith(".jar") }
+        assertTrue(jarDownloads.isEmpty())
     }
 
     @Test

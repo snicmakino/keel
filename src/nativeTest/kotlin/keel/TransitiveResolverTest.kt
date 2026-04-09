@@ -557,6 +557,239 @@ class TransitiveResolverTest {
         assertEquals(1, parentReads, "Shared parent POM should be read exactly once")
     }
 
+    @Test
+    fun kmpLibraryRedirectsToJvmArtifact() {
+        val config = testConfig().copy(
+            dependencies = mapOf("com.example:kmp-lib" to "1.0.0")
+        )
+
+        val moduleJson = """
+        {
+          "formatVersion": "1.1",
+          "component": { "group": "com.example", "module": "kmp-lib", "version": "1.0.0" },
+          "variants": [
+            {
+              "name": "jvmApiElements-published",
+              "attributes": { "org.jetbrains.kotlin.platform.type": "jvm" },
+              "available-at": {
+                "url": "../../kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.module",
+                "group": "com.example",
+                "module": "kmp-lib-jvm",
+                "version": "1.0.0"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val jvmPom = """
+            <project>
+                <groupId>com.example</groupId>
+                <artifactId>kmp-lib-jvm</artifactId>
+                <version>1.0.0</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>com.example</groupId>
+                        <artifactId>util</artifactId>
+                        <version>2.0.0</version>
+                    </dependency>
+                </dependencies>
+            </project>
+        """.trimIndent()
+
+        val utilPom = """
+            <project><groupId>com.example</groupId><artifactId>util</artifactId><version>2.0.0</version></project>
+        """.trimIndent()
+
+        val deps = fakeTransitiveDeps(
+            sha256Results = mapOf(
+                "/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.jar" to "hashKmp",
+                "/cache/com/example/util/2.0.0/util-2.0.0.jar" to "hashUtil"
+            ),
+            pomContents = mapOf(
+                "/cache/com/example/kmp-lib/1.0.0/kmp-lib-1.0.0.module" to moduleJson,
+                "/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.pom" to jvmPom,
+                "/cache/com/example/util/2.0.0/util-2.0.0.pom" to utilPom
+            )
+        )
+
+        val result = resolveTransitive(config, null, "/cache", deps)
+        val resolved = assertNotNull(result.get())
+
+        // kmp-lib should use kmp-lib-jvm JAR
+        val kmpDep = resolved.deps.first { it.groupArtifact == "com.example:kmp-lib" }
+        assertEquals("/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.jar", kmpDep.cachePath)
+        assertFalse(kmpDep.transitive)
+
+        // Transitive dep from kmp-lib-jvm POM should be resolved
+        val util = resolved.deps.first { it.groupArtifact == "com.example:util" }
+        assertEquals("2.0.0", util.version)
+        assertTrue(util.transitive)
+    }
+
+    @Test
+    fun nonKmpLibraryIgnoresModuleFile() {
+        val config = testConfig().copy(
+            dependencies = mapOf("com.example:lib" to "1.0.0")
+        )
+        val libPom = """
+            <project>
+                <groupId>com.example</groupId>
+                <artifactId>lib</artifactId>
+                <version>1.0.0</version>
+            </project>
+        """.trimIndent()
+        // Module file exists but has no JVM redirect (like Guava)
+        val moduleJson = """
+        {
+          "formatVersion": "1.1",
+          "variants": [
+            {
+              "name": "apiElements",
+              "attributes": { "org.gradle.usage": "java-api" },
+              "dependencies": []
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val deps = fakeTransitiveDeps(
+            sha256Results = mapOf(
+                "/cache/com/example/lib/1.0.0/lib-1.0.0.jar" to "hash1"
+            ),
+            pomContents = mapOf(
+                "/cache/com/example/lib/1.0.0/lib-1.0.0.pom" to libPom,
+                "/cache/com/example/lib/1.0.0/lib-1.0.0.module" to moduleJson
+            )
+        )
+        val result = resolveTransitive(config, null, "/cache", deps)
+        val resolved = assertNotNull(result.get())
+        assertEquals(1, resolved.deps.size)
+        // Should use original artifact JAR path
+        assertEquals("/cache/com/example/lib/1.0.0/lib-1.0.0.jar", resolved.deps[0].cachePath)
+    }
+
+    @Test
+    fun mixedKmpAndNonKmpDependencies() {
+        val config = testConfig().copy(
+            dependencies = mapOf(
+                "com.example:kmp-lib" to "1.0.0",
+                "com.example:plain-lib" to "2.0.0"
+            )
+        )
+
+        val kmpModuleJson = """
+        {
+          "formatVersion": "1.1",
+          "variants": [
+            {
+              "name": "jvmApiElements-published",
+              "attributes": { "org.jetbrains.kotlin.platform.type": "jvm" },
+              "available-at": {
+                "url": "../../kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.module",
+                "group": "com.example",
+                "module": "kmp-lib-jvm",
+                "version": "1.0.0"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val jvmPom = """
+            <project>
+                <groupId>com.example</groupId><artifactId>kmp-lib-jvm</artifactId><version>1.0.0</version>
+            </project>
+        """.trimIndent()
+
+        val plainPom = """
+            <project>
+                <groupId>com.example</groupId><artifactId>plain-lib</artifactId><version>2.0.0</version>
+            </project>
+        """.trimIndent()
+
+        val deps = fakeTransitiveDeps(
+            sha256Results = mapOf(
+                "/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.jar" to "hashKmp",
+                "/cache/com/example/plain-lib/2.0.0/plain-lib-2.0.0.jar" to "hashPlain"
+            ),
+            pomContents = mapOf(
+                "/cache/com/example/kmp-lib/1.0.0/kmp-lib-1.0.0.module" to kmpModuleJson,
+                "/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.pom" to jvmPom,
+                "/cache/com/example/plain-lib/2.0.0/plain-lib-2.0.0.pom" to plainPom
+            )
+        )
+
+        val result = resolveTransitive(config, null, "/cache", deps)
+        val resolved = assertNotNull(result.get())
+        assertEquals(2, resolved.deps.size)
+
+        val kmp = resolved.deps.first { it.groupArtifact == "com.example:kmp-lib" }
+        assertEquals("/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.jar", kmp.cachePath)
+
+        val plain = resolved.deps.first { it.groupArtifact == "com.example:plain-lib" }
+        assertEquals("/cache/com/example/plain-lib/2.0.0/plain-lib-2.0.0.jar", plain.cachePath)
+    }
+
+    @Test
+    fun kmpRedirectWithExistingLockfile() {
+        val config = testConfig().copy(
+            dependencies = mapOf("com.example:kmp-lib" to "1.0.0")
+        )
+        // Lockfile stores original groupArtifact key with hash of redirected JAR
+        val lock = Lockfile(
+            version = 2,
+            kotlin = "2.1.0",
+            jvmTarget = "17",
+            dependencies = mapOf(
+                "com.example:kmp-lib" to LockEntry("1.0.0", "hashKmp")
+            )
+        )
+
+        val kmpModuleJson = """
+        {
+          "formatVersion": "1.1",
+          "variants": [
+            {
+              "name": "jvmApiElements-published",
+              "attributes": { "org.jetbrains.kotlin.platform.type": "jvm" },
+              "available-at": {
+                "url": "../../kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.module",
+                "group": "com.example",
+                "module": "kmp-lib-jvm",
+                "version": "1.0.0"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val jvmPom = """
+            <project>
+                <groupId>com.example</groupId><artifactId>kmp-lib-jvm</artifactId><version>1.0.0</version>
+            </project>
+        """.trimIndent()
+
+        val deps = fakeTransitiveDeps(
+            cachedFiles = mutableSetOf(
+                "/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.jar",
+                "/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.pom"
+            ),
+            sha256Results = mapOf(
+                "/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.jar" to "hashKmp"
+            ),
+            pomContents = mapOf(
+                "/cache/com/example/kmp-lib/1.0.0/kmp-lib-1.0.0.module" to kmpModuleJson,
+                "/cache/com/example/kmp-lib-jvm/1.0.0/kmp-lib-jvm-1.0.0.pom" to jvmPom
+            )
+        )
+
+        val result = resolveTransitive(config, lock, "/cache", deps)
+        val resolved = assertNotNull(result.get())
+        assertEquals(1, resolved.deps.size)
+        assertFalse(resolved.lockChanged)
+    }
+
     // Helper: creates a fake ResolverDeps with POM content support
     private fun fakeTransitiveDeps(
         cachedFiles: MutableSet<String> = mutableSetOf(),
