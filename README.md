@@ -1,6 +1,6 @@
 # keel
 
-> v0.6.0 — Early-stage project. Expect breaking changes.
+> v0.8.0 — Early-stage project. Expect breaking changes.
 
 A lightweight build tool for Kotlin. Compiles with `kotlinc` directly — no Gradle, no JVM startup tax.
 
@@ -53,6 +53,8 @@ keel build         Compile the project
 keel run           Build and run (keel run -- args for app arguments)
 keel test          Build and run tests (keel test -- args for JUnit Platform arguments)
 keel check         Type-check without producing artifacts
+keel add           Add a dependency (see below)
+keel install       Resolve dependencies and download JARs
 keel fmt           Format source files with ktfmt
 keel fmt --check   Check formatting (CI mode)
 keel clean         Remove build artifacts
@@ -94,13 +96,23 @@ sources = ["src"]
 
 ### Dependencies
 
-Declare Maven coordinates in `[dependencies]`:
+Add dependencies with `keel add`:
+
+```sh
+keel add org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0
+keel add org.jetbrains.kotlinx:kotlinx-coroutines-core   # latest stable version
+keel add --test io.kotest:kotest-runner-junit5:5.8.0      # test dependency
+```
+
+Or declare Maven coordinates directly in `[dependencies]`:
 
 ```toml
 [dependencies]
 "org.jetbrains.kotlinx:kotlinx-coroutines-core" = "1.9.0"
 "com.squareup.okhttp3:okhttp" = "4.12.0"
 ```
+
+Run `keel install` to resolve and download all dependencies without building.
 
 Transitive dependencies are resolved automatically via POM metadata from Maven Central. A `keel.lock` file records versions and SHA-256 hashes for reproducible builds.
 

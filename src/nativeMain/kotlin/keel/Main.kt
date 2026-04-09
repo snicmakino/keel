@@ -39,6 +39,8 @@ fun main(args: Array<String>) {
         "fmt" -> doFmt(args.drop(1))
         "clean" -> doClean()
         "deps" -> doDeps(args.drop(1))
+        "add" -> doAdd(args.drop(1))
+        "install" -> doInstall()
         "update" -> doUpdate()
         "--version", "version" -> println(versionString())
         else -> {
@@ -60,7 +62,9 @@ private fun printUsage() {
     eprintln("  test       Build and run tests")
     eprintln("  fmt        Format source files with ktfmt")
     eprintln("  clean      Remove build artifacts")
+    eprintln("  add        Add a dependency (e.g. keel add group:artifact:version)")
     eprintln("  deps tree  Show dependency tree")
+    eprintln("  install    Resolve dependencies and download JARs")
     eprintln("  update     Re-resolve dependencies and update lockfile")
     eprintln("  version    Show version information")
 }
@@ -135,6 +139,87 @@ private fun doInit(args: List<String>) {
     }
 
     println("initialized project '$projectName'")
+}
+
+private fun doAdd(args: List<String>) {
+    val addArgs = parseAddArgs(args).getOrElse { error ->
+        when (error) {
+            is AddArgsError.MissingCoordinate -> eprintln("usage: keel add <group:artifact[:version]> [--test]")
+            is AddArgsError.InvalidFormat -> eprintln("error: invalid coordinate '${error.input}'")
+        }
+        exitProcess(EXIT_DEPENDENCY_ERROR)
+    }
+
+    val version = if (addArgs.version != null) {
+        addArgs.version
+    } else {
+        println("fetching latest version for ${addArgs.group}:${addArgs.artifact}...")
+        fetchLatestVersion(addArgs.group, addArgs.artifact)
+    }
+
+    val groupArtifact = "${addArgs.group}:${addArgs.artifact}"
+    val toml = readFileAsString(KEEL_TOML).getOrElse { error ->
+        eprintln("error: could not read ${error.path}")
+        exitProcess(EXIT_CONFIG_ERROR)
+    }
+
+    val updatedToml = addDependencyToToml(toml, groupArtifact, version, addArgs.isTest).getOrElse { error ->
+        when (error) {
+            is AlreadyExists -> eprintln("error: '${error.groupArtifact}' already exists in ${if (addArgs.isTest) "[test-dependencies]" else "[dependencies]"}")
+        }
+        exitProcess(EXIT_DEPENDENCY_ERROR)
+    }
+
+    writeFileAsString(KEEL_TOML, updatedToml).getOrElse { error ->
+        eprintln("error: could not write ${error.path}")
+        exitProcess(EXIT_CONFIG_ERROR)
+    }
+
+    val section = if (addArgs.isTest) "[test-dependencies]" else "[dependencies]"
+    println("added $groupArtifact = \"$version\" to $section")
+
+    doInstall()
+}
+
+private fun fetchLatestVersion(group: String, artifact: String): String {
+    val home = homeDirectory().getOrElse { error ->
+        eprintln("error: ${error.message}")
+        exitProcess(EXIT_DEPENDENCY_ERROR)
+    }
+    val cacheBase = "$home/.keel/cache"
+    val groupPath = group.replace('.', '/')
+    val metadataPath = "$cacheBase/$groupPath/$artifact/maven-metadata.xml"
+
+    val url = buildMetadataDownloadUrl(group, artifact)
+    ensureDirectoryRecursive("$cacheBase/$groupPath/$artifact").getOrElse { error ->
+        eprintln("error: could not create directory ${error.path}")
+        exitProcess(EXIT_DEPENDENCY_ERROR)
+    }
+
+    downloadFile(url, metadataPath).getOrElse { error ->
+        when (error) {
+            is DownloadError.HttpFailed -> eprintln("error: could not fetch metadata for $group:$artifact (HTTP ${error.statusCode})")
+            is DownloadError.WriteFailed -> eprintln("error: could not write metadata to ${error.path}")
+            is DownloadError.NetworkError -> eprintln("error: network error fetching metadata for $group:$artifact: ${error.message}")
+        }
+        exitProcess(EXIT_DEPENDENCY_ERROR)
+    }
+
+    val xml = readFileAsString(metadataPath).getOrElse { error ->
+        eprintln("error: could not read ${error.path}")
+        exitProcess(EXIT_DEPENDENCY_ERROR)
+    }
+
+    return parseMetadataXml(xml).getOrElse { error ->
+        eprintln("error: ${error.message}")
+        exitProcess(EXIT_DEPENDENCY_ERROR)
+    }
+}
+
+private fun doInstall() {
+    val config = loadProjectConfig()
+    resolveDependencies(config)
+    println("install complete")
 }
 
 private fun doUpdate() {
