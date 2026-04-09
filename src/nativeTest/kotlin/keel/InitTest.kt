@@ -59,10 +59,11 @@ class InitTest {
     }
 
     @Test
-    fun generateTomlContainsTestDependencies() {
+    fun generateTomlDoesNotContainTestDependencies() {
         val toml = generateKeelToml("my-app")
-        assertTrue(toml.contains("[test-dependencies]"))
-        assertTrue(toml.contains("kotlin-test-junit5"))
+        // kotlin-test-junit5 is auto-injected by keel, not declared in keel.toml
+        assertFalse(toml.contains("[test-dependencies]"))
+        assertFalse(toml.contains("kotlin-test-junit5"))
     }
 
     @Test

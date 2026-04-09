@@ -223,26 +223,32 @@ https://repo1.maven.org/maven2/{group}/{artifact}/{version}/{artifact}-{version}
 - `keel test` でテストのコンパイル・実行
 - `keel test -- <args>` でJUnit Platformへの引数渡し
 - JUnit 5、kotlin-test、Kotest をサポート（JUnit Platform Console Standalone経由）
-- `[test-dependencies]` セクションによるテスト専用依存管理
+- `kotlin-test-junit5` を自動注入（JVMターゲット時、Kotlinバージョンに合わせて）
+- `[test-dependencies]` セクションで追加のテスト依存を宣言可能（Kotest等）
 - `test_sources` フィールド（デフォルト: `["test"]`）
-- `keel init` でテスト雛形（test/MainTest.kt + kotlin-test-junit5）も生成
+- `keel init` でテスト雛形（test/MainTest.kt）を生成。テスト依存の宣言は不要
 - JUnit Platform Console Standalone JARは `~/.keel/tools/` に自動キャッシュ
 
 **テスト実行フロー:**
 
 1. メインソースをビルド（`build/{name}.jar`）
-2. テスト依存を解決（推移的依存含む）
+2. 依存を一括解決（main + 自動注入テスト依存 + ユーザーテスト依存、推移的依存含む）
 3. JUnit Platform Console Standalone JARを確保（キャッシュ or ダウンロード）
 4. テストソースをコンパイル（`build/{name}-test.jar`）
 5. `java -jar junit-platform-console-standalone.jar --class-path ... --scan-class-path` で実行
 
-**keel.tomlの拡張:**
+**自動注入テスト依存:**
+
+JVMターゲット時、`kotlin-test-junit5` を `keel.toml` の `kotlin` バージョンに合わせて自動的にテストclasspathに追加する。ユーザーが `[test-dependencies]` で同じ依存を宣言した場合はユーザー指定のバージョンが優先される。`kotlin-test` は `kotlin-test-junit5` の推移的依存として自動的に解決される。
+
+**keel.tomlの拡張（テスト依存の宣言は通常不要）:**
 
 ```toml
 test_sources = ["test"]   # optional, defaults to ["test"]
 
+# Kotest等を使いたい場合のみ宣言
 [test-dependencies]
-"org.jetbrains.kotlin:kotlin-test-junit5" = "2.1.0"
+"io.kotest:kotest-runner-junit5" = "5.8.0"
 ```
 
 **未実装:**

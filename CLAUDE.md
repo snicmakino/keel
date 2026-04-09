@@ -41,6 +41,9 @@ Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 | Resolution.kt | Pure BFS dependency graph resolution (pure function, no I/O) |
 | TransitiveResolver.kt | I/O orchestration: POM/JAR fetching, hashing, lockfile change detection |
 | Resolver.kt | Dependency resolution entry point, delegates to TransitiveResolver |
+| TestDeps.kt | Auto-injected test dependencies based on target platform (pure function) |
+| TestBuilder.kt | Build kotlinc command for test compilation (pure function) |
+| TestRunner.kt | Build java command for test execution via JUnit Platform (pure function) |
 | Main.kt | CLI entrypoint, module integration |
 
 ## Error Handling Policy

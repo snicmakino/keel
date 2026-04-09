@@ -137,7 +137,7 @@ private fun doInit(args: List<String>) {
 
 private fun doUpdate() {
     val config = loadProjectConfig()
-    val allDeps = config.dependencies + config.testDependencies
+    val allDeps = mergeAllDeps(config)
     if (allDeps.isEmpty()) {
         println("no dependencies to update")
         return
@@ -159,11 +159,7 @@ private fun doUpdate() {
     }
 
     // Resolve without existing lockfile to get fresh state
-    val resolveConfig = if (config.testDependencies.isNotEmpty()) {
-        config.copy(dependencies = allDeps)
-    } else {
-        config
-    }
+    val resolveConfig = config.copy(dependencies = allDeps)
     println("updating dependencies...")
     val resolveResult = withHttpClient { client ->
         resolve(resolveConfig, null, cacheBase, createResolverDeps(client))
@@ -198,8 +194,8 @@ private fun doDeps(args: List<String>) {
         exitProcess(EXIT_BUILD_ERROR)
     }
     val config = loadProjectConfig()
-    val allDeps = config.dependencies + config.testDependencies
-    if (allDeps.isEmpty()) {
+    val allTestDeps = autoInjectedTestDeps(config) + config.testDependencies
+    if (config.dependencies.isEmpty() && allTestDeps.isEmpty()) {
         println("no dependencies")
         return
     }
@@ -216,10 +212,10 @@ private fun doDeps(args: List<String>) {
             val tree = buildDependencyTree(config.dependencies, pomLookup)
             println(formatDependencyTree(tree))
         }
-        if (config.testDependencies.isNotEmpty()) {
+        if (allTestDeps.isNotEmpty()) {
             if (config.dependencies.isNotEmpty()) println()
             println("test dependencies:")
-            val testTree = buildDependencyTree(config.testDependencies, pomLookup)
+            val testTree = buildDependencyTree(allTestDeps, pomLookup)
             println(formatDependencyTree(testTree))
         }
     }
@@ -336,6 +332,13 @@ private fun createResolverDeps(client: io.ktor.client.HttpClient) = object : Res
     override fun readFileContent(path: String) = readFileAsString(path)
 }
 
+/**
+ * Merges main deps, auto-injected test deps, and user test deps.
+ * Priority: auto-injected < main deps < user test deps (right-hand side wins).
+ */
+private fun mergeAllDeps(config: KeelConfig): Map<String, String> =
+    autoInjectedTestDeps(config) + config.dependencies + config.testDependencies
+
 private fun resolveDependencies(config: KeelConfig): String? {
     // Warn if the same dependency appears in both [dependencies] and [test-dependencies]
     val overlap = config.dependencies.keys.intersect(config.testDependencies.keys)
@@ -347,7 +350,7 @@ private fun resolveDependencies(config: KeelConfig): String? {
         }
     }
 
-    val allDeps = config.dependencies + config.testDependencies
+    val allDeps = mergeAllDeps(config)
     if (allDeps.isEmpty()) {
         if (fileExists(LOCK_FILE)) {
             deleteFile(LOCK_FILE)
@@ -355,12 +358,8 @@ private fun resolveDependencies(config: KeelConfig): String? {
         return null
     }
 
-    // Resolve main + test dependencies together for a consistent lockfile
-    val resolveConfig = if (config.testDependencies.isNotEmpty()) {
-        config.copy(dependencies = allDeps)
-    } else {
-        config
-    }
+    // Resolve main + test + auto-injected dependencies together for a consistent lockfile
+    val resolveConfig = config.copy(dependencies = allDeps)
 
     val home = homeDirectory().getOrElse { error ->
         eprintln("error: ${error.message}")
