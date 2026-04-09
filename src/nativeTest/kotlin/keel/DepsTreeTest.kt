@@ -59,10 +59,10 @@ class DepsTreeTest {
 
         val output = formatDependencyTree(tree)
         val expected = listOf(
-            "com.example:lib-a:1.0.0",
-            "  com.example:lib-b:2.0.0",
-            "    com.example:lib-c:3.0.0",
-            "com.example:lib-d:1.0.0"
+            "├── com.example:lib-a:1.0.0",
+            "│   └── com.example:lib-b:2.0.0",
+            "│       └── com.example:lib-c:3.0.0",
+            "└── com.example:lib-d:1.0.0"
         ).joinToString("\n")
         assertEquals(expected, output)
     }
@@ -83,8 +83,43 @@ class DepsTreeTest {
 
         val tree = buildDependencyTree(directDeps, pomLookup)
         val output = formatDependencyTree(tree)
-        assertTrue(output.contains("com.example:lib-c:1.0.0"))
-        assertTrue(output.contains("(*)"))
+        val expected = listOf(
+            "├── com.example:lib-a:1.0.0",
+            "│   └── com.example:lib-c:1.0.0",
+            "└── com.example:lib-b:1.0.0",
+            "    └── com.example:lib-c:1.0.0 (*)"
+        ).joinToString("\n")
+        assertEquals(expected, output)
+    }
+
+    @Test
+    fun formatTreeSingleRoot() {
+        val tree = listOf(
+            TreeNode("com.example:lib-a", "1.0.0")
+        )
+
+        val output = formatDependencyTree(tree)
+        assertEquals("└── com.example:lib-a:1.0.0", output)
+    }
+
+    @Test
+    fun formatTreeWithMultipleChildrenUsesConnectors() {
+        val tree = listOf(
+            TreeNode("com.example:root", "1.0.0", children = listOf(
+                TreeNode("com.example:child-a", "1.0.0"),
+                TreeNode("com.example:child-b", "2.0.0"),
+                TreeNode("com.example:child-c", "3.0.0")
+            ))
+        )
+
+        val output = formatDependencyTree(tree)
+        val expected = listOf(
+            "└── com.example:root:1.0.0",
+            "    ├── com.example:child-a:1.0.0",
+            "    ├── com.example:child-b:2.0.0",
+            "    └── com.example:child-c:3.0.0"
+        ).joinToString("\n")
+        assertEquals(expected, output)
     }
 
     @Test

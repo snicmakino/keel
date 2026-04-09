@@ -38,6 +38,7 @@ fun main(args: Array<String>) {
         }
         "fmt" -> doFmt(args.drop(1))
         "clean" -> doClean()
+        "tree" -> doTree()
         "deps" -> doDeps(args.drop(1))
         "add" -> doAdd(args.drop(1))
         "install" -> doInstall()
@@ -63,7 +64,7 @@ private fun printUsage() {
     eprintln("  fmt        Format source files with ktfmt")
     eprintln("  clean      Remove build artifacts")
     eprintln("  add        Add a dependency (e.g. keel add group:artifact:version)")
-    eprintln("  deps tree  Show dependency tree")
+    eprintln("  tree       Show dependency tree")
     eprintln("  install    Resolve dependencies and download JARs")
     eprintln("  update     Re-resolve dependencies and update lockfile")
     eprintln("  version    Show version information")
@@ -273,11 +274,7 @@ private fun doUpdate() {
     println("updated ${resolveResult.deps.size} dependencies")
 }
 
-private fun doDeps(args: List<String>) {
-    if (args.isEmpty() || args[0] != "tree") {
-        eprintln("usage: keel deps tree")
-        exitProcess(EXIT_BUILD_ERROR)
-    }
+private fun doTree() {
     val config = loadProjectConfig()
     val allTestDeps = autoInjectedTestDeps(config) + config.testDependencies
     if (config.dependencies.isEmpty() && allTestDeps.isEmpty()) {
@@ -291,19 +288,25 @@ private fun doDeps(args: List<String>) {
     }
     val cacheBase = "$home/.keel/cache"
 
-    run {
-        val pomLookup = createPomLookup(cacheBase, createResolverDeps())
-        if (config.dependencies.isNotEmpty()) {
-            val tree = buildDependencyTree(config.dependencies, pomLookup)
-            println(formatDependencyTree(tree))
-        }
-        if (allTestDeps.isNotEmpty()) {
-            if (config.dependencies.isNotEmpty()) println()
-            println("test dependencies:")
-            val testTree = buildDependencyTree(allTestDeps, pomLookup)
-            println(formatDependencyTree(testTree))
-        }
+    val pomLookup = createPomLookup(cacheBase, createResolverDeps())
+    if (config.dependencies.isNotEmpty()) {
+        val tree = buildDependencyTree(config.dependencies, pomLookup)
+        println(formatDependencyTree(tree))
     }
+    if (allTestDeps.isNotEmpty()) {
+        if (config.dependencies.isNotEmpty()) println()
+        println("test dependencies:")
+        val testTree = buildDependencyTree(allTestDeps, pomLookup)
+        println(formatDependencyTree(testTree))
+    }
+}
+
+private fun doDeps(args: List<String>) {
+    if (args.isEmpty() || args[0] != "tree") {
+        eprintln("usage: keel deps tree")
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+    doTree()
 }
 
 private fun doCheck() {

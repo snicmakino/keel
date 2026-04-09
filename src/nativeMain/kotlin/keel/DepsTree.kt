@@ -52,34 +52,42 @@ private fun isIncludedDep(dep: PomDependency): Boolean {
 }
 
 /**
- * Format a dependency tree as indented text.
+ * Format a dependency tree with box-drawing characters (Windows tree style).
  * Duplicate subtrees are marked with (*).
  */
+private const val BRANCH = "├── "
+private const val CORNER = "└── "
+private const val PIPE = "│   "
+private const val SPACE = "    "
+
 fun formatDependencyTree(tree: List<TreeNode>): String {
     if (tree.isEmpty()) return "no dependencies"
     val seen = mutableSetOf<String>()
     val lines = mutableListOf<String>()
-    for (node in tree) {
-        formatNode(node, 0, seen, lines)
+    for ((index, node) in tree.withIndex()) {
+        val isLast = index == tree.lastIndex
+        formatNode(node, "", isLast, seen, lines)
     }
     return lines.joinToString("\n")
 }
 
 private fun formatNode(
     node: TreeNode,
-    depth: Int,
+    prefix: String,
+    isLast: Boolean,
     seen: MutableSet<String>,
     lines: MutableList<String>
 ) {
-    val indent = "  ".repeat(depth)
+    val connector = if (isLast) CORNER else BRANCH
     val key = "${node.groupArtifact}:${node.version}"
     if (key in seen) {
-        lines.add("$indent$key (*)")
+        lines.add("$prefix$connector$key (*)")
         return
     }
     seen.add(key)
-    lines.add("$indent$key")
-    for (child in node.children) {
-        formatNode(child, depth + 1, seen, lines)
+    lines.add("$prefix$connector$key")
+    val newPrefix = prefix + if (isLast) SPACE else PIPE
+    for ((index, child) in node.children.withIndex()) {
+        formatNode(child, newPrefix, index == node.children.lastIndex, seen, lines)
     }
 }
