@@ -6,10 +6,6 @@ data class TreeNode(
     val children: List<TreeNode> = emptyList()
 )
 
-/**
- * Build a dependency tree from direct dependencies and a POM lookup function.
- * Pure function — POM fetching is abstracted behind [pomLookup].
- */
 fun buildDependencyTree(
     directDeps: Map<String, String>,
     pomLookup: (groupArtifact: String, version: String) -> PomInfo?
@@ -51,10 +47,6 @@ private fun isIncludedDep(dep: PomDependency): Boolean {
     return scope == "compile" || scope == "runtime"
 }
 
-/**
- * Format a dependency tree with box-drawing characters (Windows tree style).
- * Duplicate subtrees are marked with (*).
- */
 private const val BRANCH = "├── "
 private const val CORNER = "└── "
 private const val PIPE = "│   "

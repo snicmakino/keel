@@ -14,6 +14,18 @@ sealed class ResolveError {
     data class DirectoryCreateFailed(val path: String) : ResolveError()
 }
 
+fun formatResolveError(error: ResolveError): String = when (error) {
+    is ResolveError.InvalidDependency -> "error: invalid dependency '${error.input}'"
+    is ResolveError.Sha256Mismatch -> buildString {
+        appendLine("error: sha256 mismatch for ${error.groupArtifact}")
+        appendLine("  expected: ${error.expected}")
+        append("  got:      ${error.actual}")
+    }
+    is ResolveError.DownloadFailed -> "error: failed to download ${error.groupArtifact}"
+    is ResolveError.HashComputeFailed -> "error: failed to compute hash for ${error.groupArtifact}"
+    is ResolveError.DirectoryCreateFailed -> "error: could not create directory ${error.path}"
+}
+
 data class ResolvedDep(
     val groupArtifact: String,
     val version: String,
@@ -27,10 +39,6 @@ data class ResolveResult(
     val lockChanged: Boolean
 )
 
-/**
- * Abstraction of side effects required for dependency resolution.
- * Inject a fake implementation in tests for isolation.
- */
 interface ResolverDeps {
     fun fileExists(path: String): Boolean
     fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed>
@@ -39,11 +47,6 @@ interface ResolverDeps {
     fun readFileContent(path: String): Result<String, OpenFailed>
 }
 
-/**
- * Resolves dependencies transitively. Downloads JARs and POMs, parses POM
- * files to discover transitive deps, and applies version conflict resolution.
- * Delegates to [resolveTransitive].
- */
 fun resolve(
     config: KeelConfig,
     existingLock: Lockfile?,

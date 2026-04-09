@@ -1,0 +1,270 @@
+package keel
+
+import com.github.michaelbull.result.getOrElse
+import kotlin.system.exitProcess
+import kotlin.time.TimeSource
+
+internal const val KEEL_TOML = "keel.toml"
+internal const val LOCK_FILE = "keel.lock"
+private const val WORKSPACE_JSON = "workspace.json"
+private const val KLS_CLASSPATH = "kls-classpath"
+
+internal data class BuildResult(val config: KeelConfig, val classpath: String?)
+
+internal fun loadProjectConfig(): KeelConfig {
+    val tomlString = readFileAsString(KEEL_TOML).getOrElse { error ->
+        eprintln("error: could not read ${error.path}")
+        exitProcess(EXIT_CONFIG_ERROR)
+    }
+    return parseConfig(tomlString).getOrElse { error ->
+        when (error) {
+            is ConfigError.ParseFailed -> eprintln("error: ${error.message}")
+        }
+        exitProcess(EXIT_CONFIG_ERROR)
+    }
+}
+
+private fun checkVersion(config: KeelConfig) {
+    val output = executeAndCapture("kotlinc -version 2>&1").getOrElse {
+        eprintln("warning: could not determine kotlinc version")
+        return
+    }
+    val installedVersion = parseKotlincVersion(output)
+    if (installedVersion == null) {
+        eprintln("warning: could not parse kotlinc version from: $output")
+        return
+    }
+    if (installedVersion != config.kotlin) {
+        eprintln("warning: $KEEL_TOML specifies kotlin ${config.kotlin}, but kotlinc $installedVersion is installed")
+    }
+}
+
+internal fun doCheck() {
+    val startMark = TimeSource.Monotonic.markNow()
+    val config = loadProjectConfig()
+    checkVersion(config)
+
+    val classpath = resolveDependencies(config)
+    val cmd = checkCommand(config, classpath)
+
+    println("checking ${config.name}...")
+    executeCommand(cmd).getOrElse { error ->
+        eprintln(formatProcessError(error, "check"))
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+    val elapsed = startMark.elapsedNow()
+    println("check passed in ${formatDuration(elapsed)}")
+}
+
+internal fun doClean() {
+    if (!fileExists(BUILD_DIR)) {
+        println("nothing to clean")
+        return
+    }
+    removeDirectoryRecursive(BUILD_DIR).getOrElse { error ->
+        eprintln("error: could not remove ${error.path}")
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+    println("removed $BUILD_DIR/")
+}
+
+internal fun doBuild(): BuildResult {
+    val startMark = TimeSource.Monotonic.markNow()
+    val config = loadProjectConfig()
+
+    val outputPath = jarPath(config)
+
+    val currentState = BuildState(
+        configMtime = fileMtime(KEEL_TOML) ?: 0L,
+        sourcesNewestMtime = newestMtime(config.sources),
+        outputMtime = fileMtime(outputPath),
+        lockfileMtime = if (fileExists(LOCK_FILE)) fileMtime(LOCK_FILE) else null
+    )
+    val cachedState = readFileAsString(BUILD_STATE_FILE).getOrElse { null }
+        ?.let { parseBuildState(it) }
+
+    if (isBuildUpToDate(current = currentState, cached = cachedState)) {
+        val elapsed = startMark.elapsedNow()
+        println("${config.name} is up to date (${formatDuration(elapsed)})")
+        return BuildResult(config, cachedState!!.classpath)
+    }
+
+    checkVersion(config)
+    val classpath = resolveDependencies(config)
+    val cmd = buildCommand(config, classpath)
+    ensureDirectory(BUILD_DIR).getOrElse { error ->
+        eprintln("error: could not create directory ${error.path}")
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
+    println("compiling ${config.name}...")
+    executeCommand(cmd.args).getOrElse { error ->
+        eprintln(formatProcessError(error, "compilation"))
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
+    val newState = currentState.copy(
+        outputMtime = fileMtime(cmd.outputPath),
+        lockfileMtime = if (fileExists(LOCK_FILE)) fileMtime(LOCK_FILE) else null,
+        classpath = classpath
+    )
+    writeFileAsString(BUILD_STATE_FILE, serializeBuildState(newState)).getOrElse {
+        eprintln("warning: could not write build state file")
+    }
+
+    val elapsed = startMark.elapsedNow()
+    println("built ${cmd.outputPath} in ${formatDuration(elapsed)}")
+    return BuildResult(config, classpath)
+}
+
+internal fun doRun(config: KeelConfig, classpath: String?, appArgs: List<String> = emptyList()) {
+    val cmd = runCommand(config, classpath, appArgs)
+
+    if (!fileExists(cmd.jarPath)) {
+        eprintln("error: ${cmd.jarPath} not found. Run 'keel build' first.")
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
+    executeCommand(cmd.args).getOrElse { error ->
+        when (error) {
+            is ProcessError.NonZeroExit -> exitProcess(error.exitCode)
+            else -> exitProcess(EXIT_BUILD_ERROR)
+        }
+    }
+}
+
+internal fun doTest(testArgs: List<String> = emptyList()) {
+    val (config, classpath) = doBuild()
+
+    val existingTestSources = config.testSources.filter { fileExists(it) }
+    if (existingTestSources.isEmpty()) {
+        eprintln("error: no test sources found in ${config.testSources}")
+        exitProcess(EXIT_TEST_ERROR)
+    }
+
+    val testStartMark = TimeSource.Monotonic.markNow()
+
+    val paths = resolveKeelPaths(EXIT_TEST_ERROR)
+    val consoleLauncherPath = ensureTool(paths, CONSOLE_LAUNCHER_SPEC, EXIT_TEST_ERROR)
+
+    val testConfig = config.copy(testSources = existingTestSources)
+    val mainJar = jarPath(config)
+    val testCmd = testBuildCommand(testConfig, mainJar, classpath)
+    println("compiling tests...")
+    executeCommand(testCmd.args).getOrElse { error ->
+        eprintln(formatProcessError(error, "test compilation"))
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
+    val runCmd = testRunCommand(mainJar, testCmd.outputPath, consoleLauncherPath, classpath, testArgs)
+    println("running tests...")
+    executeCommand(runCmd.args).getOrElse { error ->
+        when (error) {
+            is ProcessError.NonZeroExit -> {
+                val elapsed = testStartMark.elapsedNow()
+                eprintln("tests failed in ${formatDuration(elapsed)}")
+            }
+            else -> eprintln("error: failed to run tests")
+        }
+        exitProcess(EXIT_TEST_ERROR)
+    }
+    val elapsed = testStartMark.elapsedNow()
+    println("tests passed in ${formatDuration(elapsed)}")
+}
+
+internal fun createResolverDeps() = object : ResolverDeps {
+    override fun fileExists(path: String): Boolean = keel.fileExists(path)
+    override fun ensureDirectoryRecursive(path: String) = keel.ensureDirectoryRecursive(path)
+    override fun downloadFile(url: String, destPath: String) = keel.downloadFile(url, destPath)
+    override fun computeSha256(filePath: String) = keel.computeSha256(filePath)
+    override fun readFileContent(path: String) = readFileAsString(path)
+}
+
+internal data class OverlappingDep(
+    val groupArtifact: String,
+    val mainVersion: String?,
+    val testVersion: String?
+)
+
+internal fun findOverlappingDependencies(
+    mainDeps: Map<String, String>,
+    testDeps: Map<String, String>
+): List<OverlappingDep> {
+    val overlap = mainDeps.keys.intersect(testDeps.keys)
+    return overlap
+        .filter { mainDeps[it] != testDeps[it] }
+        .map { OverlappingDep(it, mainDeps[it], testDeps[it]) }
+}
+
+internal fun resolveDependencies(config: KeelConfig): String? {
+    for (dep in findOverlappingDependencies(config.dependencies, config.testDependencies)) {
+        eprintln("warning: '${dep.groupArtifact}' is in both [dependencies] (${dep.mainVersion}) and [test-dependencies] (${dep.testVersion}); using ${dep.mainVersion}")
+    }
+
+    val allDeps = mergeAllDeps(config)
+    if (allDeps.isEmpty()) {
+        if (fileExists(LOCK_FILE)) {
+            deleteFile(LOCK_FILE)
+        }
+        return null
+    }
+
+    val resolveConfig = config.copy(dependencies = allDeps)
+
+    val paths = resolveKeelPaths(EXIT_DEPENDENCY_ERROR)
+
+    val existingLock = if (fileExists(LOCK_FILE)) {
+        val lockJson = readFileAsString(LOCK_FILE).getOrElse { error ->
+            eprintln("warning: could not read $LOCK_FILE: ${error.path}")
+            null
+        }
+        lockJson?.let {
+            parseLockfile(it).getOrElse { error ->
+                when (error) {
+                    is LockfileError.ParseFailed -> eprintln("warning: ${error.message}")
+                    is LockfileError.UnsupportedVersion -> eprintln("warning: unsupported lock file version ${error.version}")
+                }
+                null
+            }
+        }
+    } else null
+
+    println("resolving dependencies...")
+    val resolveResult = resolve(resolveConfig, existingLock, paths.cacheBase, createResolverDeps()).getOrElse { error ->
+        eprintln(formatResolveError(error))
+        if (error is ResolveError.Sha256Mismatch) {
+            eprintln("delete the cached jar and rebuild to re-download")
+        }
+        exitProcess(EXIT_DEPENDENCY_ERROR)
+    }
+
+    if (resolveResult.lockChanged) {
+        val lockfile = buildLockfileFromResolved(resolveConfig, resolveResult.deps)
+        val lockJson = serializeLockfile(lockfile)
+        writeFileAsString(LOCK_FILE, lockJson).getOrElse { error ->
+            eprintln("error: could not write ${error.path}")
+            exitProcess(EXIT_DEPENDENCY_ERROR)
+        }
+    }
+
+    if (resolveResult.lockChanged || !fileExists(WORKSPACE_JSON) || !fileExists(KLS_CLASSPATH)) {
+        writeWorkspaceFiles(config, resolveResult.deps)
+    }
+
+    val jarPaths = resolveResult.deps.map { it.cachePath }
+    return buildClasspath(jarPaths).ifEmpty { null }
+}
+
+private fun writeWorkspaceFiles(config: KeelConfig, deps: List<ResolvedDep>) {
+    val workspaceJson = generateWorkspaceJson(config, deps)
+    writeFileAsString(WORKSPACE_JSON, workspaceJson).getOrElse { error ->
+        eprintln("warning: could not write $WORKSPACE_JSON: ${error.path}")
+        return
+    }
+
+    val klsContent = generateKlsClasspath(deps)
+    writeFileAsString(KLS_CLASSPATH, klsContent).getOrElse { error ->
+        eprintln("warning: could not write $KLS_CLASSPATH: ${error.path}")
+        return
+    }
+}
