@@ -1,10 +1,10 @@
 # keel
 
-> v0.5.0 — Early-stage project. Expect breaking changes.
+> v0.6.0 — Early-stage project. Expect breaking changes.
 
 A lightweight build tool for Kotlin. Compiles with `kotlinc` directly — no Gradle, no JVM startup tax.
 
-Written in Kotlin/Native. Single binary, instant startup.
+Written in Kotlin/Native. Single binary, instant startup. Incremental builds via mtime-based caching — unchanged sources skip compilation entirely.
 
 ## Installation
 
@@ -90,6 +90,7 @@ sources = ["src"]
 | `main` | Entry point class | (required) |
 | `sources` | Source directories | (required) |
 | `test_sources` | Test source directories | `["test"]` |
+| `fmt_style` | ktfmt style: `"google"`, `"kotlinlang"`, `"meta"` | `"google"` |
 
 ### Dependencies
 
