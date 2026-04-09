@@ -163,9 +163,7 @@ private fun doUpdate() {
     // Resolve without existing lockfile to get fresh state
     val resolveConfig = config.copy(dependencies = allDeps)
     println("updating dependencies...")
-    val resolveResult = withHttpClient { client ->
-        resolve(resolveConfig, null, cacheBase, createResolverDeps(client))
-    }.getOrElse { error ->
+    val resolveResult = resolve(resolveConfig, null, cacheBase, createResolverDeps()).getOrElse { error ->
         when (error) {
             is ResolveError.InvalidDependency -> eprintln("error: invalid dependency '${error.input}'")
             is ResolveError.Sha256Mismatch -> {
@@ -208,8 +206,8 @@ private fun doDeps(args: List<String>) {
     }
     val cacheBase = "$home/.keel/cache"
 
-    withHttpClient { client ->
-        val pomLookup = createPomLookup(cacheBase, createResolverDeps(client))
+    run {
+        val pomLookup = createPomLookup(cacheBase, createResolverDeps())
         if (config.dependencies.isNotEmpty()) {
             val tree = buildDependencyTree(config.dependencies, pomLookup)
             println(formatDependencyTree(tree))
@@ -426,10 +424,10 @@ private fun ensureConsoleLauncher(home: String): String {
     return launcherPath
 }
 
-private fun createResolverDeps(client: io.ktor.client.HttpClient) = object : ResolverDeps {
+private fun createResolverDeps() = object : ResolverDeps {
     override fun fileExists(path: String): Boolean = keel.fileExists(path)
     override fun ensureDirectoryRecursive(path: String) = keel.ensureDirectoryRecursive(path)
-    override fun downloadFile(url: String, destPath: String) = downloadFileWith(client, url, destPath)
+    override fun downloadFile(url: String, destPath: String) = keel.downloadFile(url, destPath)
     override fun computeSha256(filePath: String) = keel.computeSha256(filePath)
     override fun readFileContent(path: String) = readFileAsString(path)
 }
@@ -480,9 +478,7 @@ private fun resolveDependencies(config: KeelConfig): String? {
     } else null
 
     println("resolving dependencies...")
-    val resolveResult = withHttpClient { client ->
-        resolve(resolveConfig, existingLock, cacheBase, createResolverDeps(client))
-    }.getOrElse { error ->
+    val resolveResult = resolve(resolveConfig, existingLock, cacheBase, createResolverDeps()).getOrElse { error ->
         when (error) {
             is ResolveError.InvalidDependency -> eprintln("error: invalid dependency '${error.input}'")
             is ResolveError.Sha256Mismatch -> {

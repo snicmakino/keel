@@ -19,7 +19,7 @@ Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 - ktoml 0.7.1: keel.toml parsing
 - kotlinx-serialization-json: keel.lock parsing
 - kotlin-result (michael-bull) 2.3.1: error handling
-- ktor-client-curl 3.4.2: HTTP downloads
+- libcurl (cinterop): HTTP downloads
 - kotlincrypto sha2-256 0.2.7: SHA256 hashing
 
 ## Architecture
@@ -34,7 +34,7 @@ Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 | VersionCheck.kt | Parse kotlinc version string (pure function) |
 | Dependency.kt | Maven coordinate parsing, JAR/POM URL/cache path construction (pure function) |
 | Lockfile.kt | Parse/serialize keel.lock v1/v2 (JSON) |
-| Downloader.kt | HTTP file download via Ktor Client (Curl engine) |
+| Downloader.kt | HTTP file download via libcurl cinterop |
 | Sha256.kt | SHA256 hash computation |
 | PomParser.kt | POM XML parsing, property interpolation (pure function) |
 | VersionCompare.kt | Maven version comparison (pure function) |
