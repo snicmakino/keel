@@ -18,7 +18,7 @@ kotlin {
         }
         binaries {
             executable {
-                entryPoint = "keel.main"
+                entryPoint = "keel.cli.main"
             }
         }
     }

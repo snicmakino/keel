@@ -28,18 +28,26 @@ fun parseJvmRedirect(moduleJson: String): JvmRedirect? {
         return null
     }
 
+    var redirect: JvmRedirect? = null
     for (variant in metadata.variants) {
         val platformType = variant.attributes["org.jetbrains.kotlin.platform.type"]
         if (platformType != "jvm") continue
 
-        val availableAt = variant.availableAt ?: continue
-        return JvmRedirect(
-            group = availableAt.group,
-            module = availableAt.module,
-            version = availableAt.version
-        )
+        val availableAt = variant.availableAt
+        if (availableAt == null) {
+            // A JVM variant without available-at means the library itself
+            // provides a JVM jar — no redirect needed.
+            return null
+        }
+        if (redirect == null) {
+            redirect = JvmRedirect(
+                group = availableAt.group,
+                module = availableAt.module,
+                version = availableAt.version
+            )
+        }
     }
-    return null
+    return redirect
 }
 
 private val lenientJson = Json { ignoreUnknownKeys = true }
