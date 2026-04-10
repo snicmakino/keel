@@ -11,26 +11,26 @@ class TestBuilderTest {
     fun testBuildCommandBasic() {
         val cmd = testBuildCommand(
             config = testConfig(),
-            mainJarPath = "build/my-app.jar"
+            classesDir = "build/classes"
         )
 
         assertEquals(
-            listOf("kotlinc", "-cp", "build/my-app.jar", "test", "-jvm-target", "17", "-d", "build/my-app-test.jar"),
+            listOf("kotlinc", "-cp", "build/classes", "test", "-jvm-target", "17", "-d", "build/test-classes"),
             cmd.args
         )
-        assertEquals("build/my-app-test.jar", cmd.outputPath)
+        assertEquals("build/test-classes", cmd.outputPath)
     }
 
     @Test
     fun testBuildCommandWithClasspath() {
         val cmd = testBuildCommand(
             config = testConfig(),
-            mainJarPath = "build/my-app.jar",
+            classesDir = "build/classes",
             classpath = "/cache/dep.jar:/cache/junit.jar"
         )
 
         assertEquals(
-            listOf("kotlinc", "-cp", "build/my-app.jar:/cache/dep.jar:/cache/junit.jar", "test", "-jvm-target", "17", "-d", "build/my-app-test.jar"),
+            listOf("kotlinc", "-cp", "build/classes:/cache/dep.jar:/cache/junit.jar", "test", "-jvm-target", "17", "-d", "build/test-classes"),
             cmd.args
         )
     }
@@ -39,11 +39,11 @@ class TestBuilderTest {
     fun testBuildCommandCustomTestSources() {
         val cmd = testBuildCommand(
             config = testConfig(testSources = listOf("test", "integration-test")),
-            mainJarPath = "build/my-app.jar"
+            classesDir = "build/classes"
         )
 
         assertEquals(
-            listOf("kotlinc", "-cp", "build/my-app.jar", "test", "integration-test", "-jvm-target", "17", "-d", "build/my-app-test.jar"),
+            listOf("kotlinc", "-cp", "build/classes", "test", "integration-test", "-jvm-target", "17", "-d", "build/test-classes"),
             cmd.args
         )
     }
@@ -52,39 +52,34 @@ class TestBuilderTest {
     fun testBuildCommandDifferentJvmTarget() {
         val cmd = testBuildCommand(
             config = testConfig(jvmTarget = "21"),
-            mainJarPath = "build/my-app.jar"
+            classesDir = "build/classes"
         )
 
         assertEquals(
-            listOf("kotlinc", "-cp", "build/my-app.jar", "test", "-jvm-target", "21", "-d", "build/my-app-test.jar"),
+            listOf("kotlinc", "-cp", "build/classes", "test", "-jvm-target", "21", "-d", "build/test-classes"),
             cmd.args
         )
     }
 
     @Test
-    fun testBuildCommandUsesProjectName() {
+    fun testBuildCommandOutputPathIsTestClassesDir() {
+        // outputPath is always build/test-classes regardless of project name
         val cmd = testBuildCommand(
             config = testConfig(name = "hello-world"),
-            mainJarPath = "build/hello-world.jar"
+            classesDir = "build/classes"
         )
 
-        assertEquals("build/hello-world-test.jar", cmd.outputPath)
+        assertEquals("build/test-classes", cmd.outputPath)
     }
 
     @Test
     fun testBuildCommandNoIncludeRuntime() {
         val cmd = testBuildCommand(
             config = testConfig(),
-            mainJarPath = "build/my-app.jar"
+            classesDir = "build/classes"
         )
 
         assertFalse(cmd.args.contains("-include-runtime"))
-    }
-
-    @Test
-    fun testJarPath() {
-        assertEquals("build/my-app-test.jar", testJarPath(testConfig()))
-        assertEquals("build/hello-test.jar", testJarPath(testConfig(name = "hello")))
     }
 
     @Test
@@ -93,15 +88,15 @@ class TestBuilderTest {
 
         val cmd = testBuildCommand(
             config = testConfig(),
-            mainJarPath = "build/my-app.jar",
+            classesDir = "build/classes",
             pluginArgs = pluginArgs
         )
 
         assertEquals(
             listOf(
-                "kotlinc", "-cp", "build/my-app.jar", "test", "-jvm-target", "17",
+                "kotlinc", "-cp", "build/classes", "test", "-jvm-target", "17",
                 "-Xplugin=/usr/local/kotlinc/lib/kotlinx-serialization-compiler-plugin.jar",
-                "-d", "build/my-app-test.jar"
+                "-d", "build/test-classes"
             ),
             cmd.args
         )
@@ -116,16 +111,16 @@ class TestBuilderTest {
 
         val cmd = testBuildCommand(
             config = testConfig(),
-            mainJarPath = "build/my-app.jar",
+            classesDir = "build/classes",
             pluginArgs = pluginArgs
         )
 
         assertEquals(
             listOf(
-                "kotlinc", "-cp", "build/my-app.jar", "test", "-jvm-target", "17",
+                "kotlinc", "-cp", "build/classes", "test", "-jvm-target", "17",
                 "-Xplugin=/usr/local/kotlinc/lib/kotlinx-serialization-compiler-plugin.jar",
                 "-Xplugin=/usr/local/kotlinc/lib/allopen-compiler-plugin.jar",
-                "-d", "build/my-app-test.jar"
+                "-d", "build/test-classes"
             ),
             cmd.args
         )
@@ -135,12 +130,12 @@ class TestBuilderTest {
     fun testBuildCommandWithEmptyPluginArgs() {
         val cmd = testBuildCommand(
             config = testConfig(),
-            mainJarPath = "build/my-app.jar",
+            classesDir = "build/classes",
             pluginArgs = emptyList()
         )
 
         assertEquals(
-            listOf("kotlinc", "-cp", "build/my-app.jar", "test", "-jvm-target", "17", "-d", "build/my-app-test.jar"),
+            listOf("kotlinc", "-cp", "build/classes", "test", "-jvm-target", "17", "-d", "build/test-classes"),
             cmd.args
         )
     }
@@ -151,16 +146,16 @@ class TestBuilderTest {
 
         val cmd = testBuildCommand(
             config = testConfig(),
-            mainJarPath = "build/my-app.jar",
+            classesDir = "build/classes",
             classpath = "/cache/dep.jar",
             pluginArgs = pluginArgs
         )
 
         assertEquals(
             listOf(
-                "kotlinc", "-cp", "build/my-app.jar:/cache/dep.jar", "test", "-jvm-target", "17",
+                "kotlinc", "-cp", "build/classes:/cache/dep.jar", "test", "-jvm-target", "17",
                 "-Xplugin=/usr/local/kotlinc/lib/kotlinx-serialization-compiler-plugin.jar",
-                "-d", "build/my-app-test.jar"
+                "-d", "build/test-classes"
             ),
             cmd.args
         )

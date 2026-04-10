@@ -7,32 +7,25 @@ import kotlin.test.assertEquals
 class RunnerTest {
 
     @Test
-    fun runCommandWithoutClasspath() {
+    fun runCommandUsesClassesDirAsClasspath() {
         val cmd = runCommand(testConfig(), null)
-        assertEquals(listOf("java", "-cp", "build/my-app.jar", "com.example.MainKt"), cmd.args)
-        assertEquals("build/my-app.jar", cmd.jarPath)
+        assertEquals(listOf("java", "-cp", "build/classes", "com.example.MainKt"), cmd.args)
     }
 
     @Test
-    fun runCommandWithClasspath() {
+    fun runCommandWithClasspathAppendedToClassesDir() {
         val cmd = runCommand(testConfig(), "/cache/lib.jar:/cache/util.jar")
         assertEquals(
-            listOf("java", "-cp", "build/my-app.jar:/cache/lib.jar:/cache/util.jar", "com.example.MainKt"),
+            listOf("java", "-cp", "build/classes:/cache/lib.jar:/cache/util.jar", "com.example.MainKt"),
             cmd.args
         )
-    }
-
-    @Test
-    fun runCommandUsesProjectName() {
-        val cmd = runCommand(testConfig(name = "hello-world"), null)
-        assertEquals("build/hello-world.jar", cmd.jarPath)
     }
 
     @Test
     fun runCommandWithAppArgs() {
         val cmd = runCommand(testConfig(), null, listOf("--port", "8080"))
         assertEquals(
-            listOf("java", "-cp", "build/my-app.jar", "com.example.MainKt", "--port", "8080"),
+            listOf("java", "-cp", "build/classes", "com.example.MainKt", "--port", "8080"),
             cmd.args
         )
     }
@@ -40,6 +33,12 @@ class RunnerTest {
     @Test
     fun runCommandWithEmptyAppArgs() {
         val cmd = runCommand(testConfig(), null, emptyList())
-        assertEquals(listOf("java", "-cp", "build/my-app.jar", "com.example.MainKt"), cmd.args)
+        assertEquals(listOf("java", "-cp", "build/classes", "com.example.MainKt"), cmd.args)
+    }
+
+    @Test
+    fun runCommandEmptyClasspathIsIgnored() {
+        val cmd = runCommand(testConfig(), "")
+        assertEquals(listOf("java", "-cp", "build/classes", "com.example.MainKt"), cmd.args)
     }
 }

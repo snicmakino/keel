@@ -2,22 +2,21 @@ package keel.build
 
 import keel.config.KeelConfig
 
+internal const val TEST_CLASSES_DIR = "$BUILD_DIR/test-classes"
+
 data class TestBuildCommand(
     val args: List<String>,
     val outputPath: String
 )
 
-fun testJarPath(config: KeelConfig): String = "$BUILD_DIR/${config.name}-test.jar"
-
 fun testBuildCommand(
     config: KeelConfig,
-    mainJarPath: String,
+    classesDir: String,
     classpath: String? = null,
     pluginArgs: List<String> = emptyList()
 ): TestBuildCommand {
-    val outputPath = testJarPath(config)
     val cp = buildList {
-        add(mainJarPath)
+        add(classesDir)
         if (!classpath.isNullOrEmpty()) add(classpath)
     }.joinToString(":")
     val args = buildList {
@@ -29,7 +28,7 @@ fun testBuildCommand(
         add(config.jvmTarget)
         addAll(pluginArgs)
         add("-d")
-        add(outputPath)
+        add(TEST_CLASSES_DIR)
     }
-    return TestBuildCommand(args = args, outputPath = outputPath)
+    return TestBuildCommand(args = args, outputPath = TEST_CLASSES_DIR)
 }

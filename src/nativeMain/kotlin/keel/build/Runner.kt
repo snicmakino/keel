@@ -3,15 +3,12 @@ package keel.build
 import keel.config.KeelConfig
 
 data class RunCommand(
-    val args: List<String>,
-    val jarPath: String
+    val args: List<String>
 )
 
 fun runCommand(config: KeelConfig, classpath: String? = null, appArgs: List<String> = emptyList()): RunCommand {
-    val path = jarPath(config)
-    val cp = if (!classpath.isNullOrEmpty()) "$path:$classpath" else path
+    val cp = if (!classpath.isNullOrEmpty()) "$CLASSES_DIR:$classpath" else CLASSES_DIR
     return RunCommand(
-        args = listOf("java", "-cp", cp, config.main) + appArgs,
-        jarPath = path
+        args = listOf("java", "-cp", cp, config.main) + appArgs
     )
 }

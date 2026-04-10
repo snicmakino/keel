@@ -220,6 +220,65 @@ class FileSystemTest {
         }
     }
 
+    @Test
+    fun newestMtimeAllReturnsNewestFileInDirectory() {
+        val dir = "/tmp/keel_test_newest_mtime_all"
+        platform.posix.mkdir(dir, 0b111111101u)
+        writeTestFile("$dir/a.txt", "a")
+        // ext4 has 1-second mtime granularity; sleep to ensure distinct mtimes
+        platform.posix.sleep(1u)
+        writeTestFile("$dir/b.class", "b")
+        try {
+            val newest = newestMtimeAll(dir)
+            val bMtime = fileMtime("$dir/b.class")
+            assertNotNull(bMtime)
+            assertEquals(bMtime, newest)
+        } finally {
+            remove("$dir/a.txt")
+            remove("$dir/b.class")
+            platform.posix.rmdir(dir)
+        }
+    }
+
+    @Test
+    fun newestMtimeAllReturnsZeroForEmptyDirectory() {
+        val dir = "/tmp/keel_test_newest_all_empty"
+        platform.posix.mkdir(dir, 0b111111101u)
+        try {
+            assertEquals(0L, newestMtimeAll(dir))
+        } finally {
+            platform.posix.rmdir(dir)
+        }
+    }
+
+    @Test
+    fun newestMtimeAllReturnsZeroForNonExistentDirectory() {
+        assertEquals(0L, newestMtimeAll("/tmp/keel_nonexistent_dir_mtime_all"))
+    }
+
+    @Test
+    fun newestMtimeAllRecursesIntoSubdirectories() {
+        val dir = "/tmp/keel_test_newest_all_recursive"
+        val sub = "$dir/sub"
+        platform.posix.mkdir(dir, 0b111111101u)
+        platform.posix.mkdir(sub, 0b111111101u)
+        writeTestFile("$dir/a.txt", "a")
+        // ext4 has 1-second mtime granularity; sleep to ensure distinct mtimes
+        platform.posix.sleep(1u)
+        writeTestFile("$sub/b.class", "b")
+        try {
+            val newest = newestMtimeAll(dir)
+            val bMtime = fileMtime("$sub/b.class")
+            assertNotNull(bMtime)
+            assertEquals(bMtime, newest)
+        } finally {
+            remove("$dir/a.txt")
+            remove("$sub/b.class")
+            platform.posix.rmdir(sub)
+            platform.posix.rmdir(dir)
+        }
+    }
+
     private fun writeTestFile(path: String, content: String) {
         val fp = platform.posix.fopen(path, "w") ?: error("could not create test file: $path")
         if (content.isNotEmpty()) {

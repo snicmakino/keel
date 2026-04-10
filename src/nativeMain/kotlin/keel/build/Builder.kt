@@ -3,6 +3,7 @@ package keel.build
 import keel.config.KeelConfig
 
 internal const val BUILD_DIR = "build"
+internal const val CLASSES_DIR = "$BUILD_DIR/classes"
 
 internal fun jarPath(config: KeelConfig): String = "$BUILD_DIR/${config.name}.jar"
 
@@ -32,7 +33,6 @@ fun buildCommand(
     classpath: String? = null,
     pluginArgs: List<String> = emptyList()
 ): BuildCommand {
-    val outputPath = jarPath(config)
     val args = buildList {
         add("kotlinc")
         if (!classpath.isNullOrEmpty()) {
@@ -43,9 +43,16 @@ fun buildCommand(
         add("-jvm-target")
         add(config.jvmTarget)
         addAll(pluginArgs)
-        add("-include-runtime")
         add("-d")
-        add(outputPath)
+        add(CLASSES_DIR)
     }
-    return BuildCommand(args = args, outputPath = outputPath)
+    return BuildCommand(args = args, outputPath = CLASSES_DIR)
+}
+
+fun jarCommand(config: KeelConfig): BuildCommand {
+    val outputPath = jarPath(config)
+    return BuildCommand(
+        args = listOf("jar", "cf", outputPath, "-C", CLASSES_DIR, "."),
+        outputPath = outputPath
+    )
 }
