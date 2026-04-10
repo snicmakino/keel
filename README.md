@@ -60,6 +60,7 @@ keel fmt --check   Check formatting (CI mode)
 keel clean         Remove build artifacts
 keel deps tree     Show dependency tree
 keel update        Re-resolve dependencies and update lockfile
+keel toolchain install  Install kotlinc version defined in keel.toml
 keel --version     Show version
 ```
 
@@ -205,6 +206,16 @@ keel test -- --include-classname ".*IntegrationTest"
 - **Lockfile**: `keel.lock` records versions and SHA-256 hashes
 - **SHA-256 verification**: Mismatches cause errors (no silent re-download)
 - **Explicit update**: `keel update` to re-resolve and refresh hashes
+
+## Toolchain Management
+
+keel can manage its own kotlinc installation, so you don't need to install it system-wide.
+
+```sh
+keel toolchain install   # Download kotlinc version specified in keel.toml
+```
+
+Toolchains are stored under `~/.keel/toolchains/kotlinc/{version}/`. When a managed toolchain is available, keel uses it automatically; otherwise it falls back to system `kotlinc` on PATH.
 
 ## Why keel?
 
