@@ -8,7 +8,7 @@ import kotlin.system.exitProcess
 internal fun doToolchain(args: List<String>) {
     if (args.isEmpty() || args[0] != "install") {
         eprintln("usage: keel toolchain install")
-        exitProcess(EXIT_BUILD_ERROR)
+        exitProcess(EXIT_CONFIG_ERROR)
     }
     doToolchainInstall()
 }
