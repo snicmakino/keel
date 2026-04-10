@@ -75,9 +75,18 @@ target = "jvm"
 jvm_target = "17"
 main = "MainKt"
 sources = ["src"]
+resources = ["resources"]
+test_resources = ["test-resources"]
+
+[plugins]
+serialization = true
 
 [dependencies]
 "org.jetbrains.kotlinx:kotlinx-coroutines-core" = "1.9.0"
+
+[repositories]
+central = "https://repo1.maven.org/maven2"
+jitpack = "https://jitpack.io"
 ```
 
 ### Fields
@@ -92,7 +101,11 @@ sources = ["src"]
 | `main` | Entry point class | (required) |
 | `sources` | Source directories | (required) |
 | `test_sources` | Test source directories | `["test"]` |
+| `resources` | Resource directories to include in build output | `[]` |
+| `test_resources` | Test resource directories added to test classpath | `[]` |
 | `fmt_style` | ktfmt style: `"google"`, `"kotlinlang"`, `"meta"` | `"google"` |
+| `[plugins]` | Compiler plugins (`serialization`, `allopen`, `noarg`) | `{}` |
+| `[repositories]` | Maven repositories (name = URL) | Maven Central only |
 
 ### Dependencies
 
@@ -114,7 +127,41 @@ Or declare Maven coordinates directly in `[dependencies]`:
 
 Run `keel install` to resolve and download all dependencies without building.
 
-Transitive dependencies are resolved automatically via POM metadata from Maven Central. A `keel.lock` file records versions and SHA-256 hashes for reproducible builds.
+Transitive dependencies are resolved automatically via POM metadata. A `keel.lock` file records versions and SHA-256 hashes for reproducible builds.
+
+### Custom Repositories
+
+By default, keel resolves dependencies from Maven Central. To add custom repositories (e.g., JitPack), declare them in `[repositories]`:
+
+```toml
+[repositories]
+central = "https://repo1.maven.org/maven2"
+jitpack = "https://jitpack.io"
+```
+
+Repositories are tried in declaration order. When omitted, Maven Central is used.
+
+### Compiler Plugins
+
+Enable Kotlin compiler plugins in `[plugins]`:
+
+```toml
+[plugins]
+serialization = true
+```
+
+Supported plugins: `serialization`, `allopen`, `noarg`. Plugin JARs are resolved from the Kotlin compiler distribution.
+
+### Resource Files
+
+Include resource files (config files, templates, static assets) in the build output:
+
+```toml
+resources = ["resources"]
+test_resources = ["test-resources"]
+```
+
+Files in `resources` directories are copied into the build output and included in the JAR. Files in `test_resources` directories are added to the classpath during test execution. Non-existent directories are silently skipped.
 
 ### Test Dependencies
 
