@@ -1,0 +1,130 @@
+package keel.resolve
+
+import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+
+class DependencyTest {
+
+    @Test
+    fun parseValidCoordinate() {
+        val result = parseCoordinate("org.jetbrains.kotlinx:kotlinx-coroutines-core", "1.9.0")
+        val coord = assertNotNull(result.get())
+        assertEquals("org.jetbrains.kotlinx", coord.group)
+        assertEquals("kotlinx-coroutines-core", coord.artifact)
+        assertEquals("1.9.0", coord.version)
+    }
+
+    @Test
+    fun parseCoordinateWithSimpleGroup() {
+        val result = parseCoordinate("com.squareup:okhttp", "4.12.0")
+        val coord = assertNotNull(result.get())
+        assertEquals("com.squareup", coord.group)
+        assertEquals("okhttp", coord.artifact)
+        assertEquals("4.12.0", coord.version)
+    }
+
+    @Test
+    fun parseCoordinateMissingColonReturnsErr() {
+        val result = parseCoordinate("invalid-no-colon", "1.0.0")
+        assertIs<InvalidCoordinate>(result.getError())
+    }
+
+    @Test
+    fun parseCoordinateMultipleColonsReturnsErr() {
+        val result = parseCoordinate("group:artifact:extra", "1.0.0")
+        assertIs<InvalidCoordinate>(result.getError())
+    }
+
+    @Test
+    fun parseCoordinateEmptyGroupReturnsErr() {
+        val result = parseCoordinate(":artifact", "1.0.0")
+        assertIs<InvalidCoordinate>(result.getError())
+    }
+
+    @Test
+    fun parseCoordinateEmptyArtifactReturnsErr() {
+        val result = parseCoordinate("group:", "1.0.0")
+        assertIs<InvalidCoordinate>(result.getError())
+    }
+
+    @Test
+    fun buildDownloadUrlProducesCorrectMavenCentralUrl() {
+        val coord = Coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.9.0")
+        val url = buildDownloadUrl(coord)
+        assertEquals(
+            "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.jar",
+            url
+        )
+    }
+
+    @Test
+    fun buildDownloadUrlWithSingleSegmentGroup() {
+        val coord = Coordinate("junit", "junit", "4.13.2")
+        val url = buildDownloadUrl(coord)
+        assertEquals(
+            "https://repo1.maven.org/maven2/junit/junit/4.13.2/junit-4.13.2.jar",
+            url
+        )
+    }
+
+    @Test
+    fun buildCachePathProducesRelativePath() {
+        val coord = Coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.9.0")
+        val path = buildCachePath(coord)
+        assertEquals(
+            "org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.jar",
+            path
+        )
+    }
+
+    @Test
+    fun buildClasspathJoinsWithColon() {
+        val paths = listOf("/home/user/.keel/cache/a.jar", "/home/user/.keel/cache/b.jar")
+        assertEquals("/home/user/.keel/cache/a.jar:/home/user/.keel/cache/b.jar", buildClasspath(paths))
+    }
+
+    @Test
+    fun buildClasspathSingleEntry() {
+        val paths = listOf("/home/user/.keel/cache/a.jar")
+        assertEquals("/home/user/.keel/cache/a.jar", buildClasspath(paths))
+    }
+
+    @Test
+    fun buildClasspathEmptyReturnsEmpty() {
+        assertEquals("", buildClasspath(emptyList()))
+    }
+
+    @Test
+    fun buildPomDownloadUrlProducesCorrectMavenCentralUrl() {
+        val coord = Coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.9.0")
+        val url = buildPomDownloadUrl(coord)
+        assertEquals(
+            "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.pom",
+            url
+        )
+    }
+
+    @Test
+    fun buildPomDownloadUrlWithSingleSegmentGroup() {
+        val coord = Coordinate("junit", "junit", "4.13.2")
+        val url = buildPomDownloadUrl(coord)
+        assertEquals(
+            "https://repo1.maven.org/maven2/junit/junit/4.13.2/junit-4.13.2.pom",
+            url
+        )
+    }
+
+    @Test
+    fun buildPomCachePathProducesRelativePath() {
+        val coord = Coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core", "1.9.0")
+        val path = buildPomCachePath(coord)
+        assertEquals(
+            "org/jetbrains/kotlinx/kotlinx-coroutines-core/1.9.0/kotlinx-coroutines-core-1.9.0.pom",
+            path
+        )
+    }
+}

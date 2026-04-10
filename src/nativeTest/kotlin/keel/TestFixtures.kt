@@ -1,5 +1,7 @@
 package keel
 
+import keel.config.KeelConfig
+
 fun testConfig(
     name: String = "my-app",
     sources: List<String> = listOf("src"),

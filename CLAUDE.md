@@ -24,28 +24,43 @@ Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 
 ## Architecture
 
-| File | Role |
-|---|---|
-| Config.kt | Parse keel.toml, KeelConfig data class |
-| FileSystem.kt | File I/O, directory creation, stderr output |
-| Process.kt | Command execution via fork/execvp, output capture via popen |
-| Builder.kt | Build kotlinc command args (pure function) |
-| Runner.kt | Build java -jar command args (pure function) |
-| VersionCheck.kt | Parse kotlinc version string (pure function) |
-| Dependency.kt | Maven coordinate parsing, JAR/POM URL/cache path construction (pure function) |
-| Lockfile.kt | Parse/serialize keel.lock v1/v2 (JSON) |
-| Downloader.kt | HTTP file download via libcurl cinterop |
-| Sha256.kt | SHA256 hash computation |
-| PomParser.kt | POM XML parsing, property interpolation (pure function) |
-| VersionCompare.kt | Maven version comparison (pure function) |
-| Resolution.kt | Pure BFS dependency graph resolution (pure function, no I/O) |
-| TransitiveResolver.kt | I/O orchestration: POM/JAR fetching, hashing, lockfile change detection |
-| Resolver.kt | Dependency resolution entry point, delegates to TransitiveResolver |
-| TestDeps.kt | Auto-injected test dependencies based on target platform (pure function) |
-| TestBuilder.kt | Build kotlinc command for test compilation (pure function) |
-| TestRunner.kt | Build java command for test execution via JUnit Platform (pure function) |
-| Formatter.kt | Build ktfmt command args for code formatting (pure function) |
-| Main.kt | CLI entrypoint, module integration |
+| Package | File | Role |
+|---|---|---|
+| cli | Main.kt | CLI entrypoint, command dispatch |
+| cli | BuildCommands.kt | Build pipeline orchestration (check, build, run, test, clean) |
+| cli | DependencyCommands.kt | Dependency commands (init, add, install, update, tree) |
+| cli | FormatCommands.kt | Format command (keel fmt) |
+| cli | ExitCode.kt | Standardized exit code constants |
+| config | Config.kt | Parse keel.toml, KeelConfig data class |
+| config | KeelPaths.kt | ~/.keel/ path resolution |
+| config | Init.kt | Project template generation (keel.toml, Main.kt) |
+| config | Version.kt | Keel version string |
+| build | Builder.kt | Build kotlinc command args (pure function) |
+| build | BuildCache.kt | Build state tracking via mtime comparison |
+| build | Runner.kt | Build java -jar command args (pure function) |
+| build | TestBuilder.kt | Build kotlinc command for test compilation (pure function) |
+| build | TestRunner.kt | Build java command for test execution via JUnit Platform (pure function) |
+| build | TestDeps.kt | Auto-injected test dependencies based on target platform (pure function) |
+| build | Formatter.kt | Build ktfmt command args for code formatting (pure function) |
+| build | VersionCheck.kt | Parse kotlinc version string (pure function) |
+| build | Workspace.kt | Generate workspace.json / kls-classpath for IDE support |
+| resolve | Dependency.kt | Maven coordinate parsing, JAR/POM URL/cache path construction (pure function) |
+| resolve | Resolution.kt | Pure BFS dependency graph resolution (pure function, no I/O) |
+| resolve | Resolver.kt | Dependency resolution entry point, delegates to TransitiveResolver |
+| resolve | TransitiveResolver.kt | I/O orchestration: POM/JAR fetching, hashing, lockfile change detection |
+| resolve | PomParser.kt | POM XML parsing, property interpolation (pure function) |
+| resolve | GradleMetadata.kt | Gradle .module file parsing, KMP redirect detection |
+| resolve | VersionCompare.kt | Maven version comparison (pure function) |
+| resolve | Lockfile.kt | Parse/serialize keel.lock v1/v2 (JSON) |
+| resolve | Metadata.kt | Maven metadata.xml parsing, latest version extraction |
+| resolve | AddDependency.kt | TOML string manipulation to add dependencies |
+| resolve | DepsTree.kt | Dependency tree ASCII rendering |
+| infra | FileSystem.kt | File I/O, directory creation, stderr output |
+| infra | Process.kt | Command execution via fork/execvp, output capture via popen |
+| infra | Downloader.kt | HTTP file download via libcurl cinterop |
+| infra | Sha256.kt | SHA256 hash computation |
+| infra | Format.kt | Duration formatting utility |
+| tool | ToolManager.kt | External tool download and caching (ktfmt, JUnit Console Launcher) |
 
 ## Error Handling Policy
 
@@ -70,7 +85,7 @@ executeAndCapture() → Result<String, ProcessError>
 ## Coding Conventions
 
 - Follow TDD (Red → Green → Refactor)
-- Place test files in `src/nativeTest/kotlin/keel/` with `XxxTest.kt` naming
+- Place test files in `src/nativeTest/kotlin/keel/<package>/` mirroring main source structure, with `XxxTest.kt` naming
 - Pure functions (Builder, Runner, VersionCheck) don't need Result. Apply Result to side-effectful functions
 - Annotate POSIX API usage with `@OptIn(ExperimentalForeignApi::class)` at function level
 - Write all code, comments, documentation, and commit messages in English
