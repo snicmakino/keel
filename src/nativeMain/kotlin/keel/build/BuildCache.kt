@@ -11,7 +11,7 @@ internal const val BUILD_STATE_FILE = "$BUILD_DIR/.keel-state.json"
 data class BuildState(
     @SerialName("config_mtime") val configMtime: Long,
     @SerialName("sources_newest_mtime") val sourcesNewestMtime: Long,
-    @SerialName("output_mtime") val outputMtime: Long?,
+    @SerialName("classes_dir_mtime") val classesDirMtime: Long?,
     @SerialName("lockfile_mtime") val lockfileMtime: Long?,
     val classpath: String? = null
 )
@@ -20,7 +20,7 @@ fun isBuildUpToDate(current: BuildState, cached: BuildState?): Boolean {
     if (cached == null) return false
     return current.configMtime == cached.configMtime &&
         current.sourcesNewestMtime == cached.sourcesNewestMtime &&
-        current.outputMtime == cached.outputMtime &&
+        current.classesDirMtime == cached.classesDirMtime &&
         current.lockfileMtime == cached.lockfileMtime
 }
 

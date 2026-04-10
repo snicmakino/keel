@@ -5,15 +5,15 @@ data class TestRunCommand(
 )
 
 fun testRunCommand(
-    mainJarPath: String,
-    testJarPath: String,
+    classesDir: String,
+    testClassesDir: String,
     consoleLauncherPath: String,
     classpath: String? = null,
     testArgs: List<String> = emptyList()
 ): TestRunCommand {
     val cp = buildList {
-        add(mainJarPath)
-        add(testJarPath)
+        add(classesDir)
+        add(testClassesDir)
         if (!classpath.isNullOrEmpty()) add(classpath)
     }.joinToString(":")
     val args = buildList {

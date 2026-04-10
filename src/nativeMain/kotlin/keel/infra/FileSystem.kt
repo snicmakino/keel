@@ -153,6 +153,38 @@ private fun collectNewestMtime(directory: String, onFile: (Long) -> Unit) {
     }
 }
 
+/** Return the newest mtime among all files (any extension) in the given directory tree. 0 if no files found. */
+@OptIn(ExperimentalForeignApi::class)
+fun newestMtimeAll(directory: String): Long {
+    var newest = 0L
+    collectAllFileMtimes(directory) { mtime ->
+        if (mtime > newest) newest = mtime
+    }
+    return newest
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun collectAllFileMtimes(directory: String, onFile: (Long) -> Unit) {
+    if (!fileExists(directory)) return
+    val dir = opendir(directory) ?: return
+    try {
+        while (true) {
+            val entry = readdir(dir) ?: break
+            val name = entry.pointed.d_name.toKString()
+            if (name == "." || name == "..") continue
+            val childPath = "$directory/$name"
+            if (isDirectory(childPath)) {
+                collectAllFileMtimes(childPath, onFile)
+            } else {
+                val mtime = fileMtime(childPath) ?: continue
+                onFile(mtime)
+            }
+        }
+    } finally {
+        closedir(dir)
+    }
+}
+
 data class ListFilesFailed(val path: String)
 
 @OptIn(ExperimentalForeignApi::class)

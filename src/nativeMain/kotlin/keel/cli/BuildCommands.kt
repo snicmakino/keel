@@ -78,12 +78,10 @@ internal fun doBuild(): BuildResult {
     val startMark = TimeSource.Monotonic.markNow()
     val config = loadProjectConfig()
 
-    val outputPath = jarPath(config)
-
     val currentState = BuildState(
         configMtime = fileMtime(KEEL_TOML) ?: 0L,
         sourcesNewestMtime = newestMtime(config.sources),
-        outputMtime = fileMtime(outputPath),
+        classesDirMtime = if (fileExists(CLASSES_DIR)) newestMtimeAll(CLASSES_DIR) else null,
         lockfileMtime = if (fileExists(LOCK_FILE)) fileMtime(LOCK_FILE) else null
     )
     val cachedState = readFileAsString(BUILD_STATE_FILE).getOrElse { null }
@@ -98,20 +96,26 @@ internal fun doBuild(): BuildResult {
     checkVersion(config)
     val classpath = resolveDependencies(config)
     val pArgs = resolvePluginArgs(config)
-    val cmd = buildCommand(config, classpath, pArgs)
-    ensureDirectory(BUILD_DIR).getOrElse { error ->
+    val buildCmd = buildCommand(config, classpath, pArgs)
+    ensureDirectoryRecursive(CLASSES_DIR).getOrElse { error ->
         eprintln("error: could not create directory ${error.path}")
         exitProcess(EXIT_BUILD_ERROR)
     }
 
     println("compiling ${config.name}...")
-    executeCommand(cmd.args).getOrElse { error ->
+    executeCommand(buildCmd.args).getOrElse { error ->
         eprintln(formatProcessError(error, "compilation"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
+    val jarCmd = jarCommand(config)
+    executeCommand(jarCmd.args).getOrElse { error ->
+        eprintln(formatProcessError(error, "jar packaging"))
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
     val newState = currentState.copy(
-        outputMtime = fileMtime(cmd.outputPath),
+        classesDirMtime = newestMtimeAll(CLASSES_DIR),
         lockfileMtime = if (fileExists(LOCK_FILE)) fileMtime(LOCK_FILE) else null,
         classpath = classpath
     )
@@ -120,18 +124,17 @@ internal fun doBuild(): BuildResult {
     }
 
     val elapsed = startMark.elapsedNow()
-    println("built ${cmd.outputPath} in ${formatDuration(elapsed)}")
+    println("built ${jarCmd.outputPath} in ${formatDuration(elapsed)}")
     return BuildResult(config, classpath, pArgs)
 }
 
 internal fun doRun(config: KeelConfig, classpath: String?, appArgs: List<String> = emptyList()) {
-    val cmd = runCommand(config, classpath, appArgs)
-
-    if (!fileExists(cmd.jarPath)) {
-        eprintln("error: ${cmd.jarPath} not found. Run 'keel build' first.")
+    if (!fileExists(CLASSES_DIR)) {
+        eprintln("error: $CLASSES_DIR not found. Run 'keel build' first.")
         exitProcess(EXIT_BUILD_ERROR)
     }
 
+    val cmd = runCommand(config, classpath, appArgs)
     executeCommand(cmd.args).getOrElse { error ->
         when (error) {
             is ProcessError.NonZeroExit -> exitProcess(error.exitCode)
@@ -155,15 +158,14 @@ internal fun doTest(testArgs: List<String> = emptyList()) {
     val consoleLauncherPath = ensureTool(paths, CONSOLE_LAUNCHER_SPEC, EXIT_TEST_ERROR)
 
     val testConfig = config.copy(testSources = existingTestSources)
-    val mainJar = jarPath(config)
-    val testCmd = testBuildCommand(testConfig, mainJar, classpath, pArgs)
+    val testCmd = testBuildCommand(testConfig, CLASSES_DIR, classpath, pArgs)
     println("compiling tests...")
     executeCommand(testCmd.args).getOrElse { error ->
         eprintln(formatProcessError(error, "test compilation"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
-    val runCmd = testRunCommand(mainJar, testCmd.outputPath, consoleLauncherPath, classpath, testArgs)
+    val runCmd = testRunCommand(CLASSES_DIR, testCmd.outputPath, consoleLauncherPath, classpath, testArgs)
     println("running tests...")
     executeCommand(runCmd.args).getOrElse { error ->
         when (error) {
