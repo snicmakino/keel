@@ -1,6 +1,6 @@
 # keel
 
-Lightweight build tool written in Kotlin/Native (linuxX64). A Kotlin port of keel (Zig).
+Lightweight build tool written in Kotlin/Native (linuxX64).
 Reads `keel.toml`, compiles with `kotlinc`, and runs with `java -jar`.
 
 ## Build & Test
@@ -11,81 +11,15 @@ Reads `keel.toml`, compiles with `kotlinc`, and runs with `java -jar`.
 ./gradlew compileKotlinLinuxX64  # Compile only
 ```
 
-Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
+## Key Rules
 
-## Tech Stack
-
-- Kotlin 2.3.20 / Kotlin/Native (linuxX64)
-- ktoml 0.7.1: keel.toml parsing
-- kotlinx-serialization-json: keel.lock parsing
-- kotlin-result (michael-bull) 2.3.1: error handling
-- libcurl (cinterop): HTTP downloads
-- kotlincrypto sha2-256 0.2.7: SHA256 hashing
-
-## Architecture
-
-| Package | File | Role |
-|---|---|---|
-| cli | Main.kt | CLI entrypoint, command dispatch |
-| cli | BuildCommands.kt | Build pipeline orchestration (check, build, run, test, clean) |
-| cli | DependencyCommands.kt | Dependency commands (init, add, install, update, tree) |
-| cli | FormatCommands.kt | Format command (keel fmt) |
-| cli | ExitCode.kt | Standardized exit code constants |
-| config | Config.kt | Parse keel.toml, KeelConfig data class |
-| config | KeelPaths.kt | ~/.keel/ path resolution |
-| config | Init.kt | Project template generation (keel.toml, Main.kt) |
-| config | Version.kt | Keel version string |
-| build | Builder.kt | Build kotlinc command args (pure function) |
-| build | BuildCache.kt | Build state tracking via mtime comparison |
-| build | Runner.kt | Build java -jar command args (pure function) |
-| build | TestBuilder.kt | Build kotlinc command for test compilation (pure function) |
-| build | TestRunner.kt | Build java command for test execution via JUnit Platform (pure function) |
-| build | TestDeps.kt | Auto-injected test dependencies based on target platform (pure function) |
-| build | Formatter.kt | Build ktfmt command args for code formatting (pure function) |
-| build | VersionCheck.kt | Parse kotlinc version string (pure function) |
-| build | Workspace.kt | Generate workspace.json / kls-classpath for IDE support |
-| resolve | Dependency.kt | Maven coordinate parsing, JAR/POM URL/cache path construction (pure function) |
-| resolve | Resolution.kt | Pure BFS dependency graph resolution (pure function, no I/O) |
-| resolve | Resolver.kt | Dependency resolution entry point, delegates to TransitiveResolver |
-| resolve | TransitiveResolver.kt | I/O orchestration: POM/JAR fetching, hashing, lockfile change detection |
-| resolve | PomParser.kt | POM XML parsing, property interpolation (pure function) |
-| resolve | GradleMetadata.kt | Gradle .module file parsing, KMP redirect detection |
-| resolve | VersionCompare.kt | Maven version comparison (pure function) |
-| resolve | Lockfile.kt | Parse/serialize keel.lock v1/v2 (JSON) |
-| resolve | Metadata.kt | Maven metadata.xml parsing, latest version extraction |
-| resolve | AddDependency.kt | TOML string manipulation to add dependencies |
-| resolve | DepsTree.kt | Dependency tree ASCII rendering |
-| infra | FileSystem.kt | File I/O, directory creation, stderr output |
-| infra | Process.kt | Command execution via fork/execvp, output capture via popen |
-| infra | Downloader.kt | HTTP file download via libcurl cinterop |
-| infra | Sha256.kt | SHA256 hash computation |
-| infra | Format.kt | Duration formatting utility |
-| tool | ToolManager.kt | External tool download and caching (ktfmt, JUnit Console Launcher) |
-
-## Error Handling Policy
-
-**Exception throwing is prohibited.** Use kotlin-result `Result<V, E>` for error representation.
-
-- Specify only the error types a function can return as type parameters
-- Use sealed class only when a common parent error is meaningful; use individual data class for independent errors
-- Consumers use `getOrElse` + `when` to exhaustively match all variants
-
-```
-parseConfig()     → Result<KeelConfig, ConfigError>
-readFileAsString() → Result<String, OpenFailed>
-ensureDirectory()  → Result<Unit, MkdirFailed>
-executeCommand()   → Result<Int, ProcessError>
-executeAndCapture() → Result<String, ProcessError>
-```
-
-## Design References
-
-- [coursier](https://github.com/coursier/coursier) — Scala-based Maven/Ivy dependency resolver. Primary reference for transitive resolution design: state-machine resolution (Done/Missing/Continue), exclusions (MinimizedExclusions), version intervals/constraints, immutable resolution state.
-
-## Coding Conventions
-
-- Follow TDD (Red → Green → Refactor)
-- Place test files in `src/nativeTest/kotlin/keel/<package>/` mirroring main source structure, with `XxxTest.kt` naming
-- Pure functions (Builder, Runner, VersionCheck) don't need Result. Apply Result to side-effectful functions
+- **Exception throwing is prohibited** — use kotlin-result `Result<V, E>` for all error handling
+- **Follow TDD** (Red -> Green -> Refactor)
+- **Write all code, comments, documentation, and commit messages in English**
+- Place test files in `src/nativeTest/kotlin/keel/<package>/XxxTest.kt` mirroring main source structure
 - Annotate POSIX API usage with `@OptIn(ExperimentalForeignApi::class)` at function level
-- Write all code, comments, documentation, and commit messages in English
+
+## Skills
+
+- `/keel-usage` — How to use keel (commands, keel.toml configuration, dependencies)
+- `/keel-dev` — Development guide (architecture, error handling policy, testing patterns)

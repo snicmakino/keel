@@ -22,6 +22,9 @@
 workspace.json
 kls-classpath
 
+# Claude Code
+.claude/settings.local.json
+
 # Exclude zigpj directory
 zigpj/
 .takt/
