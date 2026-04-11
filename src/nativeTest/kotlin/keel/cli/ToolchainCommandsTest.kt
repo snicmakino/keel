@@ -1,12 +1,13 @@
 package keel.cli
 
+import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
 import keel.config.KeelPaths
 import keel.infra.ensureDirectoryRecursive
 import keel.infra.removeDirectoryRecursive
 import keel.infra.writeFileAsString
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -89,11 +90,10 @@ class ValidateToolchainRemoveArgsTest {
         // Given: valid kotlinc remove args
         val result = validateToolchainRemoveArgs(listOf("kotlinc", "2.1.0"))
 
-        // Then: returns valid parsed args
-        val args = assertNotNull(result.first)
+        // Then: returns Ok with parsed args
+        val args = assertNotNull(result.get())
         assertEquals("kotlinc", args.name)
         assertEquals("2.1.0", args.version)
-        assertNull(result.second)
     }
 
     @Test
@@ -101,11 +101,10 @@ class ValidateToolchainRemoveArgsTest {
         // Given: valid jdk remove args
         val result = validateToolchainRemoveArgs(listOf("jdk", "21"))
 
-        // Then: returns valid parsed args
-        val args = assertNotNull(result.first)
+        // Then: returns Ok with parsed args
+        val args = assertNotNull(result.get())
         assertEquals("jdk", args.name)
         assertEquals("21", args.version)
-        assertNull(result.second)
     }
 
     @Test
@@ -113,9 +112,9 @@ class ValidateToolchainRemoveArgsTest {
         // Given: unknown toolchain name
         val result = validateToolchainRemoveArgs(listOf("foo", "1.0"))
 
-        // Then: returns error message
-        assertNull(result.first)
-        assertEquals("error: unknown toolchain 'foo' (available: kotlinc, jdk)", result.second)
+        // Then: returns Err with message
+        assertNull(result.get())
+        assertEquals("error: unknown toolchain 'foo' (available: kotlinc, jdk)", result.getError())
     }
 
     @Test
@@ -123,9 +122,9 @@ class ValidateToolchainRemoveArgsTest {
         // Given: not enough args
         val result = validateToolchainRemoveArgs(listOf("kotlinc"))
 
-        // Then: returns usage error
-        assertNull(result.first)
-        assertEquals("usage: keel toolchain remove <name> <version>", result.second)
+        // Then: returns Err with usage message
+        assertNull(result.get())
+        assertEquals("usage: keel toolchain remove <name> <version>", result.getError())
     }
 
     @Test
@@ -133,16 +132,16 @@ class ValidateToolchainRemoveArgsTest {
         // Given: no args
         val result = validateToolchainRemoveArgs(emptyList())
 
-        // Then: returns usage error
-        assertNull(result.first)
-        assertEquals("usage: keel toolchain remove <name> <version>", result.second)
+        // Then: returns Err with usage message
+        assertNull(result.get())
+        assertEquals("usage: keel toolchain remove <name> <version>", result.getError())
     }
 }
 
 class ResolveToolchainPathForRemoveTest {
 
     @Test
-    fun kotlincInstalledReturnsPath() {
+    fun kotlincInstalledReturnsKeelPathsPath() {
         // Given: kotlinc 2.1.0 is installed
         val paths = KeelPaths("/tmp/keel_tc_remove_kotlinc")
         val binDir = "${paths.toolchainsDir}/kotlinc/2.1.0/bin"
@@ -152,15 +151,15 @@ class ResolveToolchainPathForRemoveTest {
             // When: resolving path for removal
             val result = resolveToolchainPathForRemove("kotlinc", "2.1.0", paths)
 
-            // Then: returns the toolchain directory path
-            assertEquals("${paths.toolchainsDir}/kotlinc/2.1.0", result)
+            // Then: returns the path from KeelPaths.kotlincPath()
+            assertEquals(paths.kotlincPath("2.1.0"), result)
         } finally {
             removeDirectoryRecursive(paths.home + "/.keel")
         }
     }
 
     @Test
-    fun jdkInstalledReturnsPath() {
+    fun jdkInstalledReturnsKeelPathsPath() {
         // Given: jdk 21 is installed
         val paths = KeelPaths("/tmp/keel_tc_remove_jdk")
         val binDir = "${paths.toolchainsDir}/jdk/21/bin"
@@ -170,8 +169,8 @@ class ResolveToolchainPathForRemoveTest {
             // When: resolving path for removal
             val result = resolveToolchainPathForRemove("jdk", "21", paths)
 
-            // Then: returns the toolchain directory path
-            assertEquals("${paths.toolchainsDir}/jdk/21", result)
+            // Then: returns the path from KeelPaths.jdkPath()
+            assertEquals(paths.jdkPath("21"), result)
         } finally {
             removeDirectoryRecursive(paths.home + "/.keel")
         }

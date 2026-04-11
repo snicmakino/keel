@@ -415,21 +415,21 @@ class FileSystemTest {
         }
     }
 
-    // --- listDirectoryEntries ---
+    // --- listSubdirectories ---
 
     @Test
-    fun listDirectoryEntriesReturnsSortedNames() {
+    fun listSubdirectoriesReturnsSortedNames() {
         // Given: directory with multiple subdirectories
-        val base = "/tmp/keel_list_entries_sorted"
+        val base = "/tmp/keel_list_subdirs_sorted"
         platform.posix.mkdir(base, 0b111111101u)
         platform.posix.mkdir("$base/beta", 0b111111101u)
         platform.posix.mkdir("$base/alpha", 0b111111101u)
         platform.posix.mkdir("$base/gamma", 0b111111101u)
         try {
-            // When: listing entries
-            val result = listDirectoryEntries(base)
+            // When: listing subdirectories
+            val result = listSubdirectories(base)
 
-            // Then: returns sorted entry names
+            // Then: returns sorted directory names
             assertEquals(listOf("alpha", "beta", "gamma"), result.get())
         } finally {
             platform.posix.rmdir("$base/alpha")
@@ -440,13 +440,13 @@ class FileSystemTest {
     }
 
     @Test
-    fun listDirectoryEntriesReturnsEmptyForEmptyDir() {
+    fun listSubdirectoriesReturnsEmptyForEmptyDir() {
         // Given: empty directory
-        val base = "/tmp/keel_list_entries_empty"
+        val base = "/tmp/keel_list_subdirs_empty"
         platform.posix.mkdir(base, 0b111111101u)
         try {
-            // When: listing entries
-            val result = listDirectoryEntries(base)
+            // When: listing subdirectories
+            val result = listSubdirectories(base)
 
             // Then: returns empty list
             assertEquals(emptyList(), result.get())
@@ -456,9 +456,9 @@ class FileSystemTest {
     }
 
     @Test
-    fun listDirectoryEntriesReturnsErrForNonExistentDir() {
+    fun listSubdirectoriesReturnsErrForNonExistentDir() {
         // Given: non-existent directory
-        val result = listDirectoryEntries("/tmp/keel_list_entries_nonexistent")
+        val result = listSubdirectories("/tmp/keel_list_subdirs_nonexistent")
 
         // Then: returns Err
         assertNull(result.get())
@@ -466,18 +466,18 @@ class FileSystemTest {
     }
 
     @Test
-    fun listDirectoryEntriesIncludesBothFilesAndDirs() {
+    fun listSubdirectoriesExcludesFiles() {
         // Given: directory with a file and a subdirectory
-        val base = "/tmp/keel_list_entries_mixed"
+        val base = "/tmp/keel_list_subdirs_mixed"
         platform.posix.mkdir(base, 0b111111101u)
         platform.posix.mkdir("$base/subdir", 0b111111101u)
         writeTestFile("$base/file.txt", "content")
         try {
-            // When: listing entries
-            val result = listDirectoryEntries(base)
+            // When: listing subdirectories
+            val result = listSubdirectories(base)
 
-            // Then: includes both
-            assertEquals(listOf("file.txt", "subdir"), result.get())
+            // Then: includes only subdirectories, not files
+            assertEquals(listOf("subdir"), result.get())
         } finally {
             remove("$base/file.txt")
             platform.posix.rmdir("$base/subdir")

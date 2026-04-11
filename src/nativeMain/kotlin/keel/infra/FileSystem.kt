@@ -185,7 +185,7 @@ private fun collectAllFileMtimes(directory: String, onFile: (Long) -> Unit) {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-fun listDirectoryEntries(path: String): Result<List<String>, ListFilesFailed> {
+fun listSubdirectories(path: String): Result<List<String>, ListFilesFailed> {
     val dir = opendir(path) ?: return Err(ListFilesFailed(path))
     val entries = mutableListOf<String>()
     try {
@@ -193,7 +193,9 @@ fun listDirectoryEntries(path: String): Result<List<String>, ListFilesFailed> {
             val entry = readdir(dir) ?: break
             val name = entry.pointed.d_name.toKString()
             if (name == "." || name == "..") continue
-            entries.add(name)
+            if (isDirectory("$path/$name")) {
+                entries.add(name)
+            }
         }
     } finally {
         closedir(dir)

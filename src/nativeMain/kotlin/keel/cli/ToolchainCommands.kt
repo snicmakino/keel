@@ -1,5 +1,8 @@
 package keel.cli
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
 import keel.config.KeelPaths
 import keel.config.resolveKeelPaths
@@ -37,7 +40,7 @@ private fun printToolchainUsage() {
 
 private fun doToolchainInstall() {
     val config = loadProjectConfig()
-    val paths = resolveKeelPaths(EXIT_BUILD_ERROR)
+    val paths = resolveKeelPaths(EXIT_CONFIG_ERROR)
     installKotlincToolchain(config.kotlin, paths, EXIT_BUILD_ERROR)
     if (config.jdk != null) {
         installJdkToolchain(config.jdk, paths, EXIT_BUILD_ERROR)
@@ -45,7 +48,7 @@ private fun doToolchainInstall() {
 }
 
 private fun doToolchainList() {
-    val paths = resolveKeelPaths(EXIT_BUILD_ERROR)
+    val paths = resolveKeelPaths(EXIT_CONFIG_ERROR)
     val kotlincVersions = listInstalledVersions("${paths.toolchainsDir}/kotlinc")
     val jdkVersions = listInstalledVersions("${paths.toolchainsDir}/jdk")
     println(formatToolchainList(kotlincVersions, jdkVersions))
@@ -53,7 +56,7 @@ private fun doToolchainList() {
 
 private fun listInstalledVersions(dir: String): List<String> {
     if (!fileExists(dir)) return emptyList()
-    return listDirectoryEntries(dir).getOrElse { emptyList() }
+    return listSubdirectories(dir).getOrElse { emptyList() }
 }
 
 internal fun formatToolchainList(kotlincVersions: List<String>, jdkVersions: List<String>): String {
@@ -72,30 +75,33 @@ internal fun formatToolchainList(kotlincVersions: List<String>, jdkVersions: Lis
 
 internal data class ToolchainRemoveArgs(val name: String, val version: String)
 
-internal fun validateToolchainRemoveArgs(args: List<String>): Pair<ToolchainRemoveArgs?, String?> {
+internal fun validateToolchainRemoveArgs(args: List<String>): Result<ToolchainRemoveArgs, String> {
     if (args.size < 2) {
-        return null to "usage: keel toolchain remove <name> <version>"
+        return Err("usage: keel toolchain remove <name> <version>")
     }
     val name = args[0]
     if (name !in KNOWN_TOOLCHAINS) {
-        return null to "error: unknown toolchain '$name' (available: ${KNOWN_TOOLCHAINS.joinToString(", ")})"
+        return Err("error: unknown toolchain '$name' (available: ${KNOWN_TOOLCHAINS.joinToString(", ")})")
     }
-    return ToolchainRemoveArgs(name, args[1]) to null
+    return Ok(ToolchainRemoveArgs(name, args[1]))
 }
 
 internal fun resolveToolchainPathForRemove(name: String, version: String, paths: KeelPaths): String? {
-    val dir = "${paths.toolchainsDir}/$name/$version"
+    val dir = when (name) {
+        "kotlinc" -> paths.kotlincPath(version)
+        "jdk" -> paths.jdkPath(version)
+        else -> return null
+    }
     return if (fileExists(dir)) dir else null
 }
 
 private fun doToolchainRemove(args: List<String>) {
-    val (parsed, error) = validateToolchainRemoveArgs(args)
-    if (parsed == null) {
-        eprintln(error!!)
+    val parsed = validateToolchainRemoveArgs(args).getOrElse { error ->
+        eprintln(error)
         exitProcess(EXIT_CONFIG_ERROR)
     }
 
-    val paths = resolveKeelPaths(EXIT_BUILD_ERROR)
+    val paths = resolveKeelPaths(EXIT_CONFIG_ERROR)
     val toolchainPath = resolveToolchainPathForRemove(parsed.name, parsed.version, paths)
     if (toolchainPath == null) {
         eprintln("error: ${parsed.name} ${parsed.version} is not installed")
@@ -103,7 +109,7 @@ private fun doToolchainRemove(args: List<String>) {
     }
 
     removeDirectoryRecursive(toolchainPath).getOrElse { err ->
-        eprintln("error: could not remove ${err.path}")
+        eprintln("error: could not remove ${parsed.name} ${parsed.version}: ${err.path}")
         exitProcess(EXIT_BUILD_ERROR)
     }
     println("removed ${parsed.name} ${parsed.version}")
