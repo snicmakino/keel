@@ -415,6 +415,76 @@ class FileSystemTest {
         }
     }
 
+    // --- listSubdirectories ---
+
+    @Test
+    fun listSubdirectoriesReturnsSortedNames() {
+        // Given: directory with multiple subdirectories
+        val base = "/tmp/keel_list_subdirs_sorted"
+        platform.posix.mkdir(base, 0b111111101u)
+        platform.posix.mkdir("$base/beta", 0b111111101u)
+        platform.posix.mkdir("$base/alpha", 0b111111101u)
+        platform.posix.mkdir("$base/gamma", 0b111111101u)
+        try {
+            // When: listing subdirectories
+            val result = listSubdirectories(base)
+
+            // Then: returns sorted directory names
+            assertEquals(listOf("alpha", "beta", "gamma"), result.get())
+        } finally {
+            platform.posix.rmdir("$base/alpha")
+            platform.posix.rmdir("$base/beta")
+            platform.posix.rmdir("$base/gamma")
+            platform.posix.rmdir(base)
+        }
+    }
+
+    @Test
+    fun listSubdirectoriesReturnsEmptyForEmptyDir() {
+        // Given: empty directory
+        val base = "/tmp/keel_list_subdirs_empty"
+        platform.posix.mkdir(base, 0b111111101u)
+        try {
+            // When: listing subdirectories
+            val result = listSubdirectories(base)
+
+            // Then: returns empty list
+            assertEquals(emptyList(), result.get())
+        } finally {
+            platform.posix.rmdir(base)
+        }
+    }
+
+    @Test
+    fun listSubdirectoriesReturnsErrForNonExistentDir() {
+        // Given: non-existent directory
+        val result = listSubdirectories("/tmp/keel_list_subdirs_nonexistent")
+
+        // Then: returns Err
+        assertNull(result.get())
+        assertIs<ListFilesFailed>(result.getError())
+    }
+
+    @Test
+    fun listSubdirectoriesExcludesFiles() {
+        // Given: directory with a file and a subdirectory
+        val base = "/tmp/keel_list_subdirs_mixed"
+        platform.posix.mkdir(base, 0b111111101u)
+        platform.posix.mkdir("$base/subdir", 0b111111101u)
+        writeTestFile("$base/file.txt", "content")
+        try {
+            // When: listing subdirectories
+            val result = listSubdirectories(base)
+
+            // Then: includes only subdirectories, not files
+            assertEquals(listOf("subdir"), result.get())
+        } finally {
+            remove("$base/file.txt")
+            platform.posix.rmdir("$base/subdir")
+            platform.posix.rmdir(base)
+        }
+    }
+
     private fun writeTestFile(path: String, content: String) {
         val fp = platform.posix.fopen(path, "w") ?: error("could not create test file: $path")
         if (content.isNotEmpty()) {

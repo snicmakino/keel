@@ -61,6 +61,6 @@ private fun printUsage() {
     eprintln("  tree       Show dependency tree")
     eprintln("  install    Resolve dependencies and download JARs")
     eprintln("  update     Re-resolve dependencies and update lockfile")
-    eprintln("  toolchain  Manage toolchains (e.g. keel toolchain install)")
+    eprintln("  toolchain  Manage toolchains (install, list, remove)")
     eprintln("  version    Show version information")
 }
