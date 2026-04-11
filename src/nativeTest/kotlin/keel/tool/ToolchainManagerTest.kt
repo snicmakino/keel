@@ -199,6 +199,122 @@ class ToolchainManagerTest {
         )
     }
 
+    // --- jdkMetadataUrl ---
+
+    @Test
+    fun jdkMetadataUrlContainsMajorVersion() {
+        // Given: major version 21
+        // When: building JDK metadata URL
+        val url = jdkMetadataUrl("21")
+
+        // Then: URL points to Adoptium assets API with correct filters
+        assertEquals(
+            "https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=x64&image_type=jdk&os=linux&vendor=eclipse",
+            url
+        )
+    }
+
+    @Test
+    fun jdkMetadataUrlDifferentVersion() {
+        // Given: major version 17
+        val url = jdkMetadataUrl("17")
+
+        assertEquals(
+            "https://api.adoptium.net/v3/assets/latest/17/hotspot?architecture=x64&image_type=jdk&os=linux&vendor=eclipse",
+            url
+        )
+    }
+
+    // --- parseJdkChecksum ---
+
+    @Test
+    fun parseJdkChecksumExtractsHashFromMetadataJson() {
+        // Given: Adoptium metadata API JSON response
+        val json = """
+            [{"binary":{"package":{"checksum":"ea3b9bd464d6dd253e9a7accf59f7ccd2a36e4aa69640b7251e3370caef896a4","name":"OpenJDK21U-jdk_x64_linux_hotspot_21.0.10_7.tar.gz","link":"https://example.com/jdk.tar.gz"}}}]
+        """.trimIndent()
+
+        // When: parsing the checksum
+        val result = parseJdkChecksum(json)
+
+        // Then: returns the checksum string
+        assertEquals("ea3b9bd464d6dd253e9a7accf59f7ccd2a36e4aa69640b7251e3370caef896a4", result)
+    }
+
+    @Test
+    fun parseJdkChecksumReturnsNullOnInvalidJson() {
+        // Given: invalid JSON
+        val json = "not json"
+
+        // When: parsing the checksum
+        val result = parseJdkChecksum(json)
+
+        // Then: returns null
+        assertNull(result)
+    }
+
+    @Test
+    fun parseJdkChecksumReturnsNullOnEmptyArray() {
+        // Given: empty JSON array
+        val json = "[]"
+
+        // When: parsing the checksum
+        val result = parseJdkChecksum(json)
+
+        // Then: returns null
+        assertNull(result)
+    }
+
+    // --- findSingleEntry ---
+
+    @Test
+    fun findSingleEntryReturnsTrimmedNameWhenOneEntry() {
+        // Given: ls output with a single directory name
+        val lsOutput = "jdk-21.0.2+13\n"
+
+        // When: finding the single entry
+        val result = findSingleEntry(lsOutput)
+
+        // Then: returns the trimmed directory name
+        assertEquals("jdk-21.0.2+13", result)
+    }
+
+    @Test
+    fun findSingleEntryReturnsNullWhenMultipleEntries() {
+        // Given: ls output with multiple entries
+        val lsOutput = "jdk-21.0.2+13\nextra-dir\n"
+
+        // When: finding the single entry
+        val result = findSingleEntry(lsOutput)
+
+        // Then: returns null — ambiguous
+        assertNull(result)
+    }
+
+    @Test
+    fun findSingleEntryReturnsNullWhenEmpty() {
+        // Given: empty ls output
+        val lsOutput = ""
+
+        // When: finding the single entry
+        val result = findSingleEntry(lsOutput)
+
+        // Then: returns null
+        assertNull(result)
+    }
+
+    @Test
+    fun findSingleEntryReturnsNullWhenBlank() {
+        // Given: whitespace-only ls output
+        val lsOutput = "   \n  \n"
+
+        // When: finding the single entry
+        val result = findSingleEntry(lsOutput)
+
+        // Then: returns null
+        assertNull(result)
+    }
+
     // --- resolveJavaBinPath ---
 
     @Test
