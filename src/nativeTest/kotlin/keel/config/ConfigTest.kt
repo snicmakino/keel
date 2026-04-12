@@ -163,6 +163,42 @@ class ConfigTest {
     }
 
     @Test
+    fun parseConfigWithNativeTarget() {
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "native"
+            main = "com.example.MainKt"
+            sources = ["src"]
+        """.trimIndent()
+
+        val config = assertNotNull(parseConfig(toml).get())
+        assertEquals("native", config.target)
+    }
+
+    @Test
+    fun unknownTargetReturnsErr() {
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "wasm"
+            main = "com.example.MainKt"
+            sources = ["src"]
+        """.trimIndent()
+
+        val result = parseConfig(toml)
+
+        assertNull(result.get())
+        val error = assertIs<ConfigError.ParseFailed>(result.getError())
+        // message should mention valid targets
+        kotlin.test.assertTrue(error.message.contains("target"))
+        kotlin.test.assertTrue(error.message.contains("jvm"))
+        kotlin.test.assertTrue(error.message.contains("native"))
+    }
+
+    @Test
     fun unknownFieldsAreIgnored() {
         val toml = """
             name = "my-app"

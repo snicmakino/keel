@@ -4,6 +4,7 @@ import keel.testConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class BuilderTest {
 
@@ -329,6 +330,100 @@ class BuilderTest {
 
         // Then: falls back to system "jar"
         assertEquals("jar", cmd.args.first())
+    }
+
+    // --- nativeBuildCommand ---
+
+    @Test
+    fun nativeBuildCommandProducesProgramKexe() {
+        val cmd = nativeBuildCommand(testConfig(target = "native"))
+
+        assertEquals(
+            listOf("konanc", "src", "-p", "program", "-e", "com.example.main", "-o", "build/my-app"),
+            cmd.args
+        )
+        assertEquals("build/my-app.kexe", cmd.outputPath)
+    }
+
+    @Test
+    fun nativeBuildCommandMultipleSources() {
+        val cmd = nativeBuildCommand(testConfig(sources = listOf("src", "generated"), target = "native"))
+
+        assertEquals(
+            listOf("konanc", "src", "generated", "-p", "program", "-e", "com.example.main", "-o", "build/my-app"),
+            cmd.args
+        )
+    }
+
+    @Test
+    fun nativeBuildCommandWithProjectName() {
+        val cmd = nativeBuildCommand(testConfig(name = "hello", target = "native"))
+
+        assertEquals("build/hello.kexe", cmd.outputPath)
+        assertEquals(
+            listOf("konanc", "src", "-p", "program", "-e", "com.example.main", "-o", "build/hello"),
+            cmd.args
+        )
+    }
+
+    @Test
+    fun nativeBuildCommandWithManagedKonancPath() {
+        val managedKonanc = "/home/user/.keel/toolchains/konanc/2.1.0/bin/konanc"
+        val cmd = nativeBuildCommand(testConfig(target = "native"), konancPath = managedKonanc)
+
+        assertEquals(managedKonanc, cmd.args.first())
+    }
+
+    @Test
+    fun nativeBuildCommandWithPluginArgs() {
+        val cmd = nativeBuildCommand(
+            testConfig(target = "native"),
+            pluginArgs = listOf("-Xplugin=foo.jar")
+        )
+
+        assertEquals(
+            listOf("konanc", "src", "-p", "program", "-e", "com.example.main", "-o", "build/my-app", "-Xplugin=foo.jar"),
+            cmd.args
+        )
+    }
+
+    @Test
+    fun nativeEntryPointStripsClassNameAndAppendsMain() {
+        assertEquals("com.example.main", nativeEntryPoint(testConfig()))
+    }
+
+    @Test
+    fun nativeEntryPointRootPackage() {
+        val config = testConfig().copy(main = "MainKt")
+        assertEquals("main", nativeEntryPoint(config))
+    }
+
+    @Test
+    fun nativeEntryPointDeepPackage() {
+        val config = testConfig().copy(main = "foo.bar.baz.AppKt")
+        assertEquals("foo.bar.baz.main", nativeEntryPoint(config))
+    }
+
+    // --- needsNativeEntryPointWarning ---
+
+    @Test
+    fun needsNativeEntryPointWarningFalseForKtSuffix() {
+        assertFalse(needsNativeEntryPointWarning(testConfig()))
+    }
+
+    @Test
+    fun needsNativeEntryPointWarningFalseForRootKtSuffix() {
+        assertFalse(needsNativeEntryPointWarning(testConfig().copy(main = "MainKt")))
+    }
+
+    @Test
+    fun needsNativeEntryPointWarningTrueForNonKtClass() {
+        assertTrue(needsNativeEntryPointWarning(testConfig().copy(main = "com.example.App")))
+    }
+
+    @Test
+    fun needsNativeEntryPointWarningTrueForRootNonKt() {
+        assertTrue(needsNativeEntryPointWarning(testConfig().copy(main = "Main")))
     }
 
     @Test

@@ -82,6 +82,26 @@ class RunnerTest {
         )
     }
 
+    // --- nativeRunCommand ---
+
+    @Test
+    fun nativeRunCommandExecutesKexeBinary() {
+        val cmd = nativeRunCommand(testConfig(target = "native"))
+        assertEquals(listOf("build/my-app.kexe"), cmd.args)
+    }
+
+    @Test
+    fun nativeRunCommandAppendsAppArgs() {
+        val cmd = nativeRunCommand(testConfig(target = "native"), listOf("--port", "8080"))
+        assertEquals(listOf("build/my-app.kexe", "--port", "8080"), cmd.args)
+    }
+
+    @Test
+    fun nativeRunCommandUsesProjectName() {
+        val cmd = nativeRunCommand(testConfig(name = "hello", target = "native"))
+        assertEquals(listOf("build/hello.kexe"), cmd.args)
+    }
+
     @Test
     fun runCommandWithManagedJavaAndAppArgs() {
         // Given: managed java + app arguments

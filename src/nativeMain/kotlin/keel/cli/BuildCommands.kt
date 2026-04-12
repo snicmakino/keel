@@ -37,6 +37,13 @@ internal fun loadProjectConfig(): KeelConfig {
 internal fun doCheck() {
     val startMark = TimeSource.Monotonic.markNow()
     val config = loadProjectConfig()
+    // For native target, check is equivalent to a full build (konanc has no
+    // syntax-only mode). Delegate to doBuild and discard its BuildResult —
+    // check has no further use for it.
+    if (config.target == "native") {
+        doBuild()
+        return
+    }
     val paths = resolveKeelPaths(EXIT_BUILD_ERROR)
     val managedKotlincBin = ensureKotlincBin(config.kotlin, paths, EXIT_BUILD_ERROR)
 
@@ -68,6 +75,10 @@ internal fun doClean() {
 internal fun doBuild(): BuildResult {
     val startMark = TimeSource.Monotonic.markNow()
     val config = loadProjectConfig()
+
+    if (config.target == "native") {
+        return doNativeBuild(config)
+    }
 
     val currentState = BuildState(
         configMtime = fileMtime(KEEL_TOML) ?: 0L,
@@ -131,7 +142,82 @@ internal fun doBuild(): BuildResult {
     return BuildResult(config, classpath, pArgs, managedJavaBin)
 }
 
+private fun doNativeBuild(config: KeelConfig): BuildResult {
+    val startMark = TimeSource.Monotonic.markNow()
+
+    if (needsNativeEntryPointWarning(config)) {
+        eprintln(
+            "warning: main = \"${config.main}\" does not end with 'Kt'; " +
+                "native build assumes a top-level 'fun main' in package " +
+                "'${nativeEntryPoint(config).substringBeforeLast('.', "")}' " +
+                "(derived entry point: ${nativeEntryPoint(config)})"
+        )
+    }
+
+    val paths = resolveKeelPaths(EXIT_BUILD_ERROR)
+    val managedKonancBin = ensureKonancBin(config.kotlin, paths, EXIT_BUILD_ERROR)
+
+    val kexePath = outputKexePath(config)
+    val currentState = BuildState(
+        configMtime = fileMtime(KEEL_TOML) ?: 0L,
+        sourcesNewestMtime = newestMtime(config.sources),
+        classesDirMtime = if (fileExists(kexePath)) fileMtime(kexePath) else null,
+        lockfileMtime = null,
+        resourcesNewestMtime = null
+    )
+    val cachedState = readFileAsString(BUILD_STATE_FILE).getOrElse { null }
+        ?.let { parseBuildState(it) }
+
+    if (isBuildUpToDate(current = currentState, cached = cachedState)) {
+        val elapsed = startMark.elapsedNow()
+        println("${config.name} is up to date (${formatDuration(elapsed)})")
+        return BuildResult(config, classpath = null, pluginArgs = emptyList(), javaPath = null)
+    }
+
+    ensureDirectoryRecursive(BUILD_DIR).getOrElse { error ->
+        eprintln("error: could not create directory ${error.path}")
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
+    val buildCmd = nativeBuildCommand(config, konancPath = managedKonancBin)
+    println("compiling ${config.name} (native)...")
+    executeCommand(buildCmd.args).getOrElse { error ->
+        eprintln(formatProcessError(error, "compilation"))
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
+    if (!fileExists(kexePath)) {
+        eprintln("error: $kexePath not produced by konanc")
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
+    val newState = currentState.copy(classesDirMtime = fileMtime(kexePath))
+    writeFileAsString(BUILD_STATE_FILE, serializeBuildState(newState)).getOrElse {
+        eprintln("warning: could not write build state file")
+    }
+
+    val elapsed = startMark.elapsedNow()
+    println("built $kexePath in ${formatDuration(elapsed)}")
+    return BuildResult(config, classpath = null, pluginArgs = emptyList(), javaPath = null)
+}
+
 internal fun doRun(config: KeelConfig, classpath: String?, appArgs: List<String> = emptyList(), javaPath: String? = null) {
+    if (config.target == "native") {
+        val kexePath = outputKexePath(config)
+        if (!fileExists(kexePath)) {
+            eprintln("error: $kexePath not found. Run 'keel build' first.")
+            exitProcess(EXIT_BUILD_ERROR)
+        }
+        val cmd = nativeRunCommand(config, appArgs)
+        executeCommand(cmd.args).getOrElse { error ->
+            when (error) {
+                is ProcessError.NonZeroExit -> exitProcess(error.exitCode)
+                else -> exitProcess(EXIT_BUILD_ERROR)
+            }
+        }
+        return
+    }
+
     if (!fileExists(CLASSES_DIR)) {
         eprintln("error: $CLASSES_DIR not found. Run 'keel build' first.")
         exitProcess(EXIT_BUILD_ERROR)
@@ -147,7 +233,15 @@ internal fun doRun(config: KeelConfig, classpath: String?, appArgs: List<String>
 }
 
 internal fun doTest(testArgs: List<String> = emptyList()) {
-    val (config, classpath, pArgs, javaPath) = doBuild()
+    // Load the config once up front to fail fast on unsupported targets
+    // before entering doBuild. doBuild will load it again for the jvm path;
+    // this is the cost of keeping the native guard here.
+    val config = loadProjectConfig()
+    if (config.target == "native") {
+        eprintln("error: 'keel test' is not yet supported for target = \"native\" (tracked in #16)")
+        exitProcess(EXIT_TEST_ERROR)
+    }
+    val (_, classpath, pArgs, javaPath) = doBuild()
 
     val existingTestSources = config.testSources.filter { fileExists(it) }
     if (existingTestSources.isEmpty()) {
