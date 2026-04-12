@@ -157,6 +157,8 @@ private fun doNativeBuild(config: KeelConfig): BuildResult {
     val paths = resolveKeelPaths(EXIT_BUILD_ERROR)
     val managedKonancBin = ensureKonancBin(config.kotlin, paths, EXIT_BUILD_ERROR)
 
+    val klibs = resolveNativeDependencies(config, paths)
+
     val kexePath = outputKexePath(config)
     val currentState = BuildState(
         configMtime = fileMtime(KEEL_TOML) ?: 0L,
@@ -179,7 +181,7 @@ private fun doNativeBuild(config: KeelConfig): BuildResult {
         exitProcess(EXIT_BUILD_ERROR)
     }
 
-    val buildCmd = nativeBuildCommand(config, konancPath = managedKonancBin)
+    val buildCmd = nativeBuildCommand(config, konancPath = managedKonancBin, klibs = klibs)
     println("compiling ${config.name} (native)...")
     executeCommand(buildCmd.args).getOrElse { error ->
         eprintln(formatProcessError(error, "compilation"))
@@ -199,6 +201,22 @@ private fun doNativeBuild(config: KeelConfig): BuildResult {
     val elapsed = startMark.elapsedNow()
     println("built $kexePath in ${formatDuration(elapsed)}")
     return BuildResult(config, classpath = null, pluginArgs = emptyList(), javaPath = null)
+}
+
+/**
+ * Resolves direct + transitive Kotlin/Native dependencies and returns their
+ * on-disk `.klib` paths. Unlike [resolveDependencies] for jvm, this does not
+ * read or write `keel.lock` (lockfile support for native lands later).
+ */
+internal fun resolveNativeDependencies(config: KeelConfig, paths: KeelPaths): List<String> {
+    if (config.dependencies.isEmpty()) return emptyList()
+
+    println("resolving native dependencies...")
+    val result = resolve(config, existingLock = null, paths.cacheBase, createResolverDeps()).getOrElse { error ->
+        eprintln(formatResolveError(error))
+        exitProcess(EXIT_DEPENDENCY_ERROR)
+    }
+    return result.deps.map { it.cachePath }
 }
 
 internal fun doRun(config: KeelConfig, classpath: String?, appArgs: List<String> = emptyList(), javaPath: String? = null) {

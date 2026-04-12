@@ -142,6 +142,21 @@ fun parseNativeArtifact(moduleJson: String, nativeTarget: String): NativeArtifac
     return null
 }
 
+/**
+ * Returns true when the JSON decodes as a well-formed Gradle Module Metadata
+ * document (v1.1 schema, the subset keel cares about). Use this to distinguish
+ * "JSON is broken" from "JSON is valid but no variant matches our target",
+ * since [parseNativeRedirect] and [parseNativeArtifact] both return null in
+ * both cases.
+ */
+internal fun isValidGradleModuleJson(moduleJson: String): Boolean =
+    try {
+        lenientJson.decodeFromString<GradleModuleMetadata>(moduleJson)
+        true
+    } catch (_: Exception) {
+        false
+    }
+
 private fun matchesNativeVariant(attrs: Map<String, String>, nativeTarget: String): Boolean =
     attrs["org.jetbrains.kotlin.platform.type"] == "native" &&
         attrs["org.jetbrains.kotlin.native.target"] == nativeTarget &&

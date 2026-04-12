@@ -388,6 +388,48 @@ class BuilderTest {
     }
 
     @Test
+    fun nativeBuildCommandWithSingleKlib() {
+        val cmd = nativeBuildCommand(
+            testConfig(target = "native"),
+            klibs = listOf("/cache/lib.klib")
+        )
+
+        assertEquals(
+            listOf("konanc", "src", "-p", "program", "-e", "com.example.main", "-l", "/cache/lib.klib", "-o", "build/my-app"),
+            cmd.args
+        )
+    }
+
+    @Test
+    fun nativeBuildCommandWithMultipleKlibsRepeatsLFlag() {
+        // -library is single-argument per library: NOT colon/comma-joined.
+        val cmd = nativeBuildCommand(
+            testConfig(target = "native"),
+            klibs = listOf("/cache/a.klib", "/cache/b.klib", "/cache/c.klib")
+        )
+
+        assertEquals(
+            listOf(
+                "konanc", "src",
+                "-p", "program",
+                "-e", "com.example.main",
+                "-l", "/cache/a.klib",
+                "-l", "/cache/b.klib",
+                "-l", "/cache/c.klib",
+                "-o", "build/my-app"
+            ),
+            cmd.args
+        )
+    }
+
+    @Test
+    fun nativeBuildCommandEmptyKlibsOmitsLibraryFlag() {
+        val cmd = nativeBuildCommand(testConfig(target = "native"), klibs = emptyList())
+
+        assertFalse(cmd.args.contains("-l"))
+    }
+
+    @Test
     fun nativeEntryPointStripsClassNameAndAppendsMain() {
         assertEquals("com.example.main", nativeEntryPoint(testConfig()))
     }
