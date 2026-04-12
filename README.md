@@ -248,6 +248,13 @@ kolt aims to be what `go build` is to Go or `cargo build` is to Rust — a fast,
 
 This project includes [Claude Code](https://claude.ai/code) skills. If you use Claude Code, the `/kolt-usage` skill provides interactive help with kolt commands, configuration, and dependency management. You can also [read it directly](.claude/skills/kolt-usage/SKILL.md) as a reference.
 
+## Name
+
+**kolt** = **Kot**lin + bo**lt** — fast, lightweight Kotlin tooling.
+
+> Previously named `keel`. Renamed in v0.9.0 to avoid collision with
+> [keel.sh](https://keel.sh) and [Spinnaker keel](https://github.com/spinnaker/keel).
+
 ## License
 
 MIT
