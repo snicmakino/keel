@@ -50,4 +50,22 @@ class ResolveErrorFormatTest {
         val error = ResolveError.DirectoryCreateFailed("/cache/dir")
         assertEquals("error: could not create directory /cache/dir", formatResolveError(error))
     }
+
+    @Test
+    fun noNativeVariantFormat() {
+        val error = ResolveError.NoNativeVariant("com.example:lib", "linux_x64")
+        assertEquals(
+            "error: com.example:lib has no Kotlin/Native variant for target 'linux_x64'",
+            formatResolveError(error)
+        )
+    }
+
+    @Test
+    fun metadataFetchFailedFormat() {
+        val error = ResolveError.MetadataFetchFailed("com.example:lib")
+        assertEquals(
+            "error: failed to fetch or parse Gradle module metadata for com.example:lib",
+            formatResolveError(error)
+        )
+    }
 }

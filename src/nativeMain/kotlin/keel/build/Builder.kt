@@ -85,7 +85,8 @@ fun buildCommand(
 fun nativeBuildCommand(
     config: KeelConfig,
     pluginArgs: List<String> = emptyList(),
-    konancPath: String? = null
+    konancPath: String? = null,
+    klibs: List<String> = emptyList()
 ): BuildCommand {
     val outputPath = outputKexePath(config)
     // konanc -o takes the path without the .kexe extension
@@ -97,6 +98,11 @@ fun nativeBuildCommand(
         add("program")
         add("-e")
         add(nativeEntryPoint(config))
+        // -library / -l takes one library per flag; do not join with colons.
+        for (klib in klibs) {
+            add("-l")
+            add(klib)
+        }
         add("-o")
         add(outputBase)
         addAll(pluginArgs)
