@@ -18,6 +18,7 @@ sealed class ResolveError {
     data class HashComputeFailed(val groupArtifact: String, val error: Sha256Error) : ResolveError()
     data class DirectoryCreateFailed(val path: String) : ResolveError()
     data class NoNativeVariant(val groupArtifact: String, val nativeTarget: String) : ResolveError()
+    data class MetadataParseFailed(val groupArtifact: String) : ResolveError()
     data class MetadataFetchFailed(val groupArtifact: String) : ResolveError()
 }
 
@@ -33,8 +34,10 @@ fun formatResolveError(error: ResolveError): String = when (error) {
     is ResolveError.DirectoryCreateFailed -> "error: could not create directory ${error.path}"
     is ResolveError.NoNativeVariant ->
         "error: ${error.groupArtifact} has no Kotlin/Native variant for target '${error.nativeTarget}'"
+    is ResolveError.MetadataParseFailed ->
+        "error: failed to parse Gradle module metadata for ${error.groupArtifact}"
     is ResolveError.MetadataFetchFailed ->
-        "error: failed to fetch or parse Gradle module metadata for ${error.groupArtifact}"
+        "error: failed to read Gradle module metadata for ${error.groupArtifact}"
 }
 
 data class ResolvedDep(

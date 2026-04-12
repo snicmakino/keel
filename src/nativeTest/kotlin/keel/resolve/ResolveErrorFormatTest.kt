@@ -61,10 +61,19 @@ class ResolveErrorFormatTest {
     }
 
     @Test
+    fun metadataParseFailedFormat() {
+        val error = ResolveError.MetadataParseFailed("com.example:lib")
+        assertEquals(
+            "error: failed to parse Gradle module metadata for com.example:lib",
+            formatResolveError(error)
+        )
+    }
+
+    @Test
     fun metadataFetchFailedFormat() {
         val error = ResolveError.MetadataFetchFailed("com.example:lib")
         assertEquals(
-            "error: failed to fetch or parse Gradle module metadata for com.example:lib",
+            "error: failed to read Gradle module metadata for com.example:lib",
             formatResolveError(error)
         )
     }

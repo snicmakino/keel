@@ -341,7 +341,9 @@ class NativeResolverTest {
     }
 
     @Test
-    fun failsOnMetadataParseError() {
+    fun failsOnInvalidJsonWithMetadataParseFailed() {
+        // Broken JSON must not surface as NoNativeVariant — the user would
+        // mistake it for "this library has no linux_x64 build".
         val config = testConfig(target = "native").copy(
             dependencies = mapOf("com.example:lib" to "1.0.0")
         )
@@ -353,8 +355,7 @@ class NativeResolverTest {
         )
 
         val result = resolveNative(config, "/cache", deps)
-        val error = assertIs<ResolveError.NoNativeVariant>(result.getError())
-        // Invalid JSON surfaces as NoNativeVariant because parseNativeRedirect returns null
+        val error = assertIs<ResolveError.MetadataParseFailed>(result.getError())
         assertEquals("com.example:lib", error.groupArtifact)
     }
 

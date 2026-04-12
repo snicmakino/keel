@@ -54,10 +54,6 @@ fun resolveNative(
         }
     }
 
-    val directKeys = config.dependencies.keys
-        .filterNot { isKotlinStdlib(it) }
-        .toSet()
-
     // resolvedVersions: groupArtifact -> (version, isDirect)
     val resolvedVersions = mutableMapOf<String, Pair<String, Boolean>>()
     val queue = ArrayDeque<Pair<String, String>>()
@@ -109,10 +105,9 @@ fun resolveNative(
     // BFS visits every version that ends up in resolvedVersions.
     val resolvedDeps = mutableListOf<ResolvedDep>()
     for ((groupArtifact, versionAndDirect) in resolvedVersions) {
-        val (version, _) = versionAndDirect
-        val isDirect = groupArtifact in directKeys
+        val (version, isDirect) = versionAndDirect
         val resolved = processed["$groupArtifact:$version"]
-            ?: return Err(ResolveError.MetadataFetchFailed(groupArtifact))
+            ?: return Err(ResolveError.MetadataParseFailed(groupArtifact))
 
         val targetCoord = Coordinate(
             resolved.redirect.group,
@@ -181,6 +176,9 @@ private fun fetchNativeMetadata(
         deps = deps
     ).getOrElse { return Err(it) }
 
+    if (!isValidGradleModuleJson(rootJson)) {
+        return Err(ResolveError.MetadataParseFailed(groupArtifact))
+    }
     val redirect = parseNativeRedirect(rootJson, nativeTarget)
         ?: return Err(ResolveError.NoNativeVariant(groupArtifact, nativeTarget))
 
@@ -194,8 +192,11 @@ private fun fetchNativeMetadata(
         deps = deps
     ).getOrElse { return Err(it) }
 
+    if (!isValidGradleModuleJson(targetJson)) {
+        return Err(ResolveError.MetadataParseFailed(groupArtifact))
+    }
     val artifact = parseNativeArtifact(targetJson, nativeTarget)
-        ?: return Err(ResolveError.MetadataFetchFailed(groupArtifact))
+        ?: return Err(ResolveError.MetadataParseFailed(groupArtifact))
 
     return Ok(NativeResolved(redirect, artifact))
 }
