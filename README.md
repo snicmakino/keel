@@ -1,6 +1,6 @@
 # kolt
 
-> v0.8.0 — Early-stage project. Expect breaking changes.
+> v0.9.0 — Early-stage project. Expect breaking changes.
 
 A lightweight build tool for Kotlin. Compiles with `kotlinc` directly — no Gradle, no JVM startup tax.
 
