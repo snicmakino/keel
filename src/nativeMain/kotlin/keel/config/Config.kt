@@ -11,6 +11,8 @@ import kotlinx.serialization.SerializationException
 
 const val MAVEN_CENTRAL_BASE = "https://repo1.maven.org/maven2"
 
+val VALID_TARGETS = setOf("jvm", "native")
+
 sealed class ConfigError {
     data class ParseFailed(val message: String) : ConfigError()
 }
@@ -42,6 +44,11 @@ private val toml = Toml(
 fun parseConfig(tomlString: String): Result<KeelConfig, ConfigError> {
     return try {
         val config = toml.decodeFromString(KeelConfig.serializer(), tomlString)
+        if (config.target !in VALID_TARGETS) {
+            return Err(ConfigError.ParseFailed(
+                "invalid target '${config.target}' (valid targets: ${VALID_TARGETS.joinToString(", ")})"
+            ))
+        }
         // ktoml preserves quotes in map keys; strip them
         val cleanedDeps = config.dependencies.mapKeys { (key, _) -> key.removeSurrounding("\"") }
         val cleanedTestDeps = config.testDependencies.mapKeys { (key, _) -> key.removeSurrounding("\"") }

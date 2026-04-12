@@ -17,3 +17,8 @@ fun runCommand(
         args = listOf(javaPath ?: "java", "-cp", cp, config.main) + appArgs
     )
 }
+
+fun nativeRunCommand(
+    config: KeelConfig,
+    appArgs: List<String> = emptyList()
+): RunCommand = RunCommand(args = listOf(outputKexePath(config)) + appArgs)

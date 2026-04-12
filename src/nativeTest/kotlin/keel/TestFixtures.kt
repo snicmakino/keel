@@ -12,12 +12,13 @@ fun testConfig(
     testDependencies: Map<String, String> = emptyMap(),
     plugins: Map<String, Boolean> = emptyMap(),
     repositories: Map<String, String> = mapOf("central" to MAVEN_CENTRAL_BASE),
-    jdk: String? = null
+    jdk: String? = null,
+    target: String = "jvm"
 ) = KeelConfig(
     name = name,
     version = "0.1.0",
     kotlin = "2.1.0",
-    target = "jvm",
+    target = target,
     jvmTarget = jvmTarget,
     main = "com.example.MainKt",
     sources = sources,
