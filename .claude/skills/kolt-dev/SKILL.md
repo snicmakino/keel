@@ -1,10 +1,10 @@
 ---
-name: keel-dev
-description: Development guide for contributing to keel. Use when working on keel's source code, architecture, error handling, testing patterns, or dependency resolution internals.
+name: kolt-dev
+description: Development guide for contributing to kolt. Use when working on kolt's source code, architecture, error handling, testing patterns, or dependency resolution internals.
 argument-hint: "[topic]"
 ---
 
-# Keel Development Guide
+# Kolt Development Guide
 
 ## Build & Test
 
@@ -14,13 +14,13 @@ argument-hint: "[topic]"
 ./gradlew compileKotlinLinuxX64  # Compile only
 ```
 
-Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
+Binary: `build/bin/linuxX64/debugExecutable/kolt.kexe`
 
 ## Tech Stack
 
 - Kotlin 2.3.20 / Kotlin/Native (linuxX64)
-- ktoml 0.7.1: keel.toml parsing
-- kotlinx-serialization-json: keel.lock parsing
+- ktoml 0.7.1: kolt.toml parsing
+- kotlinx-serialization-json: kolt.lock parsing
 - kotlin-result (michael-bull) 2.3.1: error handling
 - libcurl (cinterop): HTTP downloads
 - kotlincrypto sha2-256 0.2.7: SHA256 hashing
@@ -33,13 +33,13 @@ Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 | cli | BuildCommands.kt | Build pipeline orchestration (check, build, run, test, clean) |
 | cli | DependencyCommands.kt | Dependency commands (init, add, install, update, tree) |
 | cli | ToolchainCommands.kt | Toolchain management commands (install) |
-| cli | FormatCommands.kt | Format command (keel fmt) |
+| cli | FormatCommands.kt | Format command (kolt fmt) |
 | cli | PluginSupport.kt | Compiler plugin argument resolution |
 | cli | ExitCode.kt | Standardized exit code constants |
-| config | Config.kt | Parse keel.toml, KeelConfig data class |
-| config | KeelPaths.kt | ~/.keel/ path resolution (cache, tools, toolchains) |
-| config | Init.kt | Project template generation (keel.toml, Main.kt) |
-| config | Version.kt | Keel version string |
+| config | Config.kt | Parse kolt.toml, KoltConfig data class |
+| config | KoltPaths.kt | ~/.kolt/ path resolution (cache, tools, toolchains) |
+| config | Init.kt | Project template generation (kolt.toml, Main.kt) |
+| config | Version.kt | Kolt version string |
 | build | Builder.kt | Build kotlinc command args (pure function) |
 | build | BuildCache.kt | Build state tracking via mtime comparison |
 | build | Runner.kt | Build java -jar command args (pure function) |
@@ -55,7 +55,7 @@ Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 | resolve | PomParser.kt | POM XML parsing, property interpolation (pure function) |
 | resolve | GradleMetadata.kt | Gradle .module file parsing, KMP redirect detection |
 | resolve | VersionCompare.kt | Maven version comparison (pure function) |
-| resolve | Lockfile.kt | Parse/serialize keel.lock v1/v2 (JSON) |
+| resolve | Lockfile.kt | Parse/serialize kolt.lock v1/v2 (JSON) |
 | resolve | Metadata.kt | Maven metadata.xml parsing, latest version extraction |
 | resolve | AddDependency.kt | TOML string manipulation to add dependencies |
 | resolve | DepsTree.kt | Dependency tree ASCII rendering |
@@ -77,7 +77,7 @@ Binary: `build/bin/linuxX64/debugExecutable/keel.kexe`
 - Pure functions (Builder, Runner) don't need Result — apply Result to side-effectful functions
 
 ```
-parseConfig()       -> Result<KeelConfig, ConfigError>
+parseConfig()       -> Result<KoltConfig, ConfigError>
 readFileAsString()  -> Result<String, OpenFailed>
 ensureDirectory()   -> Result<Unit, MkdirFailed>
 executeCommand()    -> Result<Int, ProcessError>
@@ -87,7 +87,7 @@ executeAndCapture() -> Result<String, ProcessError>
 ## Testing Conventions
 
 - Follow TDD (Red -> Green -> Refactor)
-- Place test files in `src/nativeTest/kotlin/keel/<package>/` mirroring main source structure
+- Place test files in `src/nativeTest/kotlin/kolt/<package>/` mirroring main source structure
 - Naming: `XxxTest.kt` for the test file corresponding to `Xxx.kt`
 - Use `kotlin.test` assertions
 - Pure functions are straightforward to test (most of build/ and resolve/ packages)
