@@ -219,6 +219,30 @@ internal fun doTree() {
 
     val paths = resolveKoltPaths(EXIT_DEPENDENCY_ERROR)
 
+    if (config.target == "native") {
+        // Native target: walk Gradle Module Metadata, not POMs. The rendered
+        // graph mirrors what NativeResolver actually links (redirected
+        // -linuxx64 names, kotlin-stdlib skipped per ADR 0011). Native builds
+        // do not auto-inject kotlin.test into test dependencies — it's
+        // provided by the konanc stdlib — so only regular deps are shown.
+        val nativeLookup = createNativeLookup(
+            config.repositories.values.toList(),
+            paths.cacheBase,
+            createResolverDeps()
+        )
+        if (config.dependencies.isNotEmpty()) {
+            val tree = buildNativeDependencyTree(config.dependencies, nativeLookup)
+            println(formatDependencyTree(tree))
+        }
+        if (config.testDependencies.isNotEmpty()) {
+            if (config.dependencies.isNotEmpty()) println()
+            println("test dependencies:")
+            val testTree = buildNativeDependencyTree(config.testDependencies, nativeLookup)
+            println(formatDependencyTree(testTree))
+        }
+        return
+    }
+
     val pomLookup = createPomLookup(config.repositories.values.toList(), paths.cacheBase, createResolverDeps())
     if (config.dependencies.isNotEmpty()) {
         val tree = buildDependencyTree(config.dependencies, pomLookup)
