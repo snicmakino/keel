@@ -16,8 +16,28 @@ import platform.posix.getpid
 
 // E2E smoke test: exercises the full cinterop → konanc → kexe pipeline against
 // a real libcurl fixture. Requires the managed konanc toolchain (2.1.0) and
-// libcurl headers (/usr/include/x86_64-linux-gnu/curl/curl.h) to be present.
+// libcurl headers (curl/curl.h) to be present at one of several well-known
+// locations. Skips when either prerequisite is missing.
 class CinteropSmokeTest {
+
+    // Candidate include directories that may contain curl/curl.h. Covers:
+    // - Debian/Ubuntu multiarch (/usr/include/x86_64-linux-gnu)
+    // - Default /usr/include (Fedora/Arch/Alpine and most other Linux)
+    // - /usr/local/include (source/manual installs)
+    private val curlIncludeCandidates = listOf(
+        "/usr/include/x86_64-linux-gnu",
+        "/usr/include",
+        "/usr/local/include",
+    )
+
+    // Candidate library directories that may contain libcurl.so. Matches the
+    // same host layouts as the include candidates above.
+    private val curlLibCandidates = listOf(
+        "/usr/lib/x86_64-linux-gnu",
+        "/usr/lib64",
+        "/usr/lib",
+        "/usr/local/lib",
+    )
 
     @Test
     fun libcurlCinteropPipelineProducesRunningExecutable() {
@@ -33,6 +53,29 @@ class CinteropSmokeTest {
             return
         }
 
+        // Skip when libcurl headers are absent (non-Debian hosts without libcurl-dev).
+        // We always include /usr/include (base glibc headers) and add the directory
+        // holding curl/curl.h if it differs — on Debian/Ubuntu that's the multiarch path.
+        val curlIncludeDir = curlIncludeCandidates.firstOrNull { fileExists("$it/curl/curl.h") }
+        if (curlIncludeDir == null) {
+            println(
+                "SKIP: libcurl headers (curl/curl.h) not found in any of " +
+                    curlIncludeCandidates.joinToString()
+            )
+            return
+        }
+        val includeDirs = linkedSetOf("/usr/include", curlIncludeDir).toList()
+        val compilerOpts = includeDirs.joinToString(" ") { "-I$it" }
+
+        val curlLibDir = curlLibCandidates.firstOrNull { fileExists("$it/libcurl.so") }
+        if (curlLibDir == null) {
+            println(
+                "SKIP: libcurl.so not found in any of " + curlLibCandidates.joinToString()
+            )
+            return
+        }
+        val linkerOpts = "-L$curlLibDir -lcurl"
+
         val tmpDir = "/tmp/kolt-e2e-cinterop-${getpid()}"
         val buildDir = "$tmpDir/build"
         ensureDirectoryRecursive(buildDir)
@@ -44,8 +87,8 @@ class CinteropSmokeTest {
                 defFile,
                 """
                 headers = curl/curl.h
-                compilerOpts.linux = -I/usr/include -I/usr/include/x86_64-linux-gnu
-                linkerOpts.linux = -L/usr/lib/x86_64-linux-gnu -lcurl
+                compilerOpts.linux = $compilerOpts
+                linkerOpts.linux = $linkerOpts
                 """.trimIndent()
             )
 
