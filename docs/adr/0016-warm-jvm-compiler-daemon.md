@@ -92,8 +92,10 @@ A native client that wants to talk to the daemon without reading
 - **Concurrency**: the daemon serialises connections — `serve()`
   accepts one client at a time and runs `handleConnection` to
   completion before the next `accept()`. A client must not assume
-  multiple in-flight compiles on a single daemon will overlap. See
-  Consequences / Negative for the Phase B plan.
+  multiple in-flight compiles on a single daemon will overlap. This
+  is a **Phase A contract, not a forever contract**; the Phase B plan
+  to revisit it for `kolt watch` (#15) lives in Consequences /
+  Negative.
 
 #### Socket path lifecycle
 
