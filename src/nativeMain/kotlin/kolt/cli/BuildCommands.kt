@@ -103,15 +103,28 @@ internal fun doBuild(): BuildResult {
     }
     val classpath = resolveDependencies(config)
     val pArgs = resolvePluginArgs(config, managedKotlincBin)
-    val buildCmd = buildCommand(config, classpath, pArgs, kotlincPath = managedKotlincBin)
     ensureDirectoryRecursive(CLASSES_DIR).getOrElse { error ->
         eprintln("error: could not create directory ${error.path}")
         exitProcess(EXIT_BUILD_ERROR)
     }
 
+    val backend: CompilerBackend = SubprocessCompilerBackend(kotlincBin = managedKotlincBin)
+    val request = CompileRequest(
+        workingDir = "",
+        sources = config.sources,
+        classpath = if (classpath.isNullOrEmpty()) emptyList() else classpath.split(":").filter { it.isNotEmpty() },
+        outputPath = CLASSES_DIR,
+        moduleName = config.name,
+        extraArgs = buildList {
+            add("-jvm-target")
+            add(config.jvmTarget)
+            addAll(pArgs)
+        },
+    )
+
     println("compiling ${config.name}...")
-    executeCommand(buildCmd.args).getOrElse { error ->
-        eprintln(formatProcessError(error, "compilation"))
+    backend.compile(request).getOrElse { error ->
+        eprintln(formatCompileError(error, "compilation"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
