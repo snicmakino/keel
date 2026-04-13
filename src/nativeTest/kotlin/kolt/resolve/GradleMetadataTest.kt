@@ -716,4 +716,42 @@ class GradleMetadataTest {
         assertEquals("lib-jvm", redirect?.module)
         assertEquals("1.0", redirect?.version)
     }
+
+    @Test
+    fun parseNativeRedirectToleratesBooleanAttributeValue() {
+        // Gradle Module Metadata attribute values can be any JSON primitive,
+        // not just strings. Integers are covered above; this pins down the
+        // boolean case so the JsonPrimitive.content contract is exercised
+        // uniformly across JsonLiteral subtypes and future schema evolution
+        // doesn't silently regress.
+        val json = """
+        {
+          "formatVersion": "1.1",
+          "variants": [
+            {
+              "name": "linuxX64ApiElements-published",
+              "attributes": {
+                "org.gradle.category": "library",
+                "org.gradle.usage": "kotlin-api",
+                "org.jetbrains.kotlin.native.target": "linux_x64",
+                "org.jetbrains.kotlin.platform.type": "native",
+                "com.example.experimental": true
+              },
+              "available-at": {
+                "url": "../../lib-linuxx64/1.0/lib-linuxx64-1.0.module",
+                "group": "com.example",
+                "module": "lib-linuxx64",
+                "version": "1.0"
+              }
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val redirect = parseNativeRedirect(json, "linux_x64")
+
+        assertEquals("com.example", redirect?.group)
+        assertEquals("lib-linuxx64", redirect?.module)
+        assertEquals("1.0", redirect?.version)
+    }
 }
