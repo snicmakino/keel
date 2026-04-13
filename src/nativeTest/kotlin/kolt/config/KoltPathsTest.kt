@@ -173,4 +173,36 @@ class KoltPathsTest {
         assertEquals("$base/bin/java", paths.javaBin("21"))
         assertEquals("$base/bin/jar", paths.jarBin("21"))
     }
+
+    // --- cinteropBin ---
+
+    @Test
+    fun cinteropBinBuildsVersionedBinPath() {
+        // Given: KoltPaths with a known home
+        val paths = KoltPaths("/home/user")
+
+        // When: cinteropBin is called for a specific version
+        val bin = paths.cinteropBin("2.3.20")
+
+        // Then: bin path points to bin/cinterop inside the konanc versioned directory
+        assertEquals("/home/user/.kolt/toolchains/konanc/2.3.20/bin/cinterop", bin)
+    }
+
+    @Test
+    fun cinteropBinDifferentHome() {
+        val paths = KoltPaths("/root")
+
+        assertEquals("/root/.kolt/toolchains/konanc/2.1.0/bin/cinterop", paths.cinteropBin("2.1.0"))
+    }
+
+    @Test
+    fun cinteropBinSharesKonancDirectory() {
+        // Given: cinterop ships alongside konanc in the same distribution
+        val paths = KoltPaths("/home/user")
+        val version = "2.3.20"
+
+        // Then: cinteropBin is in the same directory as konancBin
+        val konancDir = paths.konancPath(version)
+        assertEquals("$konancDir/bin/cinterop", paths.cinteropBin(version))
+    }
 }

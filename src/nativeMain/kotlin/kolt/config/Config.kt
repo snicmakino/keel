@@ -18,6 +18,15 @@ sealed class ConfigError {
 }
 
 @Serializable
+data class CinteropConfig(
+    val name: String,
+    val def: String,
+    @SerialName("package") val packageName: String? = null,
+    @SerialName("compiler_options") val compilerOptions: String? = null,
+    @SerialName("linker_options") val linkerOptions: String? = null
+)
+
+@Serializable
 data class KoltConfig(
     val name: String,
     val version: String,
@@ -34,7 +43,8 @@ data class KoltConfig(
     @SerialName("fmt_style") val fmtStyle: String = "google",
     val plugins: Map<String, Boolean> = emptyMap(),
     val repositories: Map<String, String> = mapOf("central" to MAVEN_CENTRAL_BASE),
-    val jdk: String? = null
+    val jdk: String? = null,
+    val cinterop: List<CinteropConfig> = emptyList()
 )
 
 private val toml = Toml(

@@ -263,4 +263,110 @@ class BuildCacheTest {
         assertNotNull(parsed)
         assertNull(parsed.resourcesNewestMtime)
     }
+
+    // --- defNewestMtime ---
+
+    @Test
+    fun upToDateWhenDefMtimesMatch() {
+        // Given: both current and cached have the same defNewestMtime
+        val state = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null,
+            defNewestMtime = 5000L
+        )
+        assertTrue(isBuildUpToDate(current = state, cached = state))
+    }
+
+    @Test
+    fun notUpToDateWhenDefMtimeChanged() {
+        // Given: cached has older defNewestMtime (def file was modified)
+        val cached = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null,
+            defNewestMtime = 5000L
+        )
+        val current = cached.copy(defNewestMtime = 6000L)
+        assertFalse(isBuildUpToDate(current = current, cached = cached))
+    }
+
+    @Test
+    fun notUpToDateWhenDefMtimeChangedFromNullToValue() {
+        // Given: cached has no def file (null), current has one (cinterop entry added)
+        val cached = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null,
+            defNewestMtime = null
+        )
+        val current = cached.copy(defNewestMtime = 5000L)
+        assertFalse(isBuildUpToDate(current = current, cached = cached))
+    }
+
+    @Test
+    fun notUpToDateWhenDefMtimeChangedFromValueToNull() {
+        // Given: cached had a def file, current has none (cinterop entry removed)
+        val cached = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null,
+            defNewestMtime = 5000L
+        )
+        val current = cached.copy(defNewestMtime = null)
+        assertFalse(isBuildUpToDate(current = current, cached = cached))
+    }
+
+    @Test
+    fun upToDateWhenBothDefMtimesNull() {
+        // Given: no cinterop entries in either current or cached
+        val state = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null,
+            defNewestMtime = null
+        )
+        assertTrue(isBuildUpToDate(current = state, cached = state))
+    }
+
+    @Test
+    fun serializeAndDeserializeRoundTripWithDefMtime() {
+        val state = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = 500L,
+            defNewestMtime = 5000L
+        )
+        val json = serializeBuildState(state)
+        val parsed = parseBuildState(json)
+        assertEquals(state, parsed)
+    }
+
+    @Test
+    fun serializationUsesDefNewestMtimeKey() {
+        val state = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null,
+            defNewestMtime = 5000L
+        )
+        val json = serializeBuildState(state)
+        assertTrue(json.contains("def_newest_mtime"), "Expected JSON key 'def_newest_mtime' in: $json")
+    }
+
+    @Test
+    fun defNewestMtimeDefaultsToNullForOlderStateJson() {
+        // Given: older JSON without def_newest_mtime (pre-cinterop state file)
+        val oldJson = """{"config_mtime":1000,"sources_newest_mtime":2000,"classes_dir_mtime":3000,"lockfile_mtime":null}"""
+        val parsed = parseBuildState(oldJson)
+        assertNotNull(parsed)
+        assertNull(parsed.defNewestMtime)
+    }
 }

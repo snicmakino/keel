@@ -1,5 +1,6 @@
 package kolt
 
+import kolt.config.CinteropConfig
 import kolt.config.KoltConfig
 import kolt.config.MAVEN_CENTRAL_BASE
 
@@ -13,7 +14,8 @@ fun testConfig(
     plugins: Map<String, Boolean> = emptyMap(),
     repositories: Map<String, String> = mapOf("central" to MAVEN_CENTRAL_BASE),
     jdk: String? = null,
-    target: String = "jvm"
+    target: String = "jvm",
+    cinterop: List<CinteropConfig> = emptyList()
 ) = KoltConfig(
     name = name,
     version = "0.1.0",
@@ -27,5 +29,6 @@ fun testConfig(
     testDependencies = testDependencies,
     plugins = plugins,
     repositories = repositories,
-    jdk = jdk
+    jdk = jdk,
+    cinterop = cinterop
 )

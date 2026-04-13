@@ -19,6 +19,7 @@ internal data class KoltPaths(val home: String) {
 
     fun konancPath(version: String): String = "$toolchainsDir/konanc/$version"
     fun konancBin(version: String): String = "${konancPath(version)}/bin/konanc"
+    fun cinteropBin(version: String): String = "${konancPath(version)}/bin/cinterop"
 }
 
 internal fun resolveKoltPaths(exitCode: Int): KoltPaths {
