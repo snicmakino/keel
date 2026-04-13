@@ -2,6 +2,7 @@ plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
     application
+    id("com.gradleup.shadow") version "8.3.5"
 }
 
 repositories {
