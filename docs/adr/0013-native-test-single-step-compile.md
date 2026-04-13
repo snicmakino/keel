@@ -2,6 +2,20 @@
 
 ## Status
 
+Superseded by [ADR 0014](0014-native-two-stage-library-link.md) (2026-04-13).
+
+Originally accepted (2026-04-13). The α single-step approach described
+below worked for the cases it was designed against, but `kolt` could
+not keep it once Kotlin compiler plugin support (#62) had to land on
+the native path: konanc silently no-ops plugin registrars under
+`-p program`, and the only invocation shape in which the plugins run
+is `-p library` followed by a separate link step. ADR 0014 adopts
+the β two-stage structure this ADR deferred, for both the build and
+test paths. The text below is kept verbatim as historical context for
+why α was chosen in the first place.
+
+---
+
 Accepted (2026-04-13)
 
 ## Context

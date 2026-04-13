@@ -153,6 +153,8 @@ serialization = true
 
 Supported plugins: `serialization`, `allopen`, `noarg`. Plugin JARs are resolved from the Kotlin compiler distribution.
 
+Plugins work for both `target = "jvm"` and `target = "native"`. On native, kolt compiles the project in two konanc stages (`-p library` then `-p program -Xinclude=...`) so the plugin registrars run on the library stage; this is a workaround for a konanc quirk where single-step `-p program` invocations silently skip compiler plugins. See ADR 0014 for details. Enabling a plugin on a native project currently provisions the kotlinc distribution as a sidecar purely to borrow plugin jars from `<kotlincHome>/lib/`; a follow-up will switch to resolving them from Maven Central directly.
+
 ### Resource Files
 
 Include resource files (config files, templates, static assets) in the build output:

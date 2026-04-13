@@ -121,7 +121,7 @@ kolt test -- <extra runner args>
 
 **JVM target (`target = "jvm"`):** kolt auto-injects `kotlin-test-junit5` matching the Kotlin version and runs via JUnit Platform Console Standalone. Supports kotlin.test, JUnit 5, and Kotest. Extra args are forwarded to the console launcher, e.g. `kolt test -- --include-classname ".*IntegrationTest"`.
 
-**Native target (`target = "native"`):** kolt compiles main + test sources in a single `konanc -generate-test-runner` invocation and executes the resulting `build/<name>-test.kexe`. `kotlin.test` is provided by the bundled Kotlin/Native stdlib — no test dependency needs to be declared. Extra args are forwarded to the native test runner, e.g. `kolt test -- --ktest_filter=MyTest.*` or `--ktest_logger=SIMPLE`. The test executable exits non-zero on any failed test.
+**Native target (`target = "native"`):** kolt compiles main + test sources into an intermediate klib (`build/<name>-test-klib`) with any enabled compiler plugins applied, then links that klib into `build/<name>-test.kexe` via `konanc -p program -generate-test-runner -Xinclude=...`. `kolt build` uses the same two-stage shape (`build/<name>-klib` → `build/<name>.kexe`). `kotlin.test` is provided by the bundled Kotlin/Native stdlib — no test dependency needs to be declared. Extra args are forwarded to the native test runner, e.g. `kolt test -- --ktest_filter=MyTest.*` or `--ktest_logger=SIMPLE`. The test executable exits non-zero on any failed test.
 
 ## Toolchain Management
 
