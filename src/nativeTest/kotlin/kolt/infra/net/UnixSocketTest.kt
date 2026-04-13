@@ -8,6 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import platform.posix.EBADF
 
 class UnixSocketTest {
     @Test
@@ -64,7 +65,7 @@ class UnixSocketTest {
         UnixSocket(fd = -1).use { socket ->
             val result = socket.sendAll(byteArrayOf(1, 2, 3))
             val err = assertIs<UnixSocketError.SendFailed>(result.getError())
-            assertTrue(err.errno != 0, "expected a non-zero errno, got ${err.errno}")
+            assertEquals(EBADF, err.errno, "expected EBADF on send to -1")
         }
     }
 

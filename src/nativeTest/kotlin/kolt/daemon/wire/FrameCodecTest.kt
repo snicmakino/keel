@@ -129,6 +129,37 @@ class FrameCodecTest {
     }
 
     @Test
+    fun readFrameReturnsTruncatedOnPartialBody() {
+        // Valid header claiming 10 bytes but the server delivers only 3
+        // — exercises the body-side `UnexpectedEof -> Truncated` branch
+        // that the header-truncated test cannot reach.
+        val claimedLen = 10
+        val framed = encodeBigEndianU32(claimedLen) + byteArrayOf(1, 2, 3)
+        UnixEchoServer.start(handler = { framed })
+            .getOrElse { fail("start failed: $it") }
+            .use { server -> withReadFrame(server) { it.shutdownWrite() } }
+            .let { err ->
+                val t = assertIs<FrameError.Truncated>(err)
+                assertEquals(claimedLen, t.wantedBytes)
+                assertEquals(3, t.gotBytes)
+            }
+    }
+
+    @Test
+    fun readFrameReturnsMalformedOnZeroLengthBody() {
+        // The wire contract has no legitimate zero-length body — an
+        // empty JSON string is not a valid `Message` — so lock that in
+        // as Malformed rather than silently trusting the peer.
+        val framed = encodeBigEndianU32(0)
+        UnixEchoServer.start(handler = { framed })
+            .getOrElse { fail("start failed: $it") }
+            .use { server -> withReadFrame(server) { it.shutdownWrite() } }
+            .let { err ->
+                assertIs<FrameError.Malformed>(err)
+            }
+    }
+
+    @Test
     fun readFrameReturnsMalformedOnBadJsonBody() {
         val body = "not json at all".encodeToByteArray()
         val framed = encodeBigEndianU32(body.size) + body

@@ -9,6 +9,13 @@ import kolt.infra.net.UnixSocketError
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
+sealed interface FrameError {
+    data object Eof : FrameError
+    data class Truncated(val wantedBytes: Int, val gotBytes: Int) : FrameError
+    data class Malformed(val reason: String) : FrameError
+    data class Transport(val cause: UnixSocketError) : FrameError
+}
+
 /**
  * Length-prefix + JSON framing over a [UnixSocket] stream.
  *
@@ -93,11 +100,4 @@ object FrameCodec {
             else FrameError.Truncated(wantedBytes = 4, gotBytes = err.received)
         else -> FrameError.Transport(err)
     }
-}
-
-sealed interface FrameError {
-    data object Eof : FrameError
-    data class Truncated(val wantedBytes: Int, val gotBytes: Int) : FrameError
-    data class Malformed(val reason: String) : FrameError
-    data class Transport(val cause: UnixSocketError) : FrameError
 }
