@@ -642,4 +642,136 @@ class ConfigTest {
         assertEquals("21", config.jdk)
         assertEquals("17", config.jvmTarget)
     }
+
+    // --- [[cinterop]] ---
+
+    @Test
+    fun parseMinimalConfigHasEmptyCinteropList() {
+        // Given: no [[cinterop]] section in TOML
+        // When: config is parsed
+        val config = assertNotNull(parseConfig(minimalToml).get())
+
+        // Then: cinterop defaults to empty list
+        assertEquals(emptyList(), config.cinterop)
+    }
+
+    @Test
+    fun parseConfigWithSingleCinteropEntry() {
+        // Given: one [[cinterop]] entry with only required fields
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "native"
+            main = "com.example.MainKt"
+            sources = ["src"]
+
+            [[cinterop]]
+            name = "libcurl"
+            def = "src/nativeInterop/cinterop/libcurl.def"
+        """.trimIndent()
+
+        // When: config is parsed
+        val config = assertNotNull(parseConfig(toml).get())
+
+        // Then: one entry is parsed with correct fields
+        assertEquals(1, config.cinterop.size)
+        val entry = config.cinterop[0]
+        assertEquals("libcurl", entry.name)
+        assertEquals("src/nativeInterop/cinterop/libcurl.def", entry.def)
+        assertNull(entry.packageName)
+        assertEquals(emptyList(), entry.compilerOptions)
+        assertEquals(emptyList(), entry.linkerOptions)
+    }
+
+    @Test
+    fun parseConfigWithCinteropEntryAllFields() {
+        // Given: one [[cinterop]] entry with all optional fields
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "native"
+            main = "com.example.MainKt"
+            sources = ["src"]
+
+            [[cinterop]]
+            name = "libcurl"
+            def = "src/nativeInterop/cinterop/libcurl.def"
+            package = "libcurl"
+            compiler_options = ["-I/usr/include", "-DFOO=1"]
+            linker_options = ["-L/usr/lib", "-lcurl"]
+        """.trimIndent()
+
+        // When: config is parsed
+        val config = assertNotNull(parseConfig(toml).get())
+
+        // Then: all fields are parsed correctly
+        assertEquals(1, config.cinterop.size)
+        val entry = config.cinterop[0]
+        assertEquals("libcurl", entry.name)
+        assertEquals("src/nativeInterop/cinterop/libcurl.def", entry.def)
+        assertEquals("libcurl", entry.packageName)
+        assertEquals(listOf("-I/usr/include", "-DFOO=1"), entry.compilerOptions)
+        assertEquals(listOf("-L/usr/lib", "-lcurl"), entry.linkerOptions)
+    }
+
+    @Test
+    fun parseConfigWithMultipleCinteropEntries() {
+        // Given: two [[cinterop]] entries
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "native"
+            main = "com.example.MainKt"
+            sources = ["src"]
+
+            [[cinterop]]
+            name = "libcurl"
+            def = "src/nativeInterop/cinterop/libcurl.def"
+
+            [[cinterop]]
+            name = "openssl"
+            def = "src/nativeInterop/cinterop/openssl.def"
+            package = "openssl"
+        """.trimIndent()
+
+        // When: config is parsed
+        val config = assertNotNull(parseConfig(toml).get())
+
+        // Then: both entries are parsed in order
+        assertEquals(2, config.cinterop.size)
+        assertEquals("libcurl", config.cinterop[0].name)
+        assertEquals("openssl", config.cinterop[1].name)
+        assertNull(config.cinterop[0].packageName)
+        assertEquals("openssl", config.cinterop[1].packageName)
+    }
+
+    @Test
+    fun parseConfigCinteropWithDependencies() {
+        // Given: [[cinterop]] alongside [dependencies]
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+            kotlin = "2.1.0"
+            target = "native"
+            main = "com.example.MainKt"
+            sources = ["src"]
+
+            [dependencies]
+            "org.jetbrains.kotlinx:kotlinx-coroutines-core" = "1.9.0"
+
+            [[cinterop]]
+            name = "libcurl"
+            def = "libcurl.def"
+        """.trimIndent()
+
+        // When: config is parsed
+        val config = assertNotNull(parseConfig(toml).get())
+
+        // Then: both sections are parsed independently
+        assertEquals(1, config.dependencies.size)
+        assertEquals(1, config.cinterop.size)
+    }
 }

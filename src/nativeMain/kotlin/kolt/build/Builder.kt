@@ -1,5 +1,6 @@
 package kolt.build
 
+import kolt.config.CinteropConfig
 import kolt.config.KoltConfig
 
 internal const val BUILD_DIR = "build"
@@ -202,6 +203,38 @@ fun nativeTestLinkCommand(
     }
     return BuildCommand(args = args, outputPath = outputPath)
 }
+
+// cinterop appends .klib to the -o path, so outputPath is without the extension.
+fun cinteropCommand(
+    entry: CinteropConfig,
+    cinteropPath: String? = null,
+    outputDir: String = BUILD_DIR
+): BuildCommand {
+    val outputBase = "$outputDir/${entry.name}"
+    val args = buildList {
+        add(cinteropPath ?: "cinterop")
+        add("-def")
+        add(entry.def)
+        add("-o")
+        add(outputBase)
+        if (entry.packageName != null) {
+            add("-pkg")
+            add(entry.packageName)
+        }
+        for (opt in entry.compilerOptions) {
+            add("-compiler-option")
+            add(opt)
+        }
+        for (opt in entry.linkerOptions) {
+            add("-linker-option")
+            add(opt)
+        }
+    }
+    return BuildCommand(args = args, outputPath = outputBase)
+}
+
+fun cinteropOutputKlibPath(entry: CinteropConfig, outputDir: String = BUILD_DIR): String =
+    "$outputDir/${entry.name}.klib"
 
 fun jarCommand(config: KoltConfig, jarPath: String? = null): BuildCommand {
     val outputPath = outputJarPath(config)

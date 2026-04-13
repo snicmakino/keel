@@ -157,15 +157,17 @@ private fun doNativeBuild(config: KoltConfig): BuildResult {
     val paths = resolveKoltPaths(EXIT_BUILD_ERROR)
     val managedKonancBin = ensureKonancBin(config.kotlin, paths, EXIT_BUILD_ERROR)
 
-    val klibs = resolveNativeDependencies(config, paths)
+    val depKlibs = resolveNativeDependencies(config, paths)
 
     val kexePath = outputKexePath(config)
+    val defNewestMtime = newestDefMtime(config)
     val currentState = BuildState(
         configMtime = fileMtime(KOLT_TOML) ?: 0L,
         sourcesNewestMtime = newestMtime(config.sources),
         classesDirMtime = if (fileExists(kexePath)) fileMtime(kexePath) else null,
         lockfileMtime = null,
-        resourcesNewestMtime = null
+        resourcesNewestMtime = null,
+        defNewestMtime = defNewestMtime
     )
     val cachedState = readFileAsString(BUILD_STATE_FILE).getOrElse { null }
         ?.let { parseBuildState(it) }
@@ -183,6 +185,9 @@ private fun doNativeBuild(config: KoltConfig): BuildResult {
         eprintln("error: could not create directory ${error.path}")
         exitProcess(EXIT_BUILD_ERROR)
     }
+
+    val cinteropKlibs = runCinterop(config, paths)
+    val klibs = depKlibs + cinteropKlibs
 
     val libraryCmd = nativeLibraryCommand(config, pluginArgs = nativePluginArgs, konancPath = managedKonancBin, klibs = klibs)
     println("compiling ${config.name} (native)...")
@@ -211,6 +216,31 @@ private fun doNativeBuild(config: KoltConfig): BuildResult {
     val elapsed = startMark.elapsedNow()
     println("built $kexePath in ${formatDuration(elapsed)}")
     return BuildResult(config, classpath = null, pluginArgs = nativePluginArgs, javaPath = null)
+}
+
+/** Returns the newest mtime among all .def files declared in cinterop entries, or null if none. */
+private fun newestDefMtime(config: KoltConfig): Long? {
+    if (config.cinterop.isEmpty()) return null
+    val mtimes = config.cinterop.mapNotNull { fileMtime(it.def) }
+    return if (mtimes.isEmpty()) null else mtimes.max()
+}
+
+/**
+ * Runs `cinterop` for each [[cinterop]] entry in the config.
+ * Returns the list of generated .klib paths to pass to konanc via -l.
+ */
+private fun runCinterop(config: KoltConfig, paths: KoltPaths): List<String> {
+    if (config.cinterop.isEmpty()) return emptyList()
+    val managedCinteropBin = paths.cinteropBin(config.kotlin)
+    return config.cinterop.map { entry ->
+        val cmd = cinteropCommand(entry, cinteropPath = managedCinteropBin)
+        println("generating cinterop klib for ${entry.name}...")
+        executeCommand(cmd.args).getOrElse { error ->
+            eprintln(formatProcessError(error, "cinterop (${entry.name})"))
+            exitProcess(EXIT_BUILD_ERROR)
+        }
+        cinteropOutputKlibPath(entry)
+    }
 }
 
 /**
@@ -330,12 +360,15 @@ private fun doNativeTest(config: KoltConfig, testArgs: List<String>) {
     val managedKonancBin = ensureKonancBin(config.kotlin, paths, EXIT_TEST_ERROR)
     val nativePluginArgs = resolveNativePluginArgs(config, paths, EXIT_TEST_ERROR)
 
-    val klibs = resolveNativeDependencies(config, paths)
+    val depKlibs = resolveNativeDependencies(config, paths)
 
     ensureDirectoryRecursive(BUILD_DIR).getOrElse { error ->
         eprintln("error: could not create directory ${error.path}")
         exitProcess(EXIT_BUILD_ERROR)
     }
+
+    val cinteropKlibs = runCinterop(config, paths)
+    val klibs = depKlibs + cinteropKlibs
 
     val testConfig = config.copy(testSources = existingTestSources)
     val libraryCmd = nativeTestLibraryCommand(testConfig, pluginArgs = nativePluginArgs, konancPath = managedKonancBin, klibs = klibs)
