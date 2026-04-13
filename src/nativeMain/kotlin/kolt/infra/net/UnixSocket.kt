@@ -29,6 +29,12 @@ import platform.posix.strerror
  *
  * Raw cinterop types (sockaddr_un, socket/connect/send/recv/close) are
  * confined to this file so callers never see them.
+ *
+ * Not thread-safe. The close-flag guard is a plain check-then-act, so
+ * concurrent `close()` calls can double-close the underlying fd — and
+ * once the kernel recycles a descriptor number, the second close will
+ * hit an unrelated fd. Callers must confine a `UnixSocket` instance to
+ * a single thread, or synchronize externally.
  */
 class UnixSocket internal constructor(internal val fd: Int) : AutoCloseable {
     private var closed = false
@@ -41,7 +47,8 @@ class UnixSocket internal constructor(internal val fd: Int) : AutoCloseable {
     }
 
     companion object {
-        // sizeof(sockaddr_un.sun_path) on Linux.
+        // Linux caps AF_UNIX pathnames at 108 bytes including the NUL
+        // terminator; see unix(7).
         private const val SUN_PATH_CAPACITY = 108
 
         @OptIn(ExperimentalForeignApi::class)
