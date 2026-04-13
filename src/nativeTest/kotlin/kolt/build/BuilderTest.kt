@@ -465,9 +465,10 @@ class BuilderTest {
 
     @Test
     fun nativeLinkCommandWithMultipleKlibsRepeatsLFlag() {
-        // Even though the project klib already linked against these deps, the
-        // final link stage still needs them on its classpath to resolve symbols
-        // referenced from the generated serializer code etc.
+        // -Xinclude only pulls the project klib's IR into the link unit; any
+        // external references (e.g. kotlinx-serialization-core symbols touched
+        // by plugin-generated code) are still unresolved and need the
+        // transitive klibs on the library path at link time.
         val cmd = nativeLinkCommand(
             testConfig(target = "native"),
             klibs = listOf("/cache/a.klib", "/cache/b.klib")
