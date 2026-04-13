@@ -56,6 +56,13 @@ fmt_style = "google"
 [plugins]
 serialization = true
 
+[[cinterop]]
+name = "libcurl"
+def = "src/nativeInterop/cinterop/libcurl.def"
+package = "libcurl"
+compiler_options = ["-I/usr/include", "-I/usr/include/x86_64-linux-gnu"]
+linker_options = ["-L/usr/lib/x86_64-linux-gnu", "-lcurl"]
+
 [dependencies]
 "org.jetbrains.kotlinx:kotlinx-coroutines-core" = "1.9.0"
 
@@ -83,7 +90,12 @@ jitpack = "https://jitpack.io"
 | `test_resources` | Test resource directories added to test classpath | `[]` |
 | `fmt_style` | ktfmt style: `"google"`, `"kotlinlang"`, `"meta"` | `"google"` |
 | `[plugins]` | Compiler plugins (`serialization`, `allopen`, `noarg`) | `{}` |
+| `[[cinterop]]` | C interop bindings for `target = "native"` (array of `.def` entries) | `[]` |
 | `[repositories]` | Maven repositories (name = URL, tried in order) | Maven Central only |
+
+### C Interop
+
+For `target = "native"` projects, declare one `[[cinterop]]` entry per `.def` file. kolt invokes the konan `cinterop` tool, caches `build/<name>.klib`, and links it via `konanc -l`. Fields: `name` (klib base), `def` (.def path), `package` (optional Kotlin package), `compiler_options` (list — emitted as repeated `-compiler-option`), `linker_options` (list — emitted as repeated `-linker-option`). Klibs are regenerated when the `.def` file's mtime changes.
 
 ## Dependencies
 

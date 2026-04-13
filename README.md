@@ -106,6 +106,7 @@ jitpack = "https://jitpack.io"
 | `test_resources` | Test resource directories added to test classpath | `[]` |
 | `fmt_style` | ktfmt style: `"google"`, `"kotlinlang"`, `"meta"` | `"google"` |
 | `[plugins]` | Compiler plugins (`serialization`, `allopen`, `noarg`) | `{}` |
+| `[[cinterop]]` | C interop bindings for `target = "native"` (one array entry per `.def`) | `[]` |
 | `[repositories]` | Maven repositories (name = URL) | Maven Central only |
 
 ### Dependencies
@@ -154,6 +155,29 @@ serialization = true
 Supported plugins: `serialization`, `allopen`, `noarg`. Plugin JARs are resolved from the Kotlin compiler distribution.
 
 Plugins work for both `target = "jvm"` and `target = "native"`. On native, kolt compiles the project in two konanc stages (`-p library` then `-p program -Xinclude=...`) so the plugin registrars run on the library stage; this is a workaround for a konanc quirk where single-step `-p program` invocations silently skip compiler plugins. See ADR 0014 for details. Enabling a plugin on a native project currently provisions the kotlinc distribution as a sidecar purely to borrow plugin jars from `<kotlincHome>/lib/`; a follow-up will switch to resolving them from Maven Central directly.
+
+### C Interop (native target)
+
+For `target = "native"` projects that need to call C libraries, declare one `[[cinterop]]` entry per `.def` file. kolt invokes the konan `cinterop` tool for each entry, caches the generated `.klib` under `build/`, and passes it to `konanc` via `-l` on both the library and link stages.
+
+```toml
+[[cinterop]]
+name = "libcurl"
+def = "src/nativeInterop/cinterop/libcurl.def"
+package = "libcurl"
+compiler_options = ["-I/usr/include", "-I/usr/include/x86_64-linux-gnu"]
+linker_options = ["-L/usr/lib/x86_64-linux-gnu", "-lcurl"]
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `name` | Output klib base name (`build/<name>.klib`) | (required) |
+| `def` | Path to the `.def` file describing the binding | (required) |
+| `package` | Kotlin package for generated bindings | (derived from `.def`) |
+| `compiler_options` | Extra flags forwarded to clang as repeated `-compiler-option` | `[]` |
+| `linker_options` | Extra flags forwarded to the linker as repeated `-linker-option` | `[]` |
+
+The `cinterop` klib is regenerated when the `.def` file's mtime changes; source-only edits reuse the cached klib. Multiple `[[cinterop]]` entries are allowed and are linked in declaration order.
 
 ### Resource Files
 

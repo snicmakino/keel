@@ -680,8 +680,8 @@ class ConfigTest {
         assertEquals("libcurl", entry.name)
         assertEquals("src/nativeInterop/cinterop/libcurl.def", entry.def)
         assertNull(entry.packageName)
-        assertNull(entry.compilerOptions)
-        assertNull(entry.linkerOptions)
+        assertEquals(emptyList(), entry.compilerOptions)
+        assertEquals(emptyList(), entry.linkerOptions)
     }
 
     @Test
@@ -699,8 +699,8 @@ class ConfigTest {
             name = "libcurl"
             def = "src/nativeInterop/cinterop/libcurl.def"
             package = "libcurl"
-            compiler_options = "-I/usr/include"
-            linker_options = "-lcurl"
+            compiler_options = ["-I/usr/include", "-DFOO=1"]
+            linker_options = ["-L/usr/lib", "-lcurl"]
         """.trimIndent()
 
         // When: config is parsed
@@ -712,8 +712,8 @@ class ConfigTest {
         assertEquals("libcurl", entry.name)
         assertEquals("src/nativeInterop/cinterop/libcurl.def", entry.def)
         assertEquals("libcurl", entry.packageName)
-        assertEquals("-I/usr/include", entry.compilerOptions)
-        assertEquals("-lcurl", entry.linkerOptions)
+        assertEquals(listOf("-I/usr/include", "-DFOO=1"), entry.compilerOptions)
+        assertEquals(listOf("-L/usr/lib", "-lcurl"), entry.linkerOptions)
     }
 
     @Test

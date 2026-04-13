@@ -221,13 +221,13 @@ fun cinteropCommand(
             add("-pkg")
             add(entry.packageName)
         }
-        if (entry.compilerOptions != null) {
-            add("-compiler-options")
-            add(entry.compilerOptions)
+        for (opt in entry.compilerOptions) {
+            add("-compiler-option")
+            add(opt)
         }
-        if (entry.linkerOptions != null) {
-            add("-linker-options")
-            add(entry.linkerOptions)
+        for (opt in entry.linkerOptions) {
+            add("-linker-option")
+            add(opt)
         }
     }
     return BuildCommand(args = args, outputPath = outputBase)

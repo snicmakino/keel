@@ -71,63 +71,100 @@ class CinteropTest {
     }
 
     @Test
-    fun cinteropCommandWithCompilerOptionsEmitsCompilerOptionsFlag() {
-        // Given: entry with compilerOptions
+    fun cinteropCommandWithSingleCompilerOptionEmitsOneCompilerOptionFlag() {
+        // Given: entry with one compilerOptions element
         val entry = CinteropConfig(
             name = "libcurl",
             def = "libcurl.def",
-            compilerOptions = "-I/usr/include"
+            compilerOptions = listOf("-I/usr/include")
         )
 
         // When: command is constructed
         val cmd = cinteropCommand(entry)
 
-        // Then: -compiler-options flag is included with the value
-        assertTrue(cmd.args.contains("-compiler-options"), "Expected -compiler-options flag in: ${cmd.args}")
-        val flagIndex = cmd.args.indexOf("-compiler-options")
+        // Then: a single -compiler-option flag is included with the value
+        assertEquals(1, cmd.args.count { it == "-compiler-option" })
+        val flagIndex = cmd.args.indexOf("-compiler-option")
         assertEquals("-I/usr/include", cmd.args[flagIndex + 1])
     }
 
     @Test
-    fun cinteropCommandWithoutCompilerOptionsOmitsFlag() {
-        // Given: entry with no compilerOptions
-        val entry = CinteropConfig(name = "libcurl", def = "libcurl.def", compilerOptions = null)
-
-        // When: command is constructed
-        val cmd = cinteropCommand(entry)
-
-        // Then: -compiler-options flag is absent
-        assertFalse(cmd.args.contains("-compiler-options"), "Unexpected -compiler-options flag in: ${cmd.args}")
-    }
-
-    @Test
-    fun cinteropCommandWithLinkerOptionsEmitsLinkerOptionsFlag() {
-        // Given: entry with linkerOptions
+    fun cinteropCommandWithMultipleCompilerOptionsEmitsRepeatedCompilerOptionFlags() {
+        // Given: entry with multiple compilerOptions elements
         val entry = CinteropConfig(
             name = "libcurl",
             def = "libcurl.def",
-            linkerOptions = "-lcurl"
+            compilerOptions = listOf("-I/usr/include", "-I/usr/include/x86_64-linux-gnu", "-DFOO=1")
         )
 
         // When: command is constructed
         val cmd = cinteropCommand(entry)
 
-        // Then: -linker-options flag is included with the value
-        assertTrue(cmd.args.contains("-linker-options"), "Expected -linker-options flag in: ${cmd.args}")
-        val flagIndex = cmd.args.indexOf("-linker-options")
-        assertEquals("-lcurl", cmd.args[flagIndex + 1])
+        // Then: -compiler-option is repeated once per element, preserving order
+        val pairs = cmd.args.zipWithNext().filter { it.first == "-compiler-option" }.map { it.second }
+        assertEquals(
+            listOf("-I/usr/include", "-I/usr/include/x86_64-linux-gnu", "-DFOO=1"),
+            pairs
+        )
     }
 
     @Test
-    fun cinteropCommandWithoutLinkerOptionsOmitsFlag() {
-        // Given: entry with no linkerOptions
-        val entry = CinteropConfig(name = "libcurl", def = "libcurl.def", linkerOptions = null)
+    fun cinteropCommandWithEmptyCompilerOptionsOmitsFlag() {
+        // Given: entry with empty compilerOptions list (the default)
+        val entry = CinteropConfig(name = "libcurl", def = "libcurl.def")
 
         // When: command is constructed
         val cmd = cinteropCommand(entry)
 
-        // Then: -linker-options flag is absent
-        assertFalse(cmd.args.contains("-linker-options"), "Unexpected -linker-options flag in: ${cmd.args}")
+        // Then: no -compiler-option flag is emitted
+        assertFalse(cmd.args.contains("-compiler-option"), "Unexpected -compiler-option flag in: ${cmd.args}")
+    }
+
+    @Test
+    fun cinteropCommandWithSingleLinkerOptionEmitsOneLinkerOptionFlag() {
+        // Given: entry with one linkerOptions element
+        val entry = CinteropConfig(
+            name = "libcurl",
+            def = "libcurl.def",
+            linkerOptions = listOf("-lcurl")
+        )
+
+        // When: command is constructed
+        val cmd = cinteropCommand(entry)
+
+        // Then: a single -linker-option flag is included with the value
+        assertEquals(1, cmd.args.count { it == "-linker-option" })
+        val flagIndex = cmd.args.indexOf("-linker-option")
+        assertEquals("-lcurl", cmd.args[flagIndex + 1])
+    }
+
+    @Test
+    fun cinteropCommandWithMultipleLinkerOptionsEmitsRepeatedLinkerOptionFlags() {
+        // Given: entry with multiple linkerOptions elements
+        val entry = CinteropConfig(
+            name = "libcurl",
+            def = "libcurl.def",
+            linkerOptions = listOf("-L/usr/lib/x86_64-linux-gnu", "-lcurl")
+        )
+
+        // When: command is constructed
+        val cmd = cinteropCommand(entry)
+
+        // Then: -linker-option is repeated once per element, preserving order
+        val pairs = cmd.args.zipWithNext().filter { it.first == "-linker-option" }.map { it.second }
+        assertEquals(listOf("-L/usr/lib/x86_64-linux-gnu", "-lcurl"), pairs)
+    }
+
+    @Test
+    fun cinteropCommandWithEmptyLinkerOptionsOmitsFlag() {
+        // Given: entry with empty linkerOptions list (the default)
+        val entry = CinteropConfig(name = "libcurl", def = "libcurl.def")
+
+        // When: command is constructed
+        val cmd = cinteropCommand(entry)
+
+        // Then: no -linker-option flag is emitted
+        assertFalse(cmd.args.contains("-linker-option"), "Unexpected -linker-option flag in: ${cmd.args}")
     }
 
     @Test
@@ -137,22 +174,24 @@ class CinteropTest {
             name = "libcurl",
             def = "src/nativeInterop/cinterop/libcurl.def",
             packageName = "libcurl",
-            compilerOptions = "-I/usr/include",
-            linkerOptions = "-lcurl"
+            compilerOptions = listOf("-I/usr/include", "-DFOO=1"),
+            linkerOptions = listOf("-L/usr/lib", "-lcurl")
         )
 
         // When: command is constructed
         val cmd = cinteropCommand(entry)
 
-        // Then: full args in canonical order
+        // Then: full args in canonical order, with repeated singular flags
         assertEquals(
             listOf(
                 "cinterop",
                 "-def", "src/nativeInterop/cinterop/libcurl.def",
                 "-o", "build/libcurl",
                 "-pkg", "libcurl",
-                "-compiler-options", "-I/usr/include",
-                "-linker-options", "-lcurl"
+                "-compiler-option", "-I/usr/include",
+                "-compiler-option", "-DFOO=1",
+                "-linker-option", "-L/usr/lib",
+                "-linker-option", "-lcurl"
             ),
             cmd.args
         )

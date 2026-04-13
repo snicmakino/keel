@@ -22,8 +22,8 @@ data class CinteropConfig(
     val name: String,
     val def: String,
     @SerialName("package") val packageName: String? = null,
-    @SerialName("compiler_options") val compilerOptions: String? = null,
-    @SerialName("linker_options") val linkerOptions: String? = null
+    @SerialName("compiler_options") val compilerOptions: List<String> = emptyList(),
+    @SerialName("linker_options") val linkerOptions: List<String> = emptyList()
 )
 
 @Serializable
