@@ -7,12 +7,9 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.convert
-import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.set
-import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import platform.linux.sockaddr_un
@@ -22,13 +19,11 @@ import platform.posix.ENAMETOOLONG
 import platform.posix.SHUT_WR
 import platform.posix.SOCK_STREAM
 import platform.posix.errno
-import platform.posix.memset
 import platform.posix.recv
 import platform.posix.send
 import platform.posix.shutdown
 import platform.posix.sockaddr
 import platform.posix.socket
-import platform.posix.socklen_t
 import platform.posix.strerror
 
 /**
@@ -132,10 +127,6 @@ class UnixSocket internal constructor(private val fd: Int) : AutoCloseable {
     }
 
     companion object {
-        // Linux caps AF_UNIX pathnames at 108 bytes including the NUL
-        // terminator; see unix(7).
-        private const val SUN_PATH_CAPACITY = 108
-
         @OptIn(ExperimentalForeignApi::class)
         fun connect(path: String): Result<UnixSocket, UnixSocketError> {
             val pathBytes = path.encodeToByteArray()
@@ -157,21 +148,7 @@ class UnixSocket internal constructor(private val fd: Int) : AutoCloseable {
 
             return memScoped {
                 val addr = alloc<sockaddr_un>()
-                memset(addr.ptr, 0, sizeOf<sockaddr_un>().convert())
-                addr.sun_family = AF_UNIX.convert()
-                val sunPath = addr.sun_path
-                for (i in pathBytes.indices) {
-                    sunPath[i] = pathBytes[i]
-                }
-                sunPath[pathBytes.size] = 0
-
-                // addrlen = offsetof(sockaddr_un, sun_path) + strlen(path) + 1.
-                // Using the offset (rather than sizeof(sockaddr_un)) keeps
-                // the door open for abstract sockets (path starting with NUL).
-                val sunPathOffset =
-                    sunPath.rawValue.toLong() - addr.ptr.rawValue.toLong()
-                val addrLen: socklen_t =
-                    (sunPathOffset.toInt() + pathBytes.size + 1).convert()
+                val addrLen = fillSockaddrUn(addr, pathBytes)
                 val rc = platform.posix.connect(
                     fd,
                     addr.ptr.reinterpret<sockaddr>(),

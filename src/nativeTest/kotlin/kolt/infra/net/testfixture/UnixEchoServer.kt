@@ -3,46 +3,43 @@ package kolt.infra.net.testfixture
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import kolt.infra.net.SUN_PATH_CAPACITY
+import kolt.infra.net.fillSockaddrUn
 import kotlin.concurrent.AtomicInt
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.StableRef
+import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.asStableRef
 import kotlinx.cinterop.convert
-import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
-import kotlinx.cinterop.set
-import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
 import platform.linux.sockaddr_un
 import platform.posix.AF_UNIX
+import platform.posix.ECONNABORTED
+import platform.posix.EINTR
 import platform.posix.ENAMETOOLONG
 import platform.posix.SOCK_STREAM
 import platform.posix.accept
 import platform.posix.bind
 import platform.posix.errno
+import platform.posix.fputs
 import platform.posix.getpid
 import platform.posix.listen
-import platform.posix.memset
-import kotlinx.cinterop.ULongVar
-import kotlinx.cinterop.value
-import platform.posix.ECONNABORTED
-import platform.posix.EINTR
-import platform.posix.fputs
 import platform.posix.pthread_create
 import platform.posix.pthread_join
 import platform.posix.recv
-import platform.posix.stderr
 import platform.posix.send
 import platform.posix.sockaddr
 import platform.posix.socket
-import platform.posix.socklen_t
+import platform.posix.stderr
 import platform.posix.strerror
 import platform.posix.unlink
 
@@ -95,10 +92,6 @@ class UnixEchoServer private constructor(
 
     companion object {
         private const val BACKLOG = 8
-
-        // Linux caps AF_UNIX pathnames at 108 bytes including the NUL
-        // terminator; see unix(7). Kept in sync with UnixSocket.
-        private const val SUN_PATH_CAPACITY = 108
 
         @OptIn(ExperimentalForeignApi::class)
         fun start(
@@ -177,17 +170,7 @@ class UnixEchoServer private constructor(
             pathBytes: ByteArray,
         ): StartError? = memScoped {
             val addr = alloc<sockaddr_un>()
-            memset(addr.ptr, 0, sizeOf<sockaddr_un>().convert())
-            addr.sun_family = AF_UNIX.convert()
-            val sunPath = addr.sun_path
-            for (i in pathBytes.indices) {
-                sunPath[i] = pathBytes[i]
-            }
-            sunPath[pathBytes.size] = 0
-            val sunPathOffset =
-                sunPath.rawValue.toLong() - addr.ptr.rawValue.toLong()
-            val addrLen: socklen_t =
-                (sunPathOffset.toInt() + pathBytes.size + 1).convert()
+            val addrLen = fillSockaddrUn(addr, pathBytes)
 
             if (bind(fd, addr.ptr.reinterpret<sockaddr>(), addrLen) != 0) {
                 val e = errno
@@ -209,18 +192,7 @@ class UnixEchoServer private constructor(
             if (fd < 0) return
             memScoped {
                 val addr = alloc<sockaddr_un>()
-                memset(addr.ptr, 0, sizeOf<sockaddr_un>().convert())
-                addr.sun_family = AF_UNIX.convert()
-                val pathBytes = path.encodeToByteArray()
-                val sunPath = addr.sun_path
-                for (i in pathBytes.indices) {
-                    sunPath[i] = pathBytes[i]
-                }
-                sunPath[pathBytes.size] = 0
-                val sunPathOffset =
-                    sunPath.rawValue.toLong() - addr.ptr.rawValue.toLong()
-                val addrLen: socklen_t =
-                    (sunPathOffset.toInt() + pathBytes.size + 1).convert()
+                val addrLen = fillSockaddrUn(addr, path.encodeToByteArray())
                 platform.posix.connect(fd, addr.ptr.reinterpret<sockaddr>(), addrLen)
             }
             platform.posix.close(fd)
