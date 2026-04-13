@@ -32,9 +32,13 @@ import platform.posix.listen
 import platform.posix.memset
 import kotlinx.cinterop.ULongVar
 import kotlinx.cinterop.value
+import platform.posix.ECONNABORTED
+import platform.posix.EINTR
+import platform.posix.fputs
 import platform.posix.pthread_create
 import platform.posix.pthread_join
 import platform.posix.recv
+import platform.posix.stderr
 import platform.posix.send
 import platform.posix.sockaddr
 import platform.posix.socket
@@ -54,6 +58,11 @@ import platform.posix.unlink
  *
  * Not thread-safe; each test owns its own instance.
  */
+// Class-level opt-in: every method on UnixEchoServer touches cinterop,
+// so function-level annotations would be pure noise here. The free
+// helpers below stay at function level since there is no enclosing
+// class to hang the annotation on. UnixSocket (production) keeps the
+// narrower function-level scope because its API surface is smaller.
 @OptIn(ExperimentalForeignApi::class)
 class UnixEchoServer private constructor(
     val socketPath: String,
@@ -253,8 +262,19 @@ private fun echoWorkerMain(arg: COpaquePointer?): COpaquePointer? {
 @OptIn(ExperimentalForeignApi::class)
 private fun runAcceptLoop(state: EchoWorkerState) {
     while (true) {
+        if (state.shutdown.value != 0) return
         val clientFd = accept(state.listenFd, null, null)
-        if (clientFd < 0) return
+        if (clientFd < 0) {
+            val e = errno
+            if (e == EINTR || e == ECONNABORTED) continue
+            if (state.shutdown.value != 0) return
+            // Unrecoverable listen-fd failure: log and exit the worker.
+            // Any subsequent connect() from a test will succeed at the
+            // kernel backlog but stall in sendAll/recvExact. Logging to
+            // stderr keeps the eventual CI hang debuggable.
+            logStderr("UnixEchoServer: accept failed, errno=$e")
+            return
+        }
         if (state.shutdown.value != 0) {
             platform.posix.close(clientFd)
             return
@@ -281,11 +301,14 @@ private fun readUntilEof(fd: Int): ByteArray? {
         val n = buf.usePinned { pinned ->
             recv(fd, pinned.addressOf(0), buf.size.convert(), 0)
         }
-        when {
-            n == 0L -> break
-            n < 0L -> return null
-            else -> chunks.add(buf.copyOf(n.toInt()))
+        if (n == 0L) break
+        if (n < 0L) {
+            val e = errno
+            if (e == EINTR) continue
+            logStderr("UnixEchoServer: recv failed, errno=$e")
+            return null
         }
+        chunks.add(buf.copyOf(n.toInt()))
     }
     val total = chunks.sumOf { it.size }
     val result = ByteArray(total)
@@ -308,8 +331,22 @@ private fun writeAll(fd: Int, data: ByteArray) {
                 (data.size - offset).convert(),
                 0,
             )
-            if (n <= 0L) return
+            if (n < 0L) {
+                val e = errno
+                if (e == EINTR) continue
+                logStderr("UnixEchoServer: send failed at $offset/${data.size}, errno=$e")
+                return
+            }
+            if (n == 0L) {
+                logStderr("UnixEchoServer: send returned 0 at $offset/${data.size}")
+                return
+            }
             offset += n.toInt()
         }
     }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun logStderr(message: String) {
+    fputs("$message\n", stderr)
 }

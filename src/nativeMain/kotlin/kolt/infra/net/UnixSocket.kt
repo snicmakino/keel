@@ -17,6 +17,7 @@ import kotlinx.cinterop.toKString
 import kotlinx.cinterop.usePinned
 import platform.linux.sockaddr_un
 import platform.posix.AF_UNIX
+import platform.posix.EINTR
 import platform.posix.ENAMETOOLONG
 import platform.posix.SHUT_WR
 import platform.posix.SOCK_STREAM
@@ -45,9 +46,6 @@ import platform.posix.strerror
 class UnixSocket internal constructor(private val fd: Int) : AutoCloseable {
     private var closed = false
 
-    /**
-     * Write all of `bytes` to the socket, looping over partial sends.
-     */
     @OptIn(ExperimentalForeignApi::class)
     fun sendAll(bytes: ByteArray): Result<Unit, UnixSocketError> {
         if (bytes.isEmpty()) return Ok(Unit)
@@ -60,8 +58,9 @@ class UnixSocket internal constructor(private val fd: Int) : AutoCloseable {
                     (bytes.size - offset).convert(),
                     0,
                 )
-                if (n < 0) {
+                if (n < 0L) {
                     val e = errno
+                    if (e == EINTR) continue
                     return Err(UnixSocketError.SendFailed(e, strerrorMessage(e)))
                 }
                 if (n == 0L) {
@@ -78,17 +77,12 @@ class UnixSocket internal constructor(private val fd: Int) : AutoCloseable {
         return Ok(Unit)
     }
 
-    /**
-     * Read exactly `n` bytes from the socket. A premature EOF surfaces
-     * as `UnexpectedEof` with the count of bytes received so far.
-     */
     @OptIn(ExperimentalForeignApi::class)
     fun recvExact(n: Int): Result<ByteArray, UnixSocketError> {
         if (n < 0) {
             return Err(
-                UnixSocketError.RecvFailed(
-                    errno = 0,
-                    message = "recvExact length must be non-negative, was $n",
+                UnixSocketError.InvalidArgument(
+                    "recvExact length must be non-negative, was $n",
                 ),
             )
         }
@@ -103,8 +97,9 @@ class UnixSocket internal constructor(private val fd: Int) : AutoCloseable {
                     (n - offset).convert(),
                     0,
                 )
-                if (got < 0) {
+                if (got < 0L) {
                     val e = errno
+                    if (e == EINTR) continue
                     return Err(UnixSocketError.RecvFailed(e, strerrorMessage(e)))
                 }
                 if (got == 0L) {
@@ -224,4 +219,6 @@ sealed interface UnixSocketError {
         val errno: Int,
         val message: String,
     ) : UnixSocketError
+
+    data class InvalidArgument(val detail: String) : UnixSocketError
 }
