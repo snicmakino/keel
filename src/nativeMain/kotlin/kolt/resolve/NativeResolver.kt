@@ -163,29 +163,42 @@ fun resolveNative(
  * the redirected display coordinate and the transitive dependencies from
  * the linux_x64 variant. Returns null on any fetch or parse failure so the
  * tree walker can render a partial graph instead of aborting.
+ *
+ * Results are memoized by (groupArtifact, version) so diamond dependencies
+ * don't re-fetch and re-parse the same `.module` files on every occurrence,
+ * matching [createPomLookup]'s caching behaviour.
  */
 fun createNativeLookup(
     repos: List<String>,
     cacheBase: String,
     deps: ResolverDeps,
     nativeTarget: String = NATIVE_TARGET_LINUX_X64
-): (String, String) -> NativeNodeInfo? = lookup@{ groupArtifact, version ->
-    val resolved = fetchNativeMetadata(
-        groupArtifact = groupArtifact,
-        version = version,
-        nativeTarget = nativeTarget,
-        cacheBase = cacheBase,
-        repos = repos,
-        deps = deps
-    ).getOrElse { return@lookup null }
+): (String, String) -> NativeNodeInfo? {
+    val cache = mutableMapOf<String, NativeNodeInfo?>()
 
-    NativeNodeInfo(
-        displayGroupArtifact = "${resolved.redirect.group}:${resolved.redirect.module}",
-        displayVersion = resolved.redirect.version,
-        dependencies = resolved.artifact.dependencies.map { dep ->
-            "${dep.group}:${dep.module}" to dep.version
+    return { groupArtifact, version ->
+        val cacheKey = "$groupArtifact:$version"
+        cache.getOrPut(cacheKey) {
+            val resolved = fetchNativeMetadata(
+                groupArtifact = groupArtifact,
+                version = version,
+                nativeTarget = nativeTarget,
+                cacheBase = cacheBase,
+                repos = repos,
+                deps = deps
+            ).getOrElse { null }
+
+            resolved?.let {
+                NativeNodeInfo(
+                    displayGroupArtifact = "${it.redirect.group}:${it.redirect.module}",
+                    displayVersion = it.redirect.version,
+                    dependencies = it.artifact.dependencies.map { dep ->
+                        "${dep.group}:${dep.module}" to dep.version
+                    }
+                )
+            }
         }
-    )
+    }
 }
 
 /**

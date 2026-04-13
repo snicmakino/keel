@@ -62,9 +62,16 @@ data class NativeNodeInfo(
 
 /**
  * Native counterpart of [buildDependencyTree]. Walks Gradle Module Metadata
- * via [nativeLookup] instead of POMs. The rendered graph mirrors what
- * NativeResolver would link: redirected `-linuxx64` display names and
- * kotlin-stdlib skipped everywhere.
+ * via [nativeLookup] instead of POMs, rendering the redirected `-linuxx64`
+ * display names and skipping kotlin-stdlib / kotlin-stdlib-common (ADR 0011)
+ * at both direct and transitive positions.
+ *
+ * Note: this is a *display* walker, not a resolver. It does not perform the
+ * "highest-version-wins" conflict resolution that [kolt.resolve.resolveNative]
+ * applies across the whole graph, so two branches of the rendered tree can
+ * show different versions of the same coordinate while the actual link would
+ * pick only the highest. Matches the behaviour of [buildDependencyTree] for
+ * JVM targets.
  *
  * When [nativeLookup] returns null (metadata missing or unparseable for a
  * coordinate), the tree renders that coordinate as a leaf with no children

@@ -211,8 +211,15 @@ internal fun doUpdate() {
 
 internal fun doTree() {
     val config = loadProjectConfig()
-    val allTestDeps = autoInjectedTestDeps(config) + config.testDependencies
-    if (config.dependencies.isEmpty() && allTestDeps.isEmpty()) {
+
+    // For JVM, `autoInjectedTestDeps` unconditionally injects kotlin-test-junit5
+    // so `kolt tree` has something to show even when the user declared no test
+    // deps. For native, that function returns empty (konanc bundles kotlin.test),
+    // so we gate on user-declared deps only.
+    val hasAnyDeps = config.dependencies.isNotEmpty() ||
+        config.testDependencies.isNotEmpty() ||
+        autoInjectedTestDeps(config).isNotEmpty()
+    if (!hasAnyDeps) {
         println("no dependencies")
         return
     }
@@ -222,9 +229,7 @@ internal fun doTree() {
     if (config.target == "native") {
         // Native target: walk Gradle Module Metadata, not POMs. The rendered
         // graph mirrors what NativeResolver actually links (redirected
-        // -linuxx64 names, kotlin-stdlib skipped per ADR 0011). Native builds
-        // do not auto-inject kotlin.test into test dependencies — it's
-        // provided by the konanc stdlib — so only regular deps are shown.
+        // -linuxx64 names, kotlin-stdlib skipped per ADR 0011).
         val nativeLookup = createNativeLookup(
             config.repositories.values.toList(),
             paths.cacheBase,
@@ -243,6 +248,7 @@ internal fun doTree() {
         return
     }
 
+    val allTestDeps = autoInjectedTestDeps(config) + config.testDependencies
     val pomLookup = createPomLookup(config.repositories.values.toList(), paths.cacheBase, createResolverDeps())
     if (config.dependencies.isNotEmpty()) {
         val tree = buildDependencyTree(config.dependencies, pomLookup)
