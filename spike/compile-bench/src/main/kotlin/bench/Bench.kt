@@ -129,7 +129,116 @@ fun main() {
             "heap delta: $rotatingHeapDelta MB (gate < $rotatingHeapGate MB)  ->  $verdictD"
     )
     println("Scenario D ratio vs A (info only): ${"%.2f".format(rotatingRatioA)}x")
+
+    System.gc()
+    Thread.sleep(200)
+
+    // Scenario E is gated behind an env flag because a 1000-iteration run takes several
+    // minutes. Default off so the routine spike run stays fast; enable with
+    //   BENCH_LONG_RUN=1 ./gradlew run
+    // or a number to override the iteration count, e.g. BENCH_LONG_RUN=500.
+    val longRunFlag = System.getenv("BENCH_LONG_RUN")
+    if (longRunFlag != null) {
+        // "=1" is the common enable-flag idiom but it also round-trips as "run 1 iter",
+        // which produces empty windows and NaN drift. Require a minimum that keeps the
+        // drift windows disjoint and non-trivial. Unparseable input is an error, not a
+        // silent default — the user asked for the long run explicitly.
+        val minLeakN = 400
+        val leakN = longRunFlag.toIntOrNull()
+            ?: error("BENCH_LONG_RUN must be an integer, got: $longRunFlag")
+        check(leakN >= minLeakN) { "BENCH_LONG_RUN must be >= $minLeakN, got: $leakN" }
+        val sampleEvery = 50
+        println()
+        println("=== Scenario E: shared loader long-run leak check (n=$leakN, sample every $sampleEvery) ===")
+        val sharedE = SharedLoaderCompileDriver(jars, fixtureCp)
+        // Sample heap after forced GC so live-set is visible, not floating garbage.
+        System.gc()
+        Thread.sleep(200)
+        val baselineHeap = usedHeapMb()
+        println("  baseline heap (post-gc, pre-compile): $baselineHeap MB")
+        val heapSamples = mutableListOf(HeapSample(0, baselineHeap))
+        val leakTimes = ArrayList<Long>(leakN)
+        val wallStart = System.currentTimeMillis()
+        for (i in 0 until leakN) {
+            var result: CompileResult? = null
+            val ms = measureTimeMillis { result = sharedE.compile(sources, freshOutputDir()) }
+            check(result is CompileResult.Ok) { "long-run compile failed at i=$i: $result" }
+            leakTimes += ms
+            if ((i + 1) % sampleEvery == 0) {
+                System.gc()
+                Thread.sleep(100)
+                val sample = HeapSample(i + 1, usedHeapMb())
+                heapSamples += sample
+                val elapsedSec = (System.currentTimeMillis() - wallStart) / 1000
+                println("  iter=${sample.iter.toString().padStart(4)}  heap=${sample.heapMb.toString().padStart(4)} MB  t+${elapsedSec}s  last compile=${ms} ms")
+            }
+        }
+        val totalWallSec = (System.currentTimeMillis() - wallStart) / 1000
+        println("  total wall: ${totalWallSec}s")
+
+        reportTimes(leakTimes)
+
+        // Time drift gate: first N warm samples vs last N, disjoint.
+        // minLeakN guarantees warmTimes.size >= 399 so windowSize is always 100.
+        val warmTimes = leakTimes.drop(1)
+        val windowSize = 100
+        check(warmTimes.size >= 2 * windowSize) {
+            "warmTimes too small for disjoint windows: ${warmTimes.size}"
+        }
+        val firstWindow = warmTimes.take(windowSize).average()
+        val lastWindow = warmTimes.takeLast(windowSize).average()
+        val timeDriftRatio = lastWindow / firstWindow
+        println("  first $windowSize warm avg: ${firstWindow.toLong()} ms")
+        println("  last  $windowSize warm avg: ${lastWindow.toLong()} ms")
+        println("  time drift ratio (last/first): ${"%.2f".format(timeDriftRatio)}x")
+
+        // Plateau detection: find the first post-baseline sample `i` such that every
+        // subsequent sample is within ±slack of sample[i]. This measures *suffix
+        // flatness*, not "is sample[i] close to the future max" — the latter would
+        // trivially match the baseline whenever total growth fits in slack.
+        // The baseline sample (iter=0, pre-compile) is excluded from candidates: it's
+        // the starting state, not steady state.
+        val plateauSlack = 20L
+        val postBaseline = heapSamples.drop(1)
+        val plateauIter = run {
+            for (idx in postBaseline.indices) {
+                val suffix = postBaseline.subList(idx, postBaseline.size)
+                val suffixMax = suffix.maxOf { it.heapMb }
+                val suffixMin = suffix.minOf { it.heapMb }
+                if (suffixMax - suffixMin <= plateauSlack) {
+                    return@run postBaseline[idx].iter
+                }
+            }
+            null
+        }
+        val maxHeap = heapSamples.maxOf { it.heapMb }
+        val heapDeltaTotal = maxHeap - baselineHeap
+        println("  max heap observed: $maxHeap MB")
+        println("  heap delta (max - baseline): $heapDeltaTotal MB")
+        println("  plateau iter (within ${plateauSlack} MB): ${plateauIter ?: "none"}")
+
+        val plateauIterGate = 500
+        val maxHeapGate = 512L
+        val timeDriftGate = 1.20
+        val verdictE = if (
+            plateauIter != null && plateauIter <= plateauIterGate &&
+            maxHeap < maxHeapGate &&
+            timeDriftRatio < timeDriftGate
+        ) "PASS" else "FAIL"
+        println()
+        println("=== Scenario E Verdict ===")
+        println(
+            "plateau iter: ${plateauIter ?: "none"} (gate <= $plateauIterGate), " +
+                "max heap: $maxHeap MB (gate < $maxHeapGate MB), " +
+                "time drift: ${"%.2f".format(timeDriftRatio)}x (gate < ${timeDriftGate}x)  ->  $verdictE"
+        )
+    } else {
+        println()
+        println("(Scenario E skipped — set BENCH_LONG_RUN=1 to enable the 1000-iter leak check)")
+    }
 }
+
+private data class HeapSample(val iter: Int, val heapMb: Long)
 
 private fun usedHeapMb(): Long {
     val rt = Runtime.getRuntime()

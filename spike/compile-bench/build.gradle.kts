@@ -39,4 +39,5 @@ tasks.test {
 tasks.named<JavaExec>("run") {
     systemProperty("kotlinc.classpath", kotlincClasspath.asPath)
     systemProperty("fixture.classpath", fixtureClasspath.asPath)
+    System.getenv("BENCH_LONG_RUN")?.let { environment("BENCH_LONG_RUN", it) }
 }
