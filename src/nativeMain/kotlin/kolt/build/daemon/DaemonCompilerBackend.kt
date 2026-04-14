@@ -152,7 +152,7 @@ class DaemonCompilerBackend internal constructor(
         val start = clockMs()
         var delayMs = INITIAL_BACKOFF_MS
         var lastErr: UnixSocketError? = null
-        while (true) {
+        do {
             sleeper(delayMs)
             val attempt = connector(socketPath)
             attempt.getError()?.let { err ->
@@ -161,18 +161,14 @@ class DaemonCompilerBackend internal constructor(
                     return Err(mapFatalConnectError(err))
                 }
             } ?: return Ok(attempt.get()!!)
-            if (clockMs() - start >= connectTotalBudgetMs) {
-                return Err(
-                    CompileError.BackendUnavailable.Other(
-                        "daemon did not accept a connection on $socketPath within " +
-                            "${connectTotalBudgetMs}ms (last: ${describe(lastErr)})",
-                    ),
-                )
-            }
             delayMs = (delayMs * 2).coerceAtMost(MAX_BACKOFF_MS)
-        }
-        @Suppress("UNREACHABLE_CODE")
-        throw IllegalStateException("unreachable")
+        } while (clockMs() - start < CONNECT_TOTAL_BUDGET_MS)
+        return Err(
+            CompileError.BackendUnavailable.Other(
+                "daemon did not accept a connection on $socketPath within " +
+                    "${CONNECT_TOTAL_BUDGET_MS}ms (last: ${describe(lastErr)})",
+            ),
+        )
     }
 
     private fun spawnArgv(): List<String> = buildList {
@@ -191,7 +187,7 @@ class DaemonCompilerBackend internal constructor(
     companion object {
         internal const val INITIAL_BACKOFF_MS = 10
         internal const val MAX_BACKOFF_MS = 200
-        internal const val connectTotalBudgetMs = 3000L
+        internal const val CONNECT_TOTAL_BUDGET_MS: Long = 3000L
     }
 }
 
@@ -288,6 +284,18 @@ internal fun mapReplyToOutcome(reply: Message): Result<CompileOutcome, CompileEr
         if (reply.exitCode == 0) {
             Ok(CompileOutcome(stdout = reply.stdout, stderr = reply.stderr))
         } else {
+            // TODO(#14 S7): distinguish "kotlinc said nonzero" (real
+            // CompilationFailed, not fallback-eligible) from "daemon
+            // raised a host-level error and wrote a protocol-error
+            // reply" (ADR 0016 §3 — host-level failures surface as
+            // `writeProtocolError` with exitCode=2 and an empty
+            // diagnostics list). Today both collapse into
+            // CompilationFailed, meaning a daemon internal error
+            // blocks the subprocess fallback. The distinction needs
+            // either (a) a new wire field or (b) sniffing exitCode==2
+            // + empty diagnostics + a marker stderr — neither is
+            // worth doing before the real integration test at S7
+            // proves which host-level failure modes are common.
             Err(
                 CompileError.CompilationFailed(
                     exitCode = reply.exitCode,

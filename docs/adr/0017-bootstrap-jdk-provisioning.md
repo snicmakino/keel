@@ -3,13 +3,16 @@
 ## Status
 
 Proposed (2026-04-14). Part of #14 PR3 S5.5. This ADR captures the
-decision to auto-provision a JDK dedicated to running the
-`kolt-compiler-daemon`, independent of the user's `kolt.toml [build]
-jdk`. The constant `BOOTSTRAP_JDK_VERSION` lands in the same commit
-as this draft; the call site that actually ensures the bootstrap JDK
-and passes `<bootstrap>/bin/java` to `DaemonCompilerBackend` is wired
-in PR3 S7 (`--no-daemon` + default-on). Accepting this ADR is
-conditional on S7 shipping and on the daemon going default-on.
+decision to give the `kolt-compiler-daemon` its own JDK slot
+independent of the user's `kolt.toml [build] jdk`, and to resolve
+that JDK **read-only** for PR3 — auto-provision is deferred until
+`ensureJdkBins` can return a `Result<_, _>` instead of calling
+`exitProcess`. The constant `BOOTSTRAP_JDK_VERSION` and the
+`resolveBootstrapJavaBin` helper land in the same commit as this
+draft; wiring the helper into `DaemonCompilerBackend` and handling
+the null-return fallback happens in PR3 S7 (`--no-daemon` +
+default-on). Accepting this ADR is conditional on S7 shipping and
+on the daemon going default-on.
 
 ## Context
 
@@ -70,7 +73,7 @@ This makes the "auto-provision" option's one real drawback bearable.
 
 ## Decision
 
-kolt provisions a dedicated bootstrap JDK on first daemon use, pinned
+kolt reserves a dedicated bootstrap JDK slot for the daemon, pinned
 in the kolt binary as `BOOTSTRAP_JDK_VERSION` in
 `kolt.build.daemon.BootstrapJdk`. Phase A pins the constant to
 `"21"` (Adoptium `latest/21`, matching the format the existing
@@ -79,12 +82,31 @@ in the kolt binary as `BOOTSTRAP_JDK_VERSION` in
 JDKs, so a project that already pins JDK 21 shares the install for
 free.
 
-The download is synchronous with the same progress output as
-`kolt install jdk 21`. Any failure during `ensureJdkBins` exits the
-bootstrap path; the caller (the daemon build pipeline) is expected
-to translate that into `CompileError.BackendUnavailable` so the
-subprocess fallback takes over for the current build. An online
-retry later picks up the download cleanly.
+For PR3, `resolveBootstrapJavaBin(paths)` is **read-only**: it
+returns the `java` path if the JDK is already installed, else
+`null`. The caller (S7 `DaemonCompilerBackend` wiring) is expected
+to translate a `null` into `CompileError.BackendUnavailable` so the
+subprocess fallback takes over for the current build. The daemon
+being "never load-bearing for correctness" (ADR 0016 §5) requires
+that nothing on the daemon bring-up path can exit the kolt
+process; the existing `ensureJdkBins` violates that invariant by
+calling `exitProcess` on any failure, which is why auto-install is
+held back from this PR.
+
+**Install path today**: users install the bootstrap JDK via
+`kolt install jdk 21`. The daemon then activates automatically on
+the next build because `resolveBootstrapJavaBin` begins returning
+non-null. A user who has not run `kolt install` sees the existing
+~8 s subprocess compile until they do, with no behaviour regression
+from pre-daemon kolt.
+
+**Auto-install is deferred**, tracked as follow-up work in the
+daemon epic. Landing it requires refactoring `installJdkToolchain`
+and `ensureJdkBins` to return `Result<_, _>` so the daemon path can
+surface download failures as `BackendUnavailable` without killing
+the kolt process. That refactor is mechanical but touches every
+existing `exitProcess(exitCode)` call in `ToolchainManager.kt`, and
+is kept out of PR3 so the native-client work is not blocked on it.
 
 The bootstrap JDK is deliberately **not** wired through `kolt.toml`.
 Users cannot change `BOOTSTRAP_JDK_VERSION` per project. The daemon
@@ -126,11 +148,15 @@ wired into the toolchain code.
 
 ### Negative
 
-- **First daemon use pays a ~200 MB download.** On a cold machine
-  the first `kolt build` after enabling daemon mode will download
-  and extract a JDK. The fallback to subprocess compile means the
-  build still finishes, but the user sees "this took a few minutes
-  extra the first time" and needs context to understand why.
+- **Users have to run `kolt install jdk 21` once before the daemon
+  speedup activates.** Without auto-install, the first-time UX is
+  "kolt build is fast only after you install the bootstrap JDK".
+  Acceptable because nothing regresses compared to pre-daemon kolt
+  (the subprocess fallback produces the same 8 s clean build as
+  before), and because the whole point of deferring auto-install
+  is to keep the fallback path from being held hostage to JDK
+  download state. The `kolt doctor`-style hint in the S7 fallback
+  message is the planned UX for pointing users at the one-line fix.
 - **Bootstrap version is a new thing to keep current.** Kolt release
   notes now have to cover "which JDK the daemon runs on this
   release". If the pinned bootstrap JDK falls behind in security
@@ -161,6 +187,13 @@ wired into the toolchain code.
    Adoptium exact-version endpoint requires a second URL pattern
    that the existing `installJdkToolchain` does not know about.
    Tracked as a follow-up under the daemon epic.
+5. **Auto-install from day one.** Considered and rejected for PR3:
+   the existing `installJdkToolchain` / `ensureJdkBins` exit the
+   kolt process on any download or checksum failure, which would
+   break the daemon-is-never-load-bearing invariant (ADR 0016 §5).
+   Auto-install will land after those paths are refactored to
+   return `Result<_, _>`, in a follow-up that does not otherwise
+   change daemon semantics.
 
 ## Related
 

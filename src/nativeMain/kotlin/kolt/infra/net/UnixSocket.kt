@@ -15,7 +15,6 @@ import kotlinx.cinterop.usePinned
 import platform.linux.sockaddr_un
 import platform.posix.AF_UNIX
 import platform.posix.EINTR
-import platform.posix.ENAMETOOLONG
 import platform.posix.SHUT_WR
 import platform.posix.SOCK_STREAM
 import platform.posix.errno
@@ -130,12 +129,16 @@ class UnixSocket internal constructor(private val fd: Int) : AutoCloseable {
         @OptIn(ExperimentalForeignApi::class)
         fun connect(path: String): Result<UnixSocket, UnixSocketError> {
             val pathBytes = path.encodeToByteArray()
+            // Kolt's own pre-flight (sun_path capacity) is a kolt bug
+            // when it trips, distinct from a kernel-side ENAMETOOLONG
+            // on the connect() syscall — so callers can classify "kolt
+            // built a bad path" as InternalMisuse instead of lumping
+            // it in with environment-level ConnectFailed. See
+            // DaemonCompilerBackend.mapFatalConnectError.
             if (pathBytes.size >= SUN_PATH_CAPACITY) {
                 return Err(
-                    UnixSocketError.ConnectFailed(
-                        path = path,
-                        errno = ENAMETOOLONG,
-                        message = "path exceeds sun_path capacity ($SUN_PATH_CAPACITY bytes)",
+                    UnixSocketError.InvalidArgument(
+                        "socket path exceeds sun_path capacity ($SUN_PATH_CAPACITY bytes): $path",
                     ),
                 )
             }
@@ -149,18 +152,29 @@ class UnixSocket internal constructor(private val fd: Int) : AutoCloseable {
             return memScoped {
                 val addr = alloc<sockaddr_un>()
                 val addrLen = fillSockaddrUn(addr, pathBytes)
-                val rc = platform.posix.connect(
-                    fd,
-                    addr.ptr.reinterpret<sockaddr>(),
-                    addrLen,
-                )
-                if (rc != 0) {
+                // Retry EINTR at the primitive layer, consistent with
+                // sendAll / recvExact above. Propagating EINTR to the
+                // caller would force every upstream (DaemonCompilerBackend,
+                // future `kolt watch` clients) to re-implement the same
+                // loop or misclassify transient signal noise as a fatal
+                // backend failure.
+                var rc: Int
+                while (true) {
+                    rc = platform.posix.connect(
+                        fd,
+                        addr.ptr.reinterpret<sockaddr>(),
+                        addrLen,
+                    )
+                    if (rc == 0) break
                     val e = errno
-                    platform.posix.close(fd)
-                    Err(UnixSocketError.ConnectFailed(path, e, strerrorMessage(e)))
-                } else {
-                    Ok(UnixSocket(fd))
+                    if (e != EINTR) {
+                        platform.posix.close(fd)
+                        return@memScoped Err(
+                            UnixSocketError.ConnectFailed(path, e, strerrorMessage(e)),
+                        )
+                    }
                 }
+                Ok(UnixSocket(fd))
             }
         }
 

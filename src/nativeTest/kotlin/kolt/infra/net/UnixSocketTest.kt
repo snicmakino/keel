@@ -12,6 +12,19 @@ import platform.posix.EBADF
 
 class UnixSocketTest {
     @Test
+    fun connectWithOversizePathReturnsInvalidArgument() {
+        // The pre-flight check (path length vs sun_path capacity) is
+        // a kolt bug when it fires, not an environment failure —
+        // callers (DaemonCompilerBackend.mapFatalConnectError)
+        // classify it as InternalMisuse instead of BackendUnavailable
+        // so the "this was kolt's own bad input" signal survives.
+        val tooLong = "/" + "a".repeat(SUN_PATH_CAPACITY + 4)
+        val result = UnixSocket.connect(tooLong)
+        val err = assertIs<UnixSocketError.InvalidArgument>(result.getError())
+        assertTrue(err.detail.contains("sun_path"), "detail should name the limit: ${err.detail}")
+    }
+
+    @Test
     fun connectToNonexistentPathReturnsConnectFailed() {
         val path = "/tmp/kolt-uds-does-not-exist-${uniqueSuffix()}.sock"
 

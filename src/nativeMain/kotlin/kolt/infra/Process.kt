@@ -74,9 +74,20 @@ fun executeCommand(args: List<String>): Result<Int, ProcessError> {
 // PID 1 (so our original parent never has to reap it) and detached
 // from the session it inherited. [logPath], if non-null, receives the
 // grandchild's stdout and stderr (append mode) — stdin is always
-// redirected to /dev/null. The intermediate child is reaped
-// synchronously by [executeCommand]'s sibling waitpid loop so the
-// caller observes no zombie.
+// redirected away from the parent's terminal. The intermediate child
+// is reaped synchronously so the caller observes no zombie.
+//
+// **`Ok(Unit)` does not mean `execvp` succeeded.** It means the
+// fork/setsid/fork/intermediate-reap chain completed; the grandchild
+// has started running but may `_exit(127)` when `execvp` fails on a
+// missing or non-executable target (for example, the daemon jar is
+// the wrong path). Callers that care (DaemonCompilerBackend does)
+// must observe spawn success indirectly by polling the socket: if
+// the grandchild died before binding, the retry loop hits the budget
+// and returns `BackendUnavailable`. We deliberately do not pass the
+// grandchild's pid back — reaping the intermediate already means the
+// grandchild is reparented to init, so waitpid() from the kolt parent
+// would return ECHILD regardless.
 //
 // This is separate from [executeCommand] because reusing fork+execvp
 // from there would entangle the managed-subprocess path (parent waits
@@ -90,36 +101,45 @@ fun spawnDetached(args: List<String>, logPath: String? = null): Result<Unit, Pro
     if (pid1 < 0) return Err(ProcessError.ForkFailed)
 
     if (pid1 == 0) {
-        // Intermediate child. setsid fails only if we are already a
-        // session leader, which should not happen post-fork; ignore
-        // the return value rather than abort, because even a shared
-        // session is acceptable for the daemon (the daemon does not
-        // read from a terminal anyway).
-        setsid()
+        // Intermediate child. `setsid` fails only if we are already a
+        // session leader, which should not happen post-fork; when it
+        // does, the grandchild still inherits the parent's process
+        // group and controlling terminal, which is acceptable for a
+        // daemon that never reads a tty, so we log rather than abort.
+        if (setsid() < 0) {
+            fputs("spawnDetached: setsid() failed, errno=$errno\n", stderr)
+        }
         val pid2 = fork()
         if (pid2 < 0) _exit(127)
         if (pid2 > 0) _exit(0)
 
         // Grandchild. Redirect fds 0/1/2 before execvp so the daemon
         // never inherits our terminal. If /dev/null is unavailable or
-        // the log file cannot be opened, fall through without the
-        // redirect — losing a log line is preferable to failing the
-        // spawn entirely, and the user can diagnose via ps + strace.
+        // the log file cannot be opened, fall through to whichever
+        // descriptor did open — we never leave stdin pointing at the
+        // caller's terminal.
+        //
+        // open() is variadic in C (the mode argument is only
+        // consulted when O_CREAT is set); K/N exposes the third slot
+        // as `vararg Any?`, so we pass the mode as an Int value and
+        // let the vararg plumbing box it.
         val devNull = open("/dev/null", O_RDWR)
-        if (devNull >= 0) {
-            dup2(devNull, STDIN_FILENO)
-        }
-        // open() is variadic in C (the mode argument is only consulted
-        // when O_CREAT is set); K/N exposes the third slot as
-        // `vararg Any?`, so we pass the mode as a UInt value and let
-        // the vararg plumbing box it.
         val logFd = if (logPath != null) {
             val mode = S_IRUSR or S_IWUSR
             open(logPath, O_WRONLY or O_CREAT or O_APPEND, mode)
         } else {
             -1
         }
+        val stdinFd = if (devNull >= 0) devNull else logFd
         val outFd = if (logFd >= 0) logFd else devNull
+        if (stdinFd >= 0) {
+            dup2(stdinFd, STDIN_FILENO)
+        } else {
+            // Neither /dev/null nor the log file opened. Close fd 0
+            // explicitly so the daemon cannot accidentally read from
+            // whatever descriptor the caller had on stdin.
+            platform.posix.close(STDIN_FILENO)
+        }
         if (outFd >= 0) {
             dup2(outFd, STDOUT_FILENO)
             dup2(outFd, STDERR_FILENO)
