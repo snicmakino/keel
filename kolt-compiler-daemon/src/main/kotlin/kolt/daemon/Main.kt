@@ -11,19 +11,22 @@ import java.io.File
 import java.nio.file.Path
 import kotlin.system.exitProcess
 
-private data class CliArgs(
+internal data class CliArgs(
     val socketPath: Path,
     // Retained per post-B-2a review decision: kolt-compiler-embeddable still
     // flows through this flag even though Phase B routes compile traffic through
     // BtaIncrementalCompiler. Downstream B-2c work may need to reuse it for
     // plugin-jars alongside BTA, and dropping it now would force a client-side
     // change the moment that requirement materialises. Unused paths are ignored
-    // by the daemon rather than failing startup.
+    // by the daemon rather than failing startup. `MainCliArgsTest` pins the
+    // flag as required so a future contributor cannot silently remove it
+    // from the parser without updating the native-client spawn argv in lock-
+    // step.
     val compilerJars: List<File>,
     val btaImplJars: List<File>,
 )
 
-private sealed interface CliError {
+internal sealed interface CliError {
     data class UnknownFlag(val flag: String) : CliError
     data object MissingSocket : CliError
     data object MissingCompilerJars : CliError
@@ -69,7 +72,7 @@ fun main(args: Array<String>) {
     exitProcess(0)
 }
 
-private fun parseArgs(args: Array<String>): Result<CliArgs, CliError> {
+internal fun parseArgs(args: Array<String>): Result<CliArgs, CliError> {
     var socketPath: String? = null
     var compilerJars: String? = null
     var btaImplJars: String? = null
