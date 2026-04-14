@@ -6,7 +6,12 @@ Accepted (2026-04-13). Updated 2026-04-14 for #14 PR3: the native-side
 client landed on branch `14/daemon-native-client`, and §5 has been
 rewritten to reflect the revised Phase A rollout — the daemon is the
 **default** compile backend, with the subprocess compile path retained
-only as a fallback. The JVM-side daemon subproject (`kolt-compiler-daemon/`)
+only as a fallback. Also updated 2026-04-14 for #96: §Benchmark results
+now carries a scaling subsection measuring `kolt build` wall time across
+jvm-{1,10,25,50} fixtures with a Gradle comparison. The headline Phase A
+target phrased in §Context (clean build ~8 s → ~3 s, warm < 1 s) is
+retained as the original motivation; see §Benchmark results — Scaling
+(#96) for where the 1 s warm target actually lives on a scaling curve. The JVM-side daemon subproject (`kolt-compiler-daemon/`)
 and wire protocol landed in PR2 (#86, merged); the native client,
 `FallbackCompilerBackend`, and `--no-daemon` escape hatch land in PR3
 (#14). Also updated 2026-04-14: `kolt-compiler-daemon/` is now an
@@ -295,6 +300,121 @@ times over the run; no upward drift). Scenario B fails the Phase A
 kill criterion by a factor of 2.6×. Scenario C passes cleanly and is
 the configuration adopted.
 
+### Scaling (#96, 2026-04-14)
+
+The spike numbers above measure `SharedCompilerHost` directly in-JVM
+on a one-file fixture. They cover the steady-state compile cost but
+not end-to-end `kolt build` wall time, and they say nothing about
+how the numbers change as source file count grows. #96 fills both
+gaps with a scaling benchmark measured against the release binary
+on `spike/bench-scaling/fixtures/jvm-{1,10,25,50}` (deterministic
+generator, `kotlin-stdlib`-only classpath, per file: a data class,
+a generic + reified inline function, a sealed `Op` hierarchy with
+exhaustive `when`, lambdas with capture, and a cross-package
+`bench.util` import). The harness (`spike/bench-scaling/run-bench.sh`)
+drives real `kolt build` for each fixture × mode, N=10 per cell,
+warm modes discarding the first 5 runs as JIT warmup. Wall time
+is `/usr/bin/time -f '%e'`.
+
+The numbers below are **run 3**. Run 1 carried a laptop-sleep
+outlier; run 2 had three methodology issues flagged by sub-agent
+review (`WARM_DISCARD=2` too small, unfair gradle timing that
+included `clean` + `test` tasks, and lighter fixtures that
+under-stressed the compiler), which produced two wrong conclusions:
+a declining nodaemon/warm ratio with size and a gradle/daemon
+crossover at `jvm-50`. Neither survives run 3. Provenance for runs
+1 and 2 is preserved as `results-2026-04-14-run1.md` and
+`results-2026-04-14-run2.md`.
+
+Medians, seconds (OpenJDK 21 Corretto, Kotlin 2.1.0 fixtures, Linux
+WSL2):
+
+| Fixture | nodaemon | daemon-cold | daemon-warm | gradle-warm | nodaemon / warm | gradle / warm |
+|---|---|---|---|---|---|---|
+| jvm-1  | 4.77  | 4.86  | 0.70 | 1.17 | 6.8× | 1.67× |
+| jvm-10 | 6.42  | 6.64  | 0.83 | 1.30 | 7.7× | 1.57× |
+| jvm-25 | 8.30  | 8.23  | 1.16 | 1.49 | 7.2× | 1.28× |
+| jvm-50 | 10.37 | 10.18 | 1.32 | 1.82 | 7.9× | 1.38× |
+
+Read as:
+
+- **Daemon warm vs subprocess is ~7× stable across sizes.** The
+  ratio sits in a tight 6.8–7.9× band with no monotone trend. A
+  single "~7×" is the right number to quote outside the hello-world
+  regime; the earlier hello-world 8.5× figure recorded in memory
+  was an overestimate inside that regime.
+- **Daemon cold regression is zero.** Cold medians track nodaemon
+  within ±0.25 s on every fixture, confirming the
+  `FallbackCompilerBackend` wiring adds no measurable client-side
+  cost on the cold path.
+- **The `warm < 1 s` Phase A target holds only below ~15–20 files.**
+  `jvm-1` (0.70 s) and `jvm-10` (0.83 s) are inside the budget;
+  `jvm-25` (1.16 s) and `jvm-50` (1.32 s) are above it. The 1 s
+  number was written against a hello-world baseline and does not
+  survive a scaling curve. Daemon-warm is a fixed-cost floor
+  (~0.70 s) plus a per-file slope of ~12 ms. Future Phase B work
+  (#3 incremental) will cut the slope; Phase A is not expected to.
+- **Gradle does not cross daemon-warm in this fixture range.**
+  Gradle-warm stays 1.28–1.67× slower than kolt daemon-warm across
+  all four sizes, flat within noise at N=10 (the jvm-25 ratio of
+  1.28× is the lowest of the four, so "no trend detectable" is the
+  honest framing rather than "convergent" or "divergent"). Gradle-
+  warm's per-file slope on these fixtures ((1.82 − 1.17) / 49 ≈
+  13 ms/file) is within rounding of kolt daemon-warm's ~12 ms/file,
+  so the persistent gap lives entirely in the fixed-cost floor
+  (~1.17 s gradle vs ~0.70 s kolt), not per-file compile work.
+  Because the two slopes converge by construction on this fixture
+  family, a "kolt scales better than Gradle on clean builds" claim
+  cannot be supported by extrapolating these numbers; what they
+  *do* support is "kolt amortises fixed cost faster on small
+  projects", which is a narrower claim. This is the Gradle anchor
+  that spike #86/#87 lacked.
+- **Resolve-phase tail latency reproduces as a ~3.3 s size-independent
+  outlier.** Nodaemon and daemon-cold cells show 2–3 of 10 samples
+  clustered ~3.3 s above the median, identical delta signature
+  across all four sizes. The size-independence rules out compile
+  work as the source. Rare occurrences leak through `WARM_DISCARD=5`
+  into daemon-warm too (`jvm-25` run 6, `jvm-50` run 7), matching
+  the same ~3.3 s delta; singletons out of N=10 do not move the
+  median. A maven-metadata refresh hypothesis was considered and
+  is weak (no SNAPSHOT deps, no TTL machinery). The leading
+  unverified hypothesis is a **WSL2 9p filesystem stat-storm on
+  kotlinc startup**: (a) the delta is almost exactly constant
+  across fixture sizes (+3.40 / +3.38 / +3.26 / +3.41 — fixed-cost
+  signature, not scaling work); (b) it hits `nodaemon` as often as
+  `daemon-cold`, so it cannot live inside the kolt daemon itself —
+  it is in the subprocess kotlinc startup path that both modes
+  share; (c) WSL2 9p is known to produce multi-second directory-
+  walk stalls, and kotlinc startup (classpath scan, JMOD indexing)
+  does a lot of directory walking. A Kotlin/Native runtime
+  teardown stall in `kolt.kexe` shutdown is a weaker but possible
+  alternative. The run-2 `kill_daemon` poll-loop hypothesis is
+  retracted — the poll ceiling is ~2.3 s, not 3.3 s, and warm-cell
+  outlier hits occur in iterations where `kill_daemon` was never
+  called. Disambiguating requires phase-level self-timing from
+  kolt itself plus `strace -c`; flagged for #88 / #90.
+- **8 s clean-build baseline in §Context does not reproduce.** On
+  these fixtures the subprocess baseline is 4.77 s at `jvm-1`,
+  rising to 10.37 s at `jvm-50`. The 8 s figure likely captured
+  different hardware or a cold toolchain download. The scaling
+  curve supersedes it as the reference baseline; §Context is
+  retained as the original motivation.
+
+Acknowledged methodology limitations (not fixed in run 3): mode
+ordering is a fixed block-per-cell sequence rather than interleaved,
+`daemon-cold` does not drop the Linux page cache (no scripted root),
+N=10 is still underpowered for distinguishing 6.8× from 7.9× without
+bootstrapping, and the host is WSL2 with an uncontrolled CPU
+governor. Full limitations and raw per-run tables live in
+`spike/bench-scaling/results-2026-04-14.md`.
+
+Scope and non-goals for #96: this is an end-to-end wall-time
+measurement on clean builds only. Incremental compile (#3),
+multi-module projects (#89), long-run leak behaviour (#90),
+rotating-fixture regression monitoring (#88), and randomised-order
+bench harness work are explicitly out of scope and have their own
+issues or are documented as deferred follow-ups.
+
 ## Alternatives Considered
 
 1. **JNI in-process compiler.** Link `kotlin-compiler-embeddable` into
@@ -340,6 +460,8 @@ the configuration adopted.
 - #86 — Phase A scope and spike results
 - #87 (merged) — the compile-bench spike that produced the numbers
   above
+- #96 — Phase A daemon scaling benchmark (this document's §Benchmark
+  results — Scaling subsection)
 - #88–#91 — follow-up spikes (rotating fixtures, multi-module,
   long-run leak check, concurrent-compile thread safety). Originally
   gating the Phase B default flip; after #14 PR3 landed default-on,
