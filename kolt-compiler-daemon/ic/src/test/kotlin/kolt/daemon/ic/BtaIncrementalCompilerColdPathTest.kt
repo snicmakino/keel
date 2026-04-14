@@ -69,8 +69,12 @@ class BtaIncrementalCompilerColdPathTest {
         assertTrue(classFiles.any { it.fileName.toString() == "Main.class" }, "expected fixture.Main.class in output: $classFiles")
     }
 
+    // A user type error is the only BTA outcome that maps to CompilationFailed.
+    // COMPILER_INTERNAL_ERROR and COMPILATION_OOM_ERROR are compiler-infrastructure
+    // failures and map to InternalError so B-2b's self-heal retry path can fire on
+    // them; see BtaIncrementalCompiler.executeCompile and ADR 0019 §7.
     @Test
-    fun `compilation error is reported as CompilationFailed not InternalError`() {
+    fun `user type error is reported as CompilationFailed not InternalError`() {
         val workRoot = Files.createTempDirectory("bta-err-")
         val sourceFile = workRoot.resolve("Broken.kt").also {
             it.writeText(

@@ -1,5 +1,9 @@
 plugins {
     kotlin("jvm") version "2.3.20"
+    // `java-library` provides the `api` configuration, which is required because
+    // :ic exposes kotlin-result types in the signature of IncrementalCompiler.compile.
+    // The `kotlin("jvm")` plugin on its own applies only `java`, which lacks `api`.
+    `java-library`
 }
 
 repositories {
@@ -31,7 +35,13 @@ dependencies {
     // `kotlin.build.tools.*` type outside this subproject is an ADR 0019 §3 violation
     // and is enforced by human review (see issue #112 acceptance criterion 2).
     implementation("org.jetbrains.kotlin:kotlin-build-tools-api:2.3.20")
-    implementation("com.michael-bull.kotlin-result:kotlin-result-jvm:2.3.1")
+    // `api` rather than `implementation`: IncrementalCompiler.compile returns
+    // Result<IcResponse, IcError>, so kotlin-result types are part of this
+    // module's public API and must be visible to consumers (daemon core) at
+    // compile time. Today daemon core also declares kotlin-result directly, so
+    // `implementation` would happen to work — but it would silently break the
+    // day a second consumer imports :ic without its own kotlin-result dep.
+    api("com.michael-bull.kotlin-result:kotlin-result-jvm:2.3.1")
 
     buildToolsImpl("org.jetbrains.kotlin:kotlin-build-tools-impl:2.3.20")
     fixtureClasspath("org.jetbrains.kotlin:kotlin-stdlib:2.3.20")

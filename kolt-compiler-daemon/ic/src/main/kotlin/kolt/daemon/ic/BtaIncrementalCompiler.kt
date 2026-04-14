@@ -30,20 +30,26 @@ import kotlin.time.TimeSource
 //         └─ URLClassLoader            only — no -impl classes reachable upward)
 //             └─ kotlin-build-tools-impl-*.jar [+ transitive]
 //
-// Any BTA call is wrapped in runCatching so a thrown KotlinBuildToolsException
-// (or any other Throwable — the BTA surface is experimental) becomes an
-// IcError.InternalError instead of propagating into daemon core. The self-heal
-// wipe-and-retry path referenced in ADR 0019 §7 is B-2b's concern.
+// The entire BTA call sequence is fenced by a single `try { ... } catch (Throwable)`
+// at the adapter boundary so that a thrown `KotlinBuildToolsException` (or any other
+// failure mode on the experimental surface) becomes an `IcError.InternalError`
+// instead of propagating into daemon core. Per ADR 0019 §7, `InternalError` is the
+// signal B-2b's self-heal path keys off — it must cover both (a) thrown exceptions
+// and (b) non-COMPILATION_ERROR `CompilationResult` values (`COMPILER_INTERNAL_ERROR`,
+// `COMPILATION_OOM_ERROR`), because those are compiler-infrastructure failures, not
+// user-code type errors. Only `COMPILATION_ERROR` represents "the user's source
+// does not type-check" and is the one variant that must reach daemon core as
+// `CompilationFailed`.
 class BtaIncrementalCompiler private constructor(
     private val toolchain: KotlinToolchains,
 ) : IncrementalCompiler {
 
-    override fun compile(request: IcRequest): Result<IcResponse, IcError> = runCatching {
-        executeCompile(request)
-    }.fold(
-        onSuccess = { it },
-        onFailure = { Err(IcError.InternalError(it)) },
-    )
+    override fun compile(request: IcRequest): Result<IcResponse, IcError> =
+        try {
+            executeCompile(request)
+        } catch (t: Throwable) {
+            Err(IcError.InternalError(t))
+        }
 
     private fun executeCompile(request: IcRequest): Result<IcResponse, IcError> {
         val builder = toolchain.jvm.jvmCompilationOperationBuilder(request.sources, request.outputDir)
@@ -72,17 +78,24 @@ class BtaIncrementalCompiler private constructor(
                     status = Status.SUCCESS,
                 ),
             )
-            CompilationResult.COMPILATION_ERROR,
+            // User source does not type-check. Daemon core reports this to the
+            // client verbatim; B-2b's self-heal retry must NOT fire on this path
+            // because a wipe+retry would just reproduce the same type error.
+            CompilationResult.COMPILATION_ERROR -> Err(
+                IcError.CompilationFailed(
+                    messages = listOf("kotlinc reported $compilationResult"),
+                ),
+            )
+            // Compiler-infrastructure failures, not user-code failures. Routed as
+            // `InternalError` so B-2b's `wipe workingDir + full recompile retry`
+            // path (ADR 0019 §7) can fire: OOM often clears on retry with a fresh
+            // heap state, and `COMPILER_INTERNAL_ERROR` is indistinguishable from
+            // a thrown `KotlinBuildToolsException` in terms of the right recovery.
             CompilationResult.COMPILATION_OOM_ERROR,
             CompilationResult.COMPILER_INTERNAL_ERROR,
             -> Err(
-                IcError.CompilationFailed(
-                    // BTA's METRICS_COLLECTOR can surface diagnostic text, but
-                    // the cold-path smoke test does not need per-message detail
-                    // yet. A single synthetic line is enough for daemon core to
-                    // report failure; wiring a real diagnostic collector is a
-                    // B-2b concern that pairs with ic.* metrics.
-                    messages = listOf("kotlinc reported $compilationResult"),
+                IcError.InternalError(
+                    RuntimeException("kotlinc reported $compilationResult"),
                 ),
             )
         }
@@ -101,16 +114,15 @@ class BtaIncrementalCompiler private constructor(
         // we surface the classloader failure as an IcError.InternalError in the
         // Result returned to daemon core rather than throwing.
         fun create(btaImplJars: List<Path>): Result<BtaIncrementalCompiler, IcError.InternalError> =
-            runCatching {
+            try {
                 require(btaImplJars.isNotEmpty()) {
                     "btaImplJars is empty — daemon must receive kotlin-build-tools-impl classpath via --bta-impl-jars"
                 }
                 val urls = btaImplJars.map { it.toUri().toURL() }.toTypedArray()
                 val implLoader = URLClassLoader(urls, SharedApiClassesClassLoader())
-                BtaIncrementalCompiler(KotlinToolchains.loadImplementation(implLoader))
-            }.fold(
-                onSuccess = { Ok(it) },
-                onFailure = { Err(IcError.InternalError(it)) },
-            )
+                Ok(BtaIncrementalCompiler(KotlinToolchains.loadImplementation(implLoader)))
+            } catch (t: Throwable) {
+                Err(IcError.InternalError(t))
+            }
     }
 }
