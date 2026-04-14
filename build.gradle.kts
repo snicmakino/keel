@@ -44,3 +44,11 @@ tasks.withType<Wrapper> {
     gradleVersion = "8.12"
     distributionType = Wrapper.DistributionType.BIN
 }
+
+// Keep the existing "./gradlew build rebuilds the daemon fat jar too" DX after
+// the kolt-compiler-daemon split into an independent Gradle build. Without this
+// wiring, the dev-fallback path in DaemonJarResolver.kt could pick up a stale
+// jar produced before a local protocol change.
+tasks.named("build") {
+    dependsOn(gradle.includedBuild("kolt-compiler-daemon").task(":build"))
+}
