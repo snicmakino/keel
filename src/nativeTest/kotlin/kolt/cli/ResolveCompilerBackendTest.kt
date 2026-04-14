@@ -22,10 +22,10 @@ import kotlin.test.assertTrue
 /**
  * Drives every branch of [resolveCompilerBackend] with fake seams.
  * The helper itself contains no I/O, but every production path it
- * touches (cwd resolution, precondition resolution, daemon state
- * directory creation, daemon backend construction, warning sink) is
- * exposed as a lambda so the test can observe warning wording and
- * backend identity directly without standing up a real daemon.
+ * touches (precondition resolution, daemon state directory creation,
+ * daemon backend construction, warning sink) is exposed as a lambda
+ * so the test can observe warning wording and backend identity
+ * directly without standing up a real daemon.
  */
 class ResolveCompilerBackendTest {
 
