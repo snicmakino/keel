@@ -1,8 +1,15 @@
 package kolt.cli
 
+import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
 import kolt.build.*
+import kolt.build.daemon.DaemonCompilerBackend
+import kolt.build.daemon.DaemonPreconditionError
+import kolt.build.daemon.DaemonSetup
+import kolt.build.daemon.formatDaemonPreconditionWarning
+import kolt.build.daemon.resolveDaemonPreconditions
 import kolt.config.*
 import kolt.infra.*
 import kolt.resolve.*
@@ -35,14 +42,14 @@ internal fun loadProjectConfig(): KoltConfig {
     }
 }
 
-internal fun doCheck() {
+internal fun doCheck(useDaemon: Boolean = true) {
     val startMark = TimeSource.Monotonic.markNow()
     val config = loadProjectConfig()
     // For native target, check is equivalent to a full build (konanc has no
     // syntax-only mode). Delegate to doBuild and discard its BuildResult —
     // check has no further use for it.
     if (config.target == "native") {
-        doBuild()
+        doBuild(useDaemon = useDaemon)
         return
     }
     val paths = resolveKoltPaths(EXIT_BUILD_ERROR)
@@ -73,7 +80,7 @@ internal fun doClean() {
     println("removed $BUILD_DIR/")
 }
 
-internal fun doBuild(): BuildResult {
+internal fun doBuild(useDaemon: Boolean = true): BuildResult {
     val startMark = TimeSource.Monotonic.markNow()
     val config = loadProjectConfig()
 
@@ -103,15 +110,71 @@ internal fun doBuild(): BuildResult {
     }
     val classpath = resolveDependencies(config)
     val pArgs = resolvePluginArgs(config, managedKotlincBin)
-    val buildCmd = buildCommand(config, classpath, pArgs, kotlincPath = managedKotlincBin)
     ensureDirectoryRecursive(CLASSES_DIR).getOrElse { error ->
         eprintln("error: could not create directory ${error.path}")
         exitProcess(EXIT_BUILD_ERROR)
     }
 
+    // Resolve cwd once, up front. Both the daemon path (which keys
+    // per-project state on the absolute project path) and the
+    // absolutise pass below need it, and there is no sensible
+    // recovery if kolt itself cannot read its own cwd: any relative
+    // path in config.sources or CLASSES_DIR would resolve
+    // inconsistently from that point on. Hard-exit is the honest
+    // behaviour — this is not a "fall back to the daemon-less path"
+    // failure mode, it is "kolt cannot function" — and it unifies
+    // the failure policy with resolveCompilerBackend, which no
+    // longer needs a cwd seam of its own.
+    val cwd = currentWorkingDirectory() ?: run {
+        eprintln("error: could not determine current working directory")
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
+    val subprocessBackend = SubprocessCompilerBackend(kotlincBin = managedKotlincBin)
+    val backend: CompilerBackend = resolveCompilerBackend(
+        config = config,
+        paths = paths,
+        subprocessBackend = subprocessBackend,
+        useDaemon = useDaemon,
+        absProjectPath = cwd,
+    )
+    // Sources and outputPath are relative to the project root in
+    // kolt.toml. The subprocess backend inherits cwd via fork+exec,
+    // but the daemon JVM persists across builds and ignores
+    // `CompileRequest.workingDir` (SharedCompilerHost.buildArgs does
+    // not consult it — ADR 0016 §3 leaves the daemon's cwd
+    // unspecified on purpose). Absolutise every path the backend
+    // receives so the result is identical regardless of whether the
+    // daemon or the subprocess backend serves the compile, and so a
+    // future daemon-side change (e.g. chdir or relative resolution)
+    // cannot silently desynchronise the two paths.
+    val request = CompileRequest(
+        // TODO(#14): `workingDir` is populated with the project root
+        // as a forward-compatible anchor, but no backend reads it
+        // today — the native subprocess path inherits cwd via
+        // fork+exec and the JVM SharedCompilerHost.buildArgs ignores
+        // the field. Kept in the wire so a future daemon-side
+        // chdir-per-compile can honour it without a wire migration.
+        workingDir = cwd,
+        // TODO(#14 S5+): resolveDependencies currently returns a ':'-joined
+        // String for legacy reasons, so we split it here to hand the backend a
+        // List<String>. When the daemon path lands and the legacy string form
+        // is no longer needed, teach resolveDependencies to return List<String>
+        // directly and delete this split.
+        classpath = if (classpath.isNullOrEmpty()) emptyList() else classpath.split(":").filter { it.isNotEmpty() },
+        sources = config.sources.map { absolutise(it, cwd) },
+        outputPath = absolutise(CLASSES_DIR, cwd),
+        moduleName = config.name,
+        extraArgs = buildList {
+            add("-jvm-target")
+            add(config.jvmTarget)
+            addAll(pArgs)
+        },
+    )
+
     println("compiling ${config.name}...")
-    executeCommand(buildCmd.args).getOrElse { error ->
-        eprintln(formatProcessError(error, "compilation"))
+    backend.compile(request).getOrElse { error ->
+        eprintln(formatCompileError(error, "compilation"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
@@ -307,7 +370,7 @@ internal fun doRun(config: KoltConfig, classpath: String?, appArgs: List<String>
     }
 }
 
-internal fun doTest(testArgs: List<String> = emptyList()) {
+internal fun doTest(testArgs: List<String> = emptyList(), useDaemon: Boolean = true) {
     // Load the config once up front so we can dispatch on target before doing
     // any compilation work. The native path compiles main + test in a single
     // konanc invocation and therefore bypasses doBuild() entirely, unlike the
@@ -317,7 +380,7 @@ internal fun doTest(testArgs: List<String> = emptyList()) {
         doNativeTest(config, testArgs)
         return
     }
-    val (_, classpath, pArgs, javaPath) = doBuild()
+    val (_, classpath, pArgs, javaPath) = doBuild(useDaemon = useDaemon)
 
     val existingTestSources = config.testSources.filter { fileExists(it) }
     if (existingTestSources.isEmpty()) {
@@ -427,6 +490,84 @@ internal fun ensureJdkBinsFromConfig(config: KoltConfig, paths: KoltPaths): JdkB
     val version = config.jdk ?: return JdkBins(null, null)
     return ensureJdkBins(version, paths, EXIT_BUILD_ERROR)
 }
+
+// Warning wording pinned as a constant so unit tests can assert on
+// the exact string without hard-coding it a second time in each
+// branch's test. Kept internal so the tests in the same module can
+// reference it without exposing it on the public API.
+internal const val WARNING_DAEMON_DIR_UNWRITABLE =
+    "warning: could not create daemon state directory — falling back to subprocess compile"
+
+/**
+ * Picks the backend [doBuild] will hand the compile request to. If
+ * [useDaemon] is false (user passed `--no-daemon`), the subprocess
+ * backend is returned directly — no fallback wrapper, no precondition
+ * probing, so the code path is exactly the pre-daemon one. Otherwise
+ * the daemon preconditions are checked; on success we return a
+ * [FallbackCompilerBackend] wrapping a freshly-constructed
+ * [DaemonCompilerBackend] with [subprocessBackend] as the fallback and
+ * [reportFallback] as the observer. On any precondition or wiring
+ * failure we print a one-line warning via [warningSink] and degrade
+ * to the subprocess backend — daemon is never load-bearing for
+ * correctness (ADR 0016 §5).
+ *
+ * [absProjectPath] is **required** and must be the current absolute
+ * cwd. It is passed in by [doBuild] after that routine has already
+ * decided a failure to read cwd is a kolt-cannot-function condition
+ * and hard-exited the process; [resolveCompilerBackend] therefore
+ * does not need a separate cwd-unavailable branch of its own.
+ *
+ * Seams ([preconditionResolver], [daemonDirCreator],
+ * [daemonBackendFactory], [warningSink]) are defaulted to production
+ * helpers so callers pass only the first five arguments. Unit tests
+ * substitute fakes to drive each degradation branch without touching
+ * the filesystem or bringing up a real daemon.
+ */
+internal fun resolveCompilerBackend(
+    config: KoltConfig,
+    paths: KoltPaths,
+    subprocessBackend: CompilerBackend,
+    useDaemon: Boolean,
+    absProjectPath: String,
+    preconditionResolver: (KoltPaths, String, String) -> Result<DaemonSetup, DaemonPreconditionError> =
+        { p, kotlincVersion, cwd -> resolveDaemonPreconditions(p, kotlincVersion, cwd) },
+    daemonDirCreator: (String) -> Result<Unit, MkdirFailed> = ::ensureDirectoryRecursive,
+    daemonBackendFactory: (DaemonSetup) -> CompilerBackend = ::createDaemonBackend,
+    warningSink: (String) -> Unit = ::eprintln,
+): CompilerBackend {
+    if (!useDaemon) return subprocessBackend
+
+    val setup = preconditionResolver(paths, config.kotlin, absProjectPath).getOrElse { err ->
+        warningSink(formatDaemonPreconditionWarning(err))
+        return subprocessBackend
+    }
+
+    // spawnDetached opens the log path with O_CREAT but not the
+    // intermediate directory — if ~/.kolt/daemon/<projectHash>/ is
+    // missing the log file is silently dropped and the daemon's
+    // stderr lands in /dev/null. The JVM side already creates the
+    // directory for the socket bind (ADR 0016 §Socket path
+    // lifecycle), but that happens after the client has already
+    // tried to open the log, so we create it eagerly here.
+    if (daemonDirCreator(setup.daemonDir).getError() != null) {
+        warningSink(WARNING_DAEMON_DIR_UNWRITABLE)
+        return subprocessBackend
+    }
+
+    return FallbackCompilerBackend(
+        primary = daemonBackendFactory(setup),
+        fallback = subprocessBackend,
+        onFallback = ::reportFallback,
+    )
+}
+
+internal fun createDaemonBackend(setup: DaemonSetup): CompilerBackend = DaemonCompilerBackend(
+    javaBin = setup.javaBin,
+    daemonJarPath = setup.daemonJarPath,
+    compilerJars = setup.compilerJars,
+    socketPath = setup.socketPath,
+    logPath = setup.logPath,
+)
 
 internal fun createResolverDeps() = object : ResolverDeps {
     override fun fileExists(path: String): Boolean = kolt.infra.fileExists(path)
