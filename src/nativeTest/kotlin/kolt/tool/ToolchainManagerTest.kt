@@ -1,5 +1,6 @@
 package kolt.tool
 
+import com.github.michaelbull.result.get
 import kolt.config.KoltPaths
 import kolt.infra.ensureDirectoryRecursive
 import kolt.infra.removeDirectoryRecursive
@@ -464,10 +465,10 @@ class ToolchainManagerTest {
         writeFileAsString("$binDir/kotlinc", "#!/bin/sh")
         try {
             // When: ensureKotlincBin is called
-            val result = ensureKotlincBin("2.1.0", paths, 1)
+            val result = ensureKotlincBin("2.1.0", paths)
 
             // Then: returns the managed bin path without triggering download
-            assertEquals(paths.kotlincBin("2.1.0"), result)
+            assertEquals(paths.kotlincBin("2.1.0"), result.get())
         } finally {
             removeDirectoryRecursive(paths.home + "/.kolt")
         }
@@ -572,9 +573,9 @@ class ToolchainManagerTest {
         ensureDirectoryRecursive(binDir)
         writeFileAsString("$binDir/konanc", "#!/bin/sh")
         try {
-            val result = ensureKonancBin("2.1.0", paths, 1)
+            val result = ensureKonancBin("2.1.0", paths)
 
-            assertEquals(paths.konancBin("2.1.0"), result)
+            assertEquals(paths.konancBin("2.1.0"), result.get())
         } finally {
             removeDirectoryRecursive(paths.home + "/.kolt")
         }
@@ -592,11 +593,12 @@ class ToolchainManagerTest {
         writeFileAsString("$binDir/jar", "#!/bin/sh")
         try {
             // When: ensureJdkBins is called
-            val result = ensureJdkBins("21", paths, 1)
+            val result = ensureJdkBins("21", paths)
 
             // Then: returns managed java and jar paths
-            assertEquals(paths.javaBin("21"), result.java)
-            assertEquals(paths.jarBin("21"), result.jar)
+            val bins = result.get()!!
+            assertEquals(paths.javaBin("21"), bins.java)
+            assertEquals(paths.jarBin("21"), bins.jar)
         } finally {
             removeDirectoryRecursive(paths.home + "/.kolt")
         }

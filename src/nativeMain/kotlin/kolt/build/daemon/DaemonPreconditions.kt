@@ -32,12 +32,17 @@ internal data class DaemonSetup(
 // are build failures — ADR 0016 §5 guarantees the daemon is never
 // load-bearing for correctness.
 internal sealed interface DaemonPreconditionError {
-    // The bootstrap JDK is not yet installed at the expected path
-    // under ~/.kolt/toolchains/jdk/<BOOTSTRAP_JDK_VERSION>/bin/java.
-    // Carries the probed directory so the warning can point at the
-    // exact path the user needs to populate. Auto-install is future
-    // work tracked in ADR 0017 Alternatives §5.
-    data class BootstrapJdkMissing(val jdkInstallDir: String) : DaemonPreconditionError
+    // Auto-install of the bootstrap JDK failed (download, checksum,
+    // extract, or a leftover partial install under the probed
+    // directory). Carries the probed directory so the warning can
+    // name the exact path kolt tried to populate, plus the underlying
+    // cause message so the warning tells the user *why* it failed
+    // (HTTP status, offline, disk full, …) rather than just "missing".
+    // ADR 0017 §Decision (revised) describes this auto-install path.
+    data class BootstrapJdkInstallFailed(
+        val jdkInstallDir: String,
+        val cause: String,
+    ) : DaemonPreconditionError
 
     // The `kolt-compiler-daemon-all.jar` was not found in any of the
     // locations [resolveDaemonJar] probes (env override, libexec
@@ -60,22 +65,32 @@ internal sealed interface DaemonPreconditionError {
  * and picks [kolt.build.FallbackCompilerBackend] or a plain
  * [kolt.build.SubprocessCompilerBackend] accordingly.
  *
- * Seams ([resolveJavaBin], [resolveDaemonJar], [listCompilerJars]) are
+ * Seams ([ensureJavaBin], [resolveDaemonJar], [listCompilerJars]) are
  * parameterised so unit tests can drive every variant of
  * [DaemonPreconditionError] without touching the real filesystem.
  * Defaults wire up the production helpers; production callers pass
- * only [paths], [kotlincVersion], and [absProjectPath].
+ * only [paths], [kotlincVersion], and [absProjectPath]. [ensureJavaBin]
+ * is the auto-installing [ensureBootstrapJavaBin] — on a clean first
+ * run it downloads the pinned JDK synchronously before returning; on
+ * failure the daemon path degrades to the subprocess backend per
+ * ADR 0016 §5, never killing the build.
  */
 internal fun resolveDaemonPreconditions(
     paths: KoltPaths,
     kotlincVersion: String,
     absProjectPath: String,
-    resolveJavaBin: (KoltPaths) -> String? = ::resolveBootstrapJavaBin,
+    ensureJavaBin: (KoltPaths) -> Result<String, BootstrapJdkError> = ::ensureBootstrapJavaBin,
     resolveDaemonJar: () -> DaemonJarResolution = ::resolveDaemonJar,
     listCompilerJars: (String) -> List<String>? = { dir -> listJarFiles(dir).getOrElse { null } },
 ): Result<DaemonSetup, DaemonPreconditionError> {
-    val javaBin = resolveJavaBin(paths)
-        ?: return Err(DaemonPreconditionError.BootstrapJdkMissing(paths.jdkPath(BOOTSTRAP_JDK_VERSION)))
+    val javaBin = ensureJavaBin(paths).getOrElse { err ->
+        return Err(
+            DaemonPreconditionError.BootstrapJdkInstallFailed(
+                jdkInstallDir = err.jdkInstallDir,
+                cause = err.cause.message,
+            ),
+        )
+    }
 
     val daemonJar = when (val res = resolveDaemonJar()) {
         is DaemonJarResolution.Resolved -> res.path
@@ -104,16 +119,15 @@ internal fun resolveDaemonPreconditions(
 /**
  * One-line stderr warning for a precondition failure. Kept next to
  * the error enum so every new variant is forced to supply wording at
- * the same time. The wording names the on-disk location kolt probed
- * rather than an imperative install command — auto-install of the
- * bootstrap JDK is deferred (ADR 0017 Alternatives §5) and there is
- * no dedicated one-liner a user can run yet. Acceptable regression
- * from pre-daemon kolt because the subprocess fallback preserves the
- * old ~8 s clean build behaviour exactly.
+ * the same time. For [DaemonPreconditionError.BootstrapJdkInstallFailed]
+ * the wording now includes the underlying cause (HTTP status, offline,
+ * disk full, …) so a user staring at "slow builds" knows whether to
+ * retry online, free up disk, or investigate a proxy. ADR 0017
+ * §Decision (revised) made the auto-install path default-on.
  */
 internal fun formatDaemonPreconditionWarning(err: DaemonPreconditionError): String = when (err) {
-    is DaemonPreconditionError.BootstrapJdkMissing ->
-        "warning: bootstrap JDK not installed at ${err.jdkInstallDir} — falling back to subprocess compile"
+    is DaemonPreconditionError.BootstrapJdkInstallFailed ->
+        "warning: could not install bootstrap JDK at ${err.jdkInstallDir} (${err.cause}) — falling back to subprocess compile"
     DaemonPreconditionError.DaemonJarMissing ->
         "warning: kolt-compiler-daemon jar not found — falling back to subprocess compile"
     is DaemonPreconditionError.CompilerJarsMissing ->

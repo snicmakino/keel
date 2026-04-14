@@ -15,13 +15,19 @@ sealed class ProcessError {
     data object PopenFailed : ProcessError()
 }
 
+// Formats a [ProcessError] into a short, lowercase, prefix-free
+// message. Callers are responsible for prepending their own
+// "error:" / "warning:" tag at the output site — keeping the
+// prefix out here lets the same message round-trip through
+// [ToolchainError] (which re-prepends "error:" at eprintln time)
+// without a fragile `.removePrefix("error: ")`.
 fun formatProcessError(error: ProcessError, context: String): String = when (error) {
-    is ProcessError.NonZeroExit -> "error: $context failed with exit code ${error.exitCode}"
-    is ProcessError.EmptyArgs -> "error: no command to execute"
-    is ProcessError.ForkFailed -> "error: failed to start $context process"
-    is ProcessError.WaitFailed -> "error: failed waiting for $context process"
-    is ProcessError.SignalKilled -> "error: $context process was killed"
-    is ProcessError.PopenFailed -> "error: failed to start $context process"
+    is ProcessError.NonZeroExit -> "$context failed with exit code ${error.exitCode}"
+    is ProcessError.EmptyArgs -> "no command to execute"
+    is ProcessError.ForkFailed -> "failed to start $context process"
+    is ProcessError.WaitFailed -> "failed waiting for $context process"
+    is ProcessError.SignalKilled -> "$context process was killed"
+    is ProcessError.PopenFailed -> "failed to start $context process"
 }
 
 @OptIn(ExperimentalForeignApi::class)

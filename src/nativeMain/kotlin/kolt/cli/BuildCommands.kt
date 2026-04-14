@@ -53,7 +53,7 @@ internal fun doCheck(useDaemon: Boolean = true) {
         return
     }
     val paths = resolveKoltPaths(EXIT_BUILD_ERROR)
-    val managedKotlincBin = ensureKotlincBin(config.kotlin, paths, EXIT_BUILD_ERROR)
+    val managedKotlincBin = ensureKotlincBin(config.kotlin, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
 
     val classpath = resolveDependencies(config)
     val pArgs = resolvePluginArgs(config, managedKotlincBin)
@@ -61,7 +61,7 @@ internal fun doCheck(useDaemon: Boolean = true) {
 
     println("checking ${config.name}...")
     executeCommand(cmd).getOrElse { error ->
-        eprintln(formatProcessError(error, "check"))
+        eprintln("error: " + formatProcessError(error, "check"))
         exitProcess(EXIT_BUILD_ERROR)
     }
     val elapsed = startMark.elapsedNow()
@@ -100,7 +100,7 @@ internal fun doBuild(useDaemon: Boolean = true): BuildResult {
         ?.let { parseBuildState(it) }
 
     val paths = resolveKoltPaths(EXIT_BUILD_ERROR)
-    val managedKotlincBin = ensureKotlincBin(config.kotlin, paths, EXIT_BUILD_ERROR)
+    val managedKotlincBin = ensureKotlincBin(config.kotlin, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
     val (managedJavaBin, managedJarBin) = ensureJdkBinsFromConfig(config, paths)
 
     if (isBuildUpToDate(current = currentState, cached = cachedState)) {
@@ -188,7 +188,7 @@ internal fun doBuild(useDaemon: Boolean = true): BuildResult {
 
     val jarCmd = jarCommand(config, jarPath = managedJarBin)
     executeCommand(jarCmd.args).getOrElse { error ->
-        eprintln(formatProcessError(error, "jar packaging"))
+        eprintln("error: " + formatProcessError(error, "jar packaging"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
@@ -210,7 +210,7 @@ private fun doNativeBuild(config: KoltConfig): BuildResult {
     val startMark = TimeSource.Monotonic.markNow()
 
     val paths = resolveKoltPaths(EXIT_BUILD_ERROR)
-    val managedKonancBin = ensureKonancBin(config.kotlin, paths, EXIT_BUILD_ERROR)
+    val managedKonancBin = ensureKonancBin(config.kotlin, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
 
     val depKlibs = resolveNativeDependencies(config, paths)
 
@@ -247,14 +247,14 @@ private fun doNativeBuild(config: KoltConfig): BuildResult {
     val libraryCmd = nativeLibraryCommand(config, pluginArgs = nativePluginArgs, konancPath = managedKonancBin, klibs = klibs)
     println("compiling ${config.name} (native)...")
     executeCommand(libraryCmd.args).getOrElse { error ->
-        eprintln(formatProcessError(error, "compilation"))
+        eprintln("error: " + formatProcessError(error, "compilation"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
     val linkCmd = nativeLinkCommand(config, konancPath = managedKonancBin, klibs = klibs)
     println("linking ${config.name} (native)...")
     executeCommand(linkCmd.args).getOrElse { error ->
-        eprintln(formatProcessError(error, "linking"))
+        eprintln("error: " + formatProcessError(error, "linking"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
@@ -309,7 +309,7 @@ private fun runCinterop(config: KoltConfig, paths: KoltPaths): List<String> {
         val cmd = cinteropCommand(entry, cinteropPath = managedCinteropBin)
         println("generating cinterop klib for ${entry.name}...")
         executeCommand(cmd.args).getOrElse { error ->
-            eprintln(formatProcessError(error, "cinterop (${entry.name})"))
+            eprintln("error: " + formatProcessError(error, "cinterop (${entry.name})"))
             exitProcess(EXIT_BUILD_ERROR)
         }
         if (currentStamp != null) {
@@ -392,13 +392,13 @@ internal fun doTest(testArgs: List<String> = emptyList(), useDaemon: Boolean = t
 
     val paths = resolveKoltPaths(EXIT_TEST_ERROR)
     val consoleLauncherPath = ensureTool(paths, CONSOLE_LAUNCHER_SPEC, EXIT_TEST_ERROR)
-    val managedKotlincBin = ensureKotlincBin(config.kotlin, paths, EXIT_TEST_ERROR)
+    val managedKotlincBin = ensureKotlincBin(config.kotlin, paths).getOrElse { exitWithToolchainError(it, EXIT_TEST_ERROR) }
 
     val testConfig = config.copy(testSources = existingTestSources)
     val testCmd = testBuildCommand(testConfig, CLASSES_DIR, classpath, pArgs, kotlincPath = managedKotlincBin)
     println("compiling tests...")
     executeCommand(testCmd.args).getOrElse { error ->
-        eprintln(formatProcessError(error, "test compilation"))
+        eprintln("error: " + formatProcessError(error, "test compilation"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
@@ -437,7 +437,7 @@ private fun doNativeTest(config: KoltConfig, testArgs: List<String>) {
     val testStartMark = TimeSource.Monotonic.markNow()
 
     val paths = resolveKoltPaths(EXIT_TEST_ERROR)
-    val managedKonancBin = ensureKonancBin(config.kotlin, paths, EXIT_TEST_ERROR)
+    val managedKonancBin = ensureKonancBin(config.kotlin, paths).getOrElse { exitWithToolchainError(it, EXIT_TEST_ERROR) }
     val nativePluginArgs = resolveNativePluginArgs(config, paths, EXIT_TEST_ERROR)
 
     val depKlibs = resolveNativeDependencies(config, paths)
@@ -454,14 +454,14 @@ private fun doNativeTest(config: KoltConfig, testArgs: List<String>) {
     val libraryCmd = nativeTestLibraryCommand(testConfig, pluginArgs = nativePluginArgs, konancPath = managedKonancBin, klibs = klibs)
     println("compiling tests (native)...")
     executeCommand(libraryCmd.args).getOrElse { error ->
-        eprintln(formatProcessError(error, "test compilation"))
+        eprintln("error: " + formatProcessError(error, "test compilation"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
     val linkCmd = nativeTestLinkCommand(testConfig, konancPath = managedKonancBin, klibs = klibs)
     println("linking tests (native)...")
     executeCommand(linkCmd.args).getOrElse { error ->
-        eprintln(formatProcessError(error, "test linking"))
+        eprintln("error: " + formatProcessError(error, "test linking"))
         exitProcess(EXIT_BUILD_ERROR)
     }
 
@@ -488,7 +488,20 @@ private fun doNativeTest(config: KoltConfig, testArgs: List<String>) {
 
 internal fun ensureJdkBinsFromConfig(config: KoltConfig, paths: KoltPaths): JdkBins {
     val version = config.jdk ?: return JdkBins(null, null)
-    return ensureJdkBins(version, paths, EXIT_BUILD_ERROR)
+    return ensureJdkBins(version, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
+}
+
+/**
+ * Single sink that maps a [ToolchainError] to an `eprintln` + exit.
+ * Every CLI entry point that unwraps a toolchain `Result` funnels
+ * through here so the pre-daemon UX (one line of "error: …" on
+ * stderr, then exit with the step-appropriate exit code) is
+ * preserved verbatim. Callers in `ToolchainCommands`,
+ * `PluginSupport`, and `BuildCommands` all share this helper.
+ */
+internal fun exitWithToolchainError(err: ToolchainError, exitCode: Int): Nothing {
+    eprintln("error: ${err.message}")
+    exitProcess(exitCode)
 }
 
 // Warning wording pinned as a constant so unit tests can assert on

@@ -47,6 +47,6 @@ internal fun resolvePluginArgs(config: KoltConfig, managedKotlincBin: String? = 
 internal fun resolveNativePluginArgs(config: KoltConfig, paths: KoltPaths, exitCode: Int): List<String> {
     val hasEnabledPlugin = config.plugins.any { (_, enabled) -> enabled }
     if (!hasEnabledPlugin) return emptyList()
-    val managedKotlincBin = ensureKotlincBin(config.kotlin, paths, exitCode)
+    val managedKotlincBin = ensureKotlincBin(config.kotlin, paths).getOrElse { exitWithToolchainError(it, exitCode) }
     return resolvePluginArgs(config, managedKotlincBin)
 }
