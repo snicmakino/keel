@@ -195,13 +195,13 @@ assembled externally**:
   on "we want to cut 0.4.0". Not before, because a packaging script
   without a release target is dead weight that will rot against
   Phase B protocol changes.
-- **Do we need a regression test for the `./gradlew build → daemon
-  jar` wiring?** Today the only safeguard is the comment on the
-  `dependsOn` block. A small CI check that asserts
+- ~~**Do we need a regression test for the `./gradlew build → daemon
+  jar` wiring?**~~ Resolved in #99 review: `unit-tests.yml` now runs
+  `./gradlew build` after `linuxX64Test` and asserts
   `kolt-compiler-daemon/build/libs/kolt-compiler-daemon-all.jar`
-  exists after `./gradlew build` would catch a removal, but it is
-  probably not worth the CI minutes until we have had an actual
-  regression. Leaving this open.
+  exists. The added CI cost is just the daemon's `shadowJar` (a few
+  seconds) because the linuxX64 tasks above already warmed the
+  Kotlin Native and Gradle caches.
 - **When (if ever) do we switch to auto-provisioned daemon jars?**
   See Alternative 2. The trigger conditions are listed there; none
   are present today.

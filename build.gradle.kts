@@ -61,3 +61,11 @@ tasks.named("build") {
 tasks.named("check") {
     dependsOn(gradle.includedBuild("kolt-compiler-daemon").task(":check"))
 }
+
+// Same rationale for `clean`: without this wiring, `./gradlew clean` at the
+// root leaves the daemon fat jar behind, and the dev-fallback path in
+// DaemonJarResolver.kt can keep resolving it across local protocol changes
+// until someone manually wipes kolt-compiler-daemon/build/.
+tasks.named("clean") {
+    dependsOn(gradle.includedBuild("kolt-compiler-daemon").task(":clean"))
+}
