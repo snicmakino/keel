@@ -1,10 +1,22 @@
 package kolt.tool
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
 import kolt.config.KoltPaths
 import kolt.infra.*
 import kotlinx.serialization.json.*
-import kotlin.system.exitProcess
+
+// Failures from any toolchain install / ensure step. Carries a
+// pre-formatted, user-facing message so callers can `eprintln("error: ${err.message}")`
+// without re-deriving wording per error kind. A flat carrier is enough
+// because nothing downstream classifies these: the CLI entry points
+// map them 1:1 to an exit, and the daemon bring-up path wraps
+// `message` into a fallback warning. Keeping it a single value class
+// also means new failure sites do not have to touch callers — they
+// just produce a new `ToolchainError(...)`.
+internal data class ToolchainError(val message: String)
 
 internal fun jdkDownloadUrl(version: String): String =
     "https://api.adoptium.net/v3/binary/latest/$version/ga/linux/x64/jdk/hotspot/normal/eclipse"
@@ -39,87 +51,85 @@ internal fun resolveJarBinPath(version: String, paths: KoltPaths): String? {
     return if (fileExists(binPath)) binPath else null
 }
 
-internal fun installJdkToolchain(version: String, paths: KoltPaths, exitCode: Int) {
+private fun formatDownloadError(tool: String, version: String, writePath: String, err: DownloadError): String = when (err) {
+    is DownloadError.HttpFailed -> "failed to download $tool $version (HTTP ${err.statusCode})"
+    is DownloadError.WriteFailed -> "could not write $writePath"
+    is DownloadError.NetworkError -> "network error downloading $tool $version: ${err.message}"
+}
+
+internal fun installJdkToolchain(
+    version: String,
+    paths: KoltPaths,
+    progressSink: (String) -> Unit = ::println,
+): Result<Unit, ToolchainError> {
     val finalPath = paths.jdkPath(version)
     val javaBinPath = paths.javaBin(version)
 
     if (fileExists(javaBinPath)) {
-        println("jdk $version is already installed at $finalPath")
-        return
+        progressSink("jdk $version is already installed at $finalPath")
+        return Ok(Unit)
     }
 
     val jdkBaseDir = "${paths.toolchainsDir}/jdk"
     ensureDirectoryRecursive(jdkBaseDir).getOrElse { error ->
-        eprintln("error: could not create directory ${error.path}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not create directory ${error.path}"))
     }
 
     val tarPath = "$jdkBaseDir/$version.tar.gz"
     val metadataPath = "$jdkBaseDir/$version.metadata.json"
     val extractTempDir = "$jdkBaseDir/${version}_extract"
 
-    println("downloading jdk $version...")
+    progressSink("downloading jdk $version...")
     downloadFile(jdkDownloadUrl(version), tarPath).getOrElse { error ->
-        when (error) {
-            is DownloadError.HttpFailed -> eprintln("error: failed to download jdk $version (HTTP ${error.statusCode})")
-            is DownloadError.WriteFailed -> eprintln("error: could not write $tarPath")
-            is DownloadError.NetworkError -> eprintln("error: network error downloading jdk $version: ${error.message}")
-        }
-        exitProcess(exitCode)
+        return Err(ToolchainError(formatDownloadError("jdk", version, tarPath, error)))
     }
 
     // SHA256 verification via Adoptium metadata API
     downloadFile(jdkMetadataUrl(version), metadataPath).getOrElse { error ->
         deleteFile(tarPath)
-        when (error) {
-            is DownloadError.HttpFailed -> eprintln("error: failed to download metadata for jdk $version (HTTP ${error.statusCode})")
-            is DownloadError.WriteFailed -> eprintln("error: could not write $metadataPath")
-            is DownloadError.NetworkError -> eprintln("error: network error downloading metadata: ${error.message}")
+        val msg = when (error) {
+            is DownloadError.HttpFailed -> "failed to download metadata for jdk $version (HTTP ${error.statusCode})"
+            is DownloadError.WriteFailed -> "could not write $metadataPath"
+            is DownloadError.NetworkError -> "network error downloading metadata: ${error.message}"
         }
-        exitProcess(exitCode)
+        return Err(ToolchainError(msg))
     }
 
     val metadataContent = readFileAsString(metadataPath).getOrElse { error ->
         deleteFile(tarPath)
         deleteFile(metadataPath)
-        eprintln("error: could not read ${error.path}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not read ${error.path}"))
     }
     val expectedHash = parseJdkChecksum(metadataContent)
     deleteFile(metadataPath)
 
     if (expectedHash == null) {
         deleteFile(tarPath)
-        eprintln("error: could not parse checksum from jdk $version metadata")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not parse checksum from jdk $version metadata"))
     }
 
     val actualHash = computeSha256(tarPath).getOrElse { _ ->
         deleteFile(tarPath)
-        eprintln("error: could not compute sha256 for $tarPath")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not compute sha256 for $tarPath"))
     }
 
     if (actualHash != expectedHash) {
         deleteFile(tarPath)
-        eprintln("error: sha256 mismatch for jdk $version (expected $expectedHash, got $actualHash)")
-        exitProcess(exitCode)
+        return Err(ToolchainError("sha256 mismatch for jdk $version (expected $expectedHash, got $actualHash)"))
     }
 
     ensureDirectoryRecursive(extractTempDir).getOrElse { error ->
         deleteFile(tarPath)
-        eprintln("error: could not create directory ${error.path}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not create directory ${error.path}"))
     }
 
-    println("extracting jdk $version...")
+    progressSink("extracting jdk $version...")
     executeCommand(listOf("tar", "xzf", tarPath, "-C", extractTempDir)).getOrElse { error ->
         deleteFile(tarPath)
         removeDirectoryRecursive(extractTempDir).getOrElse { e ->
             eprintln("warning: could not remove temp directory ${e.path}")
         }
-        eprintln(formatProcessError(error, "tar"))
-        exitProcess(exitCode)
+        return Err(ToolchainError(formatProcessError(error, "tar")))
     }
     deleteFile(tarPath)
 
@@ -128,35 +138,32 @@ internal fun installJdkToolchain(version: String, paths: KoltPaths, exitCode: In
         removeDirectoryRecursive(extractTempDir).getOrElse { e ->
             eprintln("warning: could not remove temp directory ${e.path}")
         }
-        eprintln("error: could not list extracted jdk directory")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not list extracted jdk directory"))
     }
     val topLevelDir = findSingleEntry(lsOutput)
     if (topLevelDir == null) {
         removeDirectoryRecursive(extractTempDir).getOrElse { e ->
             eprintln("warning: could not remove temp directory ${e.path}")
         }
-        eprintln("error: expected exactly one top-level directory in jdk archive, got: ${lsOutput.trim()}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("expected exactly one top-level directory in jdk archive, got: ${lsOutput.trim()}"))
     }
 
     executeCommand(listOf("mv", "$extractTempDir/$topLevelDir", finalPath)).getOrElse { error ->
         removeDirectoryRecursive(extractTempDir).getOrElse { e ->
             eprintln("warning: could not remove temp directory ${e.path}")
         }
-        eprintln(formatProcessError(error, "mv"))
-        exitProcess(exitCode)
+        return Err(ToolchainError(formatProcessError(error, "mv")))
     }
     removeDirectoryRecursive(extractTempDir).getOrElse { e ->
         eprintln("warning: could not remove temp directory ${e.path}")
     }
 
     if (!fileExists(javaBinPath)) {
-        eprintln("error: java binary not found at $javaBinPath after installation")
-        exitProcess(exitCode)
+        return Err(ToolchainError("java binary not found at $javaBinPath after installation"))
     }
 
-    println("installed jdk $version at $finalPath")
+    progressSink("installed jdk $version at $finalPath")
+    return Ok(Unit)
 }
 
 internal fun kotlincDownloadUrl(version: String): String =
@@ -170,78 +177,69 @@ internal fun resolveKotlincPath(version: String, paths: KoltPaths): String? {
     return if (fileExists(binPath)) binPath else null
 }
 
-internal fun ensureKotlincBin(version: String, paths: KoltPaths, exitCode: Int): String {
-    resolveKotlincPath(version, paths)?.let { return it }
-    installKotlincToolchain(version, paths, exitCode)
+internal fun ensureKotlincBin(version: String, paths: KoltPaths): Result<String, ToolchainError> {
+    resolveKotlincPath(version, paths)?.let { return Ok(it) }
+    installKotlincToolchain(version, paths).getOrElse { return Err(it) }
     return resolveKotlincPath(version, paths)
-        ?: run {
-            eprintln("error: kotlinc $version not found after installation")
-            exitProcess(exitCode)
-        }
+        ?.let { Ok(it) }
+        ?: Err(ToolchainError("kotlinc $version not found after installation"))
 }
 
 internal data class JdkBins(val java: String?, val jar: String?)
 
-internal fun ensureJdkBins(version: String, paths: KoltPaths, exitCode: Int): JdkBins {
+internal fun ensureJdkBins(version: String, paths: KoltPaths): Result<JdkBins, ToolchainError> {
     val javaBin = resolveJavaBinPath(version, paths)
     if (javaBin != null) {
         val jarBin = resolveJarBinPath(version, paths)
-        return JdkBins(javaBin, jarBin)
+        return Ok(JdkBins(javaBin, jarBin))
     }
-    installJdkToolchain(version, paths, exitCode)
-    return JdkBins(
-        resolveJavaBinPath(version, paths) ?: run {
-            eprintln("error: java binary not found after installation")
-            exitProcess(exitCode)
-        },
-        resolveJarBinPath(version, paths)
-    )
+    installJdkToolchain(version, paths).getOrElse { return Err(it) }
+    val java = resolveJavaBinPath(version, paths)
+        ?: return Err(ToolchainError("java binary not found after installation"))
+    return Ok(JdkBins(java, resolveJarBinPath(version, paths)))
 }
 
-internal fun installKotlincToolchain(version: String, paths: KoltPaths, exitCode: Int) {
+internal fun installKotlincToolchain(
+    version: String,
+    paths: KoltPaths,
+    progressSink: (String) -> Unit = ::println,
+): Result<Unit, ToolchainError> {
     val finalPath = paths.kotlincPath(version)
     val binPath = paths.kotlincBin(version)
 
     if (fileExists(binPath)) {
-        println("kotlinc $version is already installed at $finalPath")
-        return
+        progressSink("kotlinc $version is already installed at $finalPath")
+        return Ok(Unit)
     }
 
     val kotlincBaseDir = "${paths.toolchainsDir}/kotlinc"
     ensureDirectoryRecursive(kotlincBaseDir).getOrElse { error ->
-        eprintln("error: could not create directory ${error.path}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not create directory ${error.path}"))
     }
 
     val zipPath = "$kotlincBaseDir/$version.zip"
     val sha256Path = "$kotlincBaseDir/$version.zip.sha256"
     val extractTempDir = "$kotlincBaseDir/${version}_extract"
 
-    println("downloading kotlin-compiler-$version.zip...")
+    progressSink("downloading kotlin-compiler-$version.zip...")
     downloadFile(kotlincDownloadUrl(version), zipPath).getOrElse { error ->
-        when (error) {
-            is DownloadError.HttpFailed -> eprintln("error: failed to download kotlinc $version (HTTP ${error.statusCode})")
-            is DownloadError.WriteFailed -> eprintln("error: could not write $zipPath")
-            is DownloadError.NetworkError -> eprintln("error: network error downloading kotlinc $version: ${error.message}")
-        }
-        exitProcess(exitCode)
+        return Err(ToolchainError(formatDownloadError("kotlinc", version, zipPath, error)))
     }
 
     downloadFile(kotlincSha256Url(version), sha256Path).getOrElse { error ->
         deleteFile(zipPath)
-        when (error) {
-            is DownloadError.HttpFailed -> eprintln("error: failed to download sha256 for kotlinc $version (HTTP ${error.statusCode})")
-            is DownloadError.WriteFailed -> eprintln("error: could not write $sha256Path")
-            is DownloadError.NetworkError -> eprintln("error: network error downloading sha256: ${error.message}")
+        val msg = when (error) {
+            is DownloadError.HttpFailed -> "failed to download sha256 for kotlinc $version (HTTP ${error.statusCode})"
+            is DownloadError.WriteFailed -> "could not write $sha256Path"
+            is DownloadError.NetworkError -> "network error downloading sha256: ${error.message}"
         }
-        exitProcess(exitCode)
+        return Err(ToolchainError(msg))
     }
 
     val sha256Content = readFileAsString(sha256Path).getOrElse { error ->
         deleteFile(zipPath)
         deleteFile(sha256Path)
-        eprintln("error: could not read ${error.path}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not read ${error.path}"))
     }
     // SHA256 files can be "<hash>  <filename>" or just "<hash>"
     val expectedHash = sha256Content.trim().split(Regex("\\s+")).first()
@@ -249,30 +247,26 @@ internal fun installKotlincToolchain(version: String, paths: KoltPaths, exitCode
 
     val actualHash = computeSha256(zipPath).getOrElse { _ ->
         deleteFile(zipPath)
-        eprintln("error: could not compute sha256 for $zipPath")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not compute sha256 for $zipPath"))
     }
 
     if (actualHash != expectedHash) {
         deleteFile(zipPath)
-        eprintln("error: sha256 mismatch for kotlinc $version (expected $expectedHash, got $actualHash)")
-        exitProcess(exitCode)
+        return Err(ToolchainError("sha256 mismatch for kotlinc $version (expected $expectedHash, got $actualHash)"))
     }
 
     ensureDirectoryRecursive(extractTempDir).getOrElse { error ->
         deleteFile(zipPath)
-        eprintln("error: could not create directory ${error.path}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not create directory ${error.path}"))
     }
 
-    println("extracting kotlinc $version...")
+    progressSink("extracting kotlinc $version...")
     executeCommand(listOf("unzip", "-q", zipPath, "-d", extractTempDir)).getOrElse { error ->
         deleteFile(zipPath)
         removeDirectoryRecursive(extractTempDir).getOrElse { e ->
             eprintln("warning: could not remove temp directory ${e.path}")
         }
-        eprintln(formatProcessError(error, "unzip"))
-        exitProcess(exitCode)
+        return Err(ToolchainError(formatProcessError(error, "unzip")))
     }
     deleteFile(zipPath)
 
@@ -280,19 +274,18 @@ internal fun installKotlincToolchain(version: String, paths: KoltPaths, exitCode
         removeDirectoryRecursive(extractTempDir).getOrElse { e ->
             eprintln("warning: could not remove temp directory ${e.path}")
         }
-        eprintln(formatProcessError(error, "mv"))
-        exitProcess(exitCode)
+        return Err(ToolchainError(formatProcessError(error, "mv")))
     }
     removeDirectoryRecursive(extractTempDir).getOrElse { e ->
         eprintln("warning: could not remove temp directory ${e.path}")
     }
 
     if (!fileExists(binPath)) {
-        eprintln("error: kotlinc binary not found at $binPath after installation")
-        exitProcess(exitCode)
+        return Err(ToolchainError("kotlinc binary not found at $binPath after installation"))
     }
 
-    println("installed kotlinc $version at $finalPath")
+    progressSink("installed kotlinc $version at $finalPath")
+    return Ok(Unit)
 }
 
 internal fun konancDownloadUrl(version: String): String =
@@ -306,29 +299,30 @@ internal fun resolveKonancPath(version: String, paths: KoltPaths): String? {
     return if (fileExists(binPath)) binPath else null
 }
 
-internal fun ensureKonancBin(version: String, paths: KoltPaths, exitCode: Int): String {
-    resolveKonancPath(version, paths)?.let { return it }
-    installKonancToolchain(version, paths, exitCode)
+internal fun ensureKonancBin(version: String, paths: KoltPaths): Result<String, ToolchainError> {
+    resolveKonancPath(version, paths)?.let { return Ok(it) }
+    installKonancToolchain(version, paths).getOrElse { return Err(it) }
     return resolveKonancPath(version, paths)
-        ?: run {
-            eprintln("error: konanc $version not found after installation")
-            exitProcess(exitCode)
-        }
+        ?.let { Ok(it) }
+        ?: Err(ToolchainError("konanc $version not found after installation"))
 }
 
-internal fun installKonancToolchain(version: String, paths: KoltPaths, exitCode: Int) {
+internal fun installKonancToolchain(
+    version: String,
+    paths: KoltPaths,
+    progressSink: (String) -> Unit = ::println,
+): Result<Unit, ToolchainError> {
     val finalPath = paths.konancPath(version)
     val binPath = paths.konancBin(version)
 
     if (fileExists(binPath)) {
-        println("konanc $version is already installed at $finalPath")
-        return
+        progressSink("konanc $version is already installed at $finalPath")
+        return Ok(Unit)
     }
 
     val konancBaseDir = "${paths.toolchainsDir}/konanc"
     ensureDirectoryRecursive(konancBaseDir).getOrElse { error ->
-        eprintln("error: could not create directory ${error.path}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not create directory ${error.path}"))
     }
 
     val tarPath = "$konancBaseDir/$version.tar.gz"
@@ -336,61 +330,51 @@ internal fun installKonancToolchain(version: String, paths: KoltPaths, exitCode:
     val extractTempDir = "$konancBaseDir/${version}_extract"
     val archiveTopLevelDir = "kotlin-native-prebuilt-linux-x86_64-$version"
 
-    println("downloading konanc $version...")
+    progressSink("downloading konanc $version...")
     downloadFile(konancDownloadUrl(version), tarPath).getOrElse { error ->
-        when (error) {
-            is DownloadError.HttpFailed -> eprintln("error: failed to download konanc $version (HTTP ${error.statusCode})")
-            is DownloadError.WriteFailed -> eprintln("error: could not write $tarPath")
-            is DownloadError.NetworkError -> eprintln("error: network error downloading konanc $version: ${error.message}")
-        }
-        exitProcess(exitCode)
+        return Err(ToolchainError(formatDownloadError("konanc", version, tarPath, error)))
     }
 
     downloadFile(konancSha256Url(version), sha256Path).getOrElse { error ->
         deleteFile(tarPath)
-        when (error) {
-            is DownloadError.HttpFailed -> eprintln("error: failed to download sha256 for konanc $version (HTTP ${error.statusCode})")
-            is DownloadError.WriteFailed -> eprintln("error: could not write $sha256Path")
-            is DownloadError.NetworkError -> eprintln("error: network error downloading sha256: ${error.message}")
+        val msg = when (error) {
+            is DownloadError.HttpFailed -> "failed to download sha256 for konanc $version (HTTP ${error.statusCode})"
+            is DownloadError.WriteFailed -> "could not write $sha256Path"
+            is DownloadError.NetworkError -> "network error downloading sha256: ${error.message}"
         }
-        exitProcess(exitCode)
+        return Err(ToolchainError(msg))
     }
 
     val sha256Content = readFileAsString(sha256Path).getOrElse { error ->
         deleteFile(tarPath)
         deleteFile(sha256Path)
-        eprintln("error: could not read ${error.path}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not read ${error.path}"))
     }
     val expectedHash = sha256Content.trim().split(Regex("\\s+")).first()
     deleteFile(sha256Path)
 
     val actualHash = computeSha256(tarPath).getOrElse { _ ->
         deleteFile(tarPath)
-        eprintln("error: could not compute sha256 for $tarPath")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not compute sha256 for $tarPath"))
     }
 
     if (actualHash != expectedHash) {
         deleteFile(tarPath)
-        eprintln("error: sha256 mismatch for konanc $version (expected $expectedHash, got $actualHash)")
-        exitProcess(exitCode)
+        return Err(ToolchainError("sha256 mismatch for konanc $version (expected $expectedHash, got $actualHash)"))
     }
 
     ensureDirectoryRecursive(extractTempDir).getOrElse { error ->
         deleteFile(tarPath)
-        eprintln("error: could not create directory ${error.path}")
-        exitProcess(exitCode)
+        return Err(ToolchainError("could not create directory ${error.path}"))
     }
 
-    println("extracting konanc $version...")
+    progressSink("extracting konanc $version...")
     executeCommand(listOf("tar", "xzf", tarPath, "-C", extractTempDir)).getOrElse { error ->
         deleteFile(tarPath)
         removeDirectoryRecursive(extractTempDir).getOrElse { e ->
             eprintln("warning: could not remove temp directory ${e.path}")
         }
-        eprintln(formatProcessError(error, "tar"))
-        exitProcess(exitCode)
+        return Err(ToolchainError(formatProcessError(error, "tar")))
     }
     deleteFile(tarPath)
 
@@ -398,17 +382,16 @@ internal fun installKonancToolchain(version: String, paths: KoltPaths, exitCode:
         removeDirectoryRecursive(extractTempDir).getOrElse { e ->
             eprintln("warning: could not remove temp directory ${e.path}")
         }
-        eprintln(formatProcessError(error, "mv"))
-        exitProcess(exitCode)
+        return Err(ToolchainError(formatProcessError(error, "mv")))
     }
     removeDirectoryRecursive(extractTempDir).getOrElse { e ->
         eprintln("warning: could not remove temp directory ${e.path}")
     }
 
     if (!fileExists(binPath)) {
-        eprintln("error: konanc binary not found at $binPath after installation")
-        exitProcess(exitCode)
+        return Err(ToolchainError("konanc binary not found at $binPath after installation"))
     }
 
-    println("installed konanc $version at $finalPath")
+    progressSink("installed konanc $version at $finalPath")
+    return Ok(Unit)
 }

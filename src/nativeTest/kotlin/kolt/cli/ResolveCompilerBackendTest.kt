@@ -90,6 +90,50 @@ class ResolveCompilerBackendTest {
     }
 
     @Test
+    fun bootstrapJdkInstallFailureFallsBackWithCauseInWarning() {
+        // Binds ADR 0016 §5 "daemon is never load-bearing for
+        // correctness" for the auto-install path: a download failure
+        // during first-run bootstrap JDK provisioning must produce a
+        // one-line warning naming the cause and degrade to the
+        // subprocess backend, never propagate as a build failure.
+        val warnings = mutableListOf<String>()
+        val backend = resolveCompilerBackend(
+            config = config,
+            paths = paths,
+            subprocessBackend = subprocess,
+            useDaemon = true,
+            absProjectPath = absProject,
+            preconditionResolver = { _, _, _ ->
+                Err(
+                    DaemonPreconditionError.BootstrapJdkInstallFailed(
+                        jdkInstallDir = "/fake/home/.kolt/toolchains/jdk/21",
+                        cause = "network error downloading jdk 21: connection refused",
+                    ),
+                )
+            },
+            daemonDirCreator = { error("must not create daemon dir after precondition failure") },
+            daemonBackendFactory = { error("must not construct daemon backend after precondition failure") },
+            warningSink = { warnings.add(it) },
+        )
+
+        assertSame(subprocess, backend)
+        assertEquals(1, warnings.size)
+        val warning = warnings.single()
+        assertTrue(
+            warning.contains("could not install bootstrap JDK at /fake/home/.kolt/toolchains/jdk/21"),
+            "warning should name the probed install dir: $warning",
+        )
+        assertTrue(
+            warning.contains("network error downloading jdk 21: connection refused"),
+            "warning should carry the underlying cause: $warning",
+        )
+        assertTrue(
+            warning.contains("falling back to subprocess compile"),
+            "warning should say the build is falling back: $warning",
+        )
+    }
+
+    @Test
     fun daemonDirCreationFailureWarnsAndFallsBack() {
         val warnings = mutableListOf<String>()
         val backend = resolveCompilerBackend(

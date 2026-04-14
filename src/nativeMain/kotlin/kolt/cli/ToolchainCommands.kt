@@ -42,12 +42,12 @@ private fun printToolchainUsage() {
 private fun doToolchainInstall() {
     val config = loadProjectConfig()
     val paths = resolveKoltPaths(EXIT_CONFIG_ERROR)
-    installKotlincToolchain(config.kotlin, paths, EXIT_BUILD_ERROR)
+    installKotlincToolchain(config.kotlin, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
     if (config.jdk != null) {
-        installJdkToolchain(config.jdk, paths, EXIT_BUILD_ERROR)
+        installJdkToolchain(config.jdk, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
     }
     if (config.target == "native") {
-        installKonancToolchain(config.kotlin, paths, EXIT_BUILD_ERROR)
+        installKonancToolchain(config.kotlin, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
     }
 }
 

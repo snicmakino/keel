@@ -1,8 +1,11 @@
 package kolt.build.daemon
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getError
 import kolt.config.KoltPaths
+import kolt.tool.ToolchainError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -23,7 +26,7 @@ class DaemonPreconditionsTest {
             paths = paths,
             kotlincVersion = kotlincVersion,
             absProjectPath = absProject,
-            resolveJavaBin = { "/fake/home/.kolt/toolchains/jdk/21/bin/java" },
+            ensureJavaBin = { Ok("/fake/home/.kolt/toolchains/jdk/21/bin/java") },
             resolveDaemonJar = { okJar },
             listCompilerJars = { fakeJars },
         )
@@ -39,19 +42,23 @@ class DaemonPreconditionsTest {
     }
 
     @Test
-    fun bootstrapJdkMissingShortCircuits() {
+    fun bootstrapJdkInstallFailedShortCircuits() {
+        val installDir = "/fake/home/.kolt/toolchains/jdk/$BOOTSTRAP_JDK_VERSION"
         val result = resolveDaemonPreconditions(
             paths = paths,
             kotlincVersion = kotlincVersion,
             absProjectPath = absProject,
-            resolveJavaBin = { null },
-            resolveDaemonJar = { error("must not run after BootstrapJdkMissing") },
-            listCompilerJars = { error("must not run after BootstrapJdkMissing") },
+            ensureJavaBin = {
+                Err(BootstrapJdkError(installDir, ToolchainError("network error downloading jdk 21: connection refused")))
+            },
+            resolveDaemonJar = { error("must not run after BootstrapJdkInstallFailed") },
+            listCompilerJars = { error("must not run after BootstrapJdkInstallFailed") },
         )
 
         assertNull(result.get())
-        val err = assertIs<DaemonPreconditionError.BootstrapJdkMissing>(result.getError())
-        assertEquals("/fake/home/.kolt/toolchains/jdk/$BOOTSTRAP_JDK_VERSION", err.jdkInstallDir)
+        val err = assertIs<DaemonPreconditionError.BootstrapJdkInstallFailed>(result.getError())
+        assertEquals(installDir, err.jdkInstallDir)
+        assertEquals("network error downloading jdk 21: connection refused", err.cause)
     }
 
     @Test
@@ -60,7 +67,7 @@ class DaemonPreconditionsTest {
             paths = paths,
             kotlincVersion = kotlincVersion,
             absProjectPath = absProject,
-            resolveJavaBin = { "/fake/java" },
+            ensureJavaBin = { Ok("/fake/java") },
             resolveDaemonJar = { DaemonJarResolution.NotFound },
             listCompilerJars = { error("must not run after DaemonJarMissing") },
         )
@@ -74,7 +81,7 @@ class DaemonPreconditionsTest {
             paths = paths,
             kotlincVersion = kotlincVersion,
             absProjectPath = absProject,
-            resolveJavaBin = { "/fake/java" },
+            ensureJavaBin = { Ok("/fake/java") },
             resolveDaemonJar = { okJar },
             listCompilerJars = { null },
         )
@@ -89,7 +96,7 @@ class DaemonPreconditionsTest {
             paths = paths,
             kotlincVersion = kotlincVersion,
             absProjectPath = absProject,
-            resolveJavaBin = { "/fake/java" },
+            ensureJavaBin = { Ok("/fake/java") },
             resolveDaemonJar = { okJar },
             listCompilerJars = { emptyList() },
         )
@@ -100,8 +107,10 @@ class DaemonPreconditionsTest {
     @Test
     fun warningWordingCoversAllVariants() {
         assertEquals(
-            "warning: bootstrap JDK not installed at /opt/jdks/21 — falling back to subprocess compile",
-            formatDaemonPreconditionWarning(DaemonPreconditionError.BootstrapJdkMissing("/opt/jdks/21")),
+            "warning: could not install bootstrap JDK at /opt/jdks/21 (HTTP 503) — falling back to subprocess compile",
+            formatDaemonPreconditionWarning(
+                DaemonPreconditionError.BootstrapJdkInstallFailed("/opt/jdks/21", "HTTP 503"),
+            ),
         )
         assertEquals(
             "warning: kolt-compiler-daemon jar not found — falling back to subprocess compile",
