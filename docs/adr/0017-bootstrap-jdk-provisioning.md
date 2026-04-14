@@ -2,17 +2,17 @@
 
 ## Status
 
-Proposed (2026-04-14). Part of #14 PR3 S5.5. This ADR captures the
-decision to give the `kolt-compiler-daemon` its own JDK slot
-independent of the user's `kolt.toml [build] jdk`, and to resolve
-that JDK **read-only** for PR3 — auto-provision is deferred until
+Accepted (2026-04-14) as part of #14 PR3. The `kolt-compiler-daemon`
+has its own JDK slot independent of the user's `kolt.toml [build] jdk`,
+resolved **read-only** for PR3 — auto-provision is deferred until
 `ensureJdkBins` can return a `Result<_, _>` instead of calling
 `exitProcess`. The constant `BOOTSTRAP_JDK_VERSION` and the
-`resolveBootstrapJavaBin` helper land in the same commit as this
-draft; wiring the helper into `DaemonCompilerBackend` and handling
-the null-return fallback happens in PR3 S7 (`--no-daemon` +
-default-on). Accepting this ADR is conditional on S7 shipping and
-on the daemon going default-on.
+`resolveBootstrapJavaBin` helper landed in PR3 S5.5; the null-return
+fallback wiring (`DaemonPreconditionError.BootstrapJdkMissing` →
+`resolveCompilerBackend` skips the daemon wrapper and returns a plain
+`SubprocessCompilerBackend` with a one-line warning) landed in PR3 S7
+together with the daemon going default-on, satisfying the conditional
+on which this ADR was accepted.
 
 ## Context
 
