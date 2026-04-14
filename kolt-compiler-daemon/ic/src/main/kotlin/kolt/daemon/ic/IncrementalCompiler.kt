@@ -33,13 +33,17 @@ data class IcRequest(
     val workingDir: Path,
 )
 
+// Success-only payload. Before B-2b the type carried a `status: Status`
+// field with a `SUCCESS / ERROR` enum, but the ERROR path was dead code:
+// the only producer, `BtaIncrementalCompiler`, converts every non-success
+// `CompilationResult` into an `IcError` instead of an `IcResponse(status =
+// ERROR)`. Collapsing to an `Ok(IcResponse)` / `Err(IcError)` split at the
+// Result level retires B-2a review carryover #3 and removes the "dead
+// `if (status == SUCCESS) 0 else 1`" branch from daemon core.
 data class IcResponse(
     val wallMillis: Long,
     val compiledFileCount: Int?,
-    val status: Status,
 )
-
-enum class Status { SUCCESS, ERROR }
 
 sealed interface IcError {
     data class CompilationFailed(val messages: List<String>) : IcError

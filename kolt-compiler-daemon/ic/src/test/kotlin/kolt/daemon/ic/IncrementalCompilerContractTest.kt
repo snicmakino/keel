@@ -29,24 +29,23 @@ class IncrementalCompilerContractTest {
     )
 
     @Test
-    fun `success path returns IcResponse with SUCCESS status`() {
+    fun `success path returns Ok IcResponse`() {
         val compiler = object : IncrementalCompiler {
             override fun compile(request: IcRequest): Result<IcResponse, IcError> =
-                Ok(IcResponse(wallMillis = 42, compiledFileCount = 1, status = Status.SUCCESS))
+                Ok(IcResponse(wallMillis = 42, compiledFileCount = 1))
         }
 
         val response = compiler.compile(sampleRequest()).getOrElse {
             error("expected Ok, got Err($it)")
         }
 
-        assertEquals(Status.SUCCESS, response.status)
         assertEquals(42L, response.wallMillis)
         assertEquals(1, response.compiledFileCount)
     }
 
     @Test
     fun `compiledFileCount is nullable when metrics unavailable`() {
-        val response = IcResponse(wallMillis = 1, compiledFileCount = null, status = Status.SUCCESS)
+        val response = IcResponse(wallMillis = 1, compiledFileCount = null)
         assertNull(response.compiledFileCount)
     }
 

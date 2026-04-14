@@ -121,10 +121,7 @@ data class IcRequest(
 data class IcResponse(
     val wallMillis: Long,
     val compiledFileCount: Int?,  // null if metrics unavailable
-    val status: Status,
 )
-
-enum class Status { SUCCESS, ERROR }
 
 sealed interface IcError {
     data class CompilationFailed(val messages: List<String>) : IcError
@@ -222,7 +219,7 @@ Five failure classes cross the adapter boundary:
 
 | BTA outcome | Adapter reports | Daemon action |
 |---|---|---|
-| `CompilationResult.COMPILATION_SUCCESS` | `IcResponse(status = SUCCESS)` | Return success to client |
+| `CompilationResult.COMPILATION_SUCCESS` | `Ok(IcResponse)` | Return success to client |
 | `CompilationResult.COMPILATION_ERROR` | `IcError.CompilationFailed(messages)` | Return compile-failed to client (real user code error) |
 | `CompilationResult.COMPILATION_OOM_ERROR` or `COMPILER_INTERNAL_ERROR` (any non-SUCCESS / non-COMPILATION_ERROR `CompilationResult` variant) | `IcError.InternalError(cause)` + **wipe `workingDir`** | Retry once in full-recompile mode, transparently |
 | Thrown `KotlinBuildToolsException` or any other `Throwable` *except* `VirtualMachineError` | `IcError.InternalError(cause)` + **wipe `workingDir`** | Retry once in full-recompile mode, transparently |
@@ -252,7 +249,7 @@ Key rules:
   state and fail again in a loop. The retry does a cold compile into a
   fresh state dir, which is exactly what Phase A did on every build.
 - **Observability via metrics, not log spam.** Daemon core sees
-  `Status.SUCCESS` regardless of whether the adapter did a true
+  `Ok(IcResponse)` regardless of whether the adapter did a true
   incremental compile, fell back to full-in-adapter, or did a
   self-healing retry. The adapter emits structured metrics
   (`ic.success`, `ic.fallback_to_full`, `ic.self_heal`) so that
@@ -261,7 +258,7 @@ Key rules:
   self-heal so dogfooding notices the event; routine
   `fallback_to_full` is metrics-only.
 
-Daemon core sees one of `SUCCESS` / `CompilationFailed` / the
+Daemon core sees one of `Ok(IcResponse)` / `CompilationFailed` / the
 `InternalError` variant that survived the retry. In the last case
 (full recompile also failed after a self-heal wipe), the adapter
 surfaces the original `CompilationFailed` messages if the retry

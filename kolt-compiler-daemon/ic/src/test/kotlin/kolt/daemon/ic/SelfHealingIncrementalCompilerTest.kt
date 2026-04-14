@@ -48,7 +48,7 @@ class SelfHealingIncrementalCompilerTest {
         val wipes = AtomicInteger(0)
         val delegate = FakeCompiler { _ ->
             calls.incrementAndGet()
-            Ok(IcResponse(wallMillis = 5, compiledFileCount = 3, status = Status.SUCCESS))
+            Ok(IcResponse(wallMillis = 5, compiledFileCount = 3))
         }
         val wrapper = SelfHealingIncrementalCompiler(
             delegate = delegate,
@@ -93,7 +93,7 @@ class SelfHealingIncrementalCompilerTest {
         val delegate = FakeCompiler { _ ->
             when (calls.incrementAndGet()) {
                 1 -> Err(IcError.InternalError(RuntimeException("corrupt cache")))
-                else -> Ok(IcResponse(wallMillis = 42, compiledFileCount = 7, status = Status.SUCCESS))
+                else -> Ok(IcResponse(wallMillis = 42, compiledFileCount = 7))
             }
         }
         val wrapper = SelfHealingIncrementalCompiler(
@@ -182,7 +182,7 @@ class SelfHealingIncrementalCompilerTest {
         val delegate = FakeCompiler { _ ->
             when (calls.incrementAndGet()) {
                 1 -> Err(IcError.InternalError(RuntimeException("boom")))
-                else -> Ok(IcResponse(wallMillis = 1, compiledFileCount = null, status = Status.SUCCESS))
+                else -> Ok(IcResponse(wallMillis = 1, compiledFileCount = null))
             }
         }
         val wrapper = SelfHealingIncrementalCompiler(delegate)

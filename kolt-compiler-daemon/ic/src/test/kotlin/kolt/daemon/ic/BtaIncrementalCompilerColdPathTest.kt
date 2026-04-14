@@ -52,7 +52,7 @@ class BtaIncrementalCompilerColdPathTest {
             fail("failed to load BTA toolchain: $it")
         }
 
-        val response = compiler.compile(
+        compiler.compile(
             IcRequest(
                 projectId = "cold-path-smoke",
                 projectRoot = workRoot,
@@ -65,7 +65,6 @@ class BtaIncrementalCompilerColdPathTest {
             fail("expected success, got Err($err)")
         }
 
-        assertEquals(Status.SUCCESS, response.status)
         val classFiles = outputDir.walk().filter { it.extension == "class" }.toList()
         assertTrue(classFiles.isNotEmpty(), "expected at least one .class under $outputDir")
         assertTrue(classFiles.any { it.fileName.toString() == "Main.class" }, "expected fixture.Main.class in output: $classFiles")

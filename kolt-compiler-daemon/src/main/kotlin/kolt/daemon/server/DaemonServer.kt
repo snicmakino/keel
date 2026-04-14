@@ -10,7 +10,6 @@ import kolt.daemon.ic.IcRequest
 import kolt.daemon.ic.IcResponse
 import kolt.daemon.ic.IcStateLayout
 import kolt.daemon.ic.IncrementalCompiler
-import kolt.daemon.ic.Status
 import kolt.daemon.protocol.Diagnostic
 import kolt.daemon.protocol.FrameCodec
 import kolt.daemon.protocol.FrameError
@@ -231,9 +230,13 @@ class DaemonServer(
         )
     }
 
-    private fun icResponseToReply(response: IcResponse): Message.CompileResult =
+    private fun icResponseToReply(@Suppress("UNUSED_PARAMETER") response: IcResponse): Message.CompileResult =
+        // `IcResponse` is success-only (see IncrementalCompiler.kt). All
+        // failure variants arrive as `IcError` and are handled by
+        // `icErrorToReply`. The parameter is retained so the `mapBoth`
+        // caller stays symmetric with `icErrorToReply(IcError)`.
         Message.CompileResult(
-            exitCode = if (response.status == Status.SUCCESS) 0 else 1,
+            exitCode = 0,
             diagnostics = emptyList<Diagnostic>(),
             stdout = "",
             stderr = "",

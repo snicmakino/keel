@@ -7,7 +7,6 @@ import kolt.daemon.ic.IcError
 import kolt.daemon.ic.IcRequest
 import kolt.daemon.ic.IcResponse
 import kolt.daemon.ic.IncrementalCompiler
-import kolt.daemon.ic.Status
 import kolt.daemon.protocol.FrameCodec
 import kolt.daemon.protocol.Message
 import java.net.StandardProtocolFamily
@@ -134,7 +133,7 @@ class DaemonLifecycleTest {
 
     private fun alwaysSuccess(): IncrementalCompiler = object : IncrementalCompiler {
         override fun compile(request: IcRequest): Result<IcResponse, IcError> =
-            Ok(IcResponse(wallMillis = 0, compiledFileCount = 0, status = Status.SUCCESS))
+            Ok(IcResponse(wallMillis = 0, compiledFileCount = 0))
     }
 
     private fun waitForSocket() {

@@ -100,7 +100,6 @@ class BtaIncrementalCompiler private constructor(
                 IcResponse(
                     wallMillis = wall,
                     compiledFileCount = null,
-                    status = Status.SUCCESS,
                 ),
             )
             // User source does not type-check. Daemon core reports this to the

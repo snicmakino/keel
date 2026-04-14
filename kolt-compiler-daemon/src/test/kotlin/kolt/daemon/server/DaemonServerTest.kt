@@ -8,7 +8,6 @@ import kolt.daemon.ic.IcRequest
 import kolt.daemon.ic.IcResponse
 import kolt.daemon.ic.IcStateLayout
 import kolt.daemon.ic.IncrementalCompiler
-import kolt.daemon.ic.Status
 import kolt.daemon.protocol.FrameCodec
 import kolt.daemon.protocol.Message
 import java.net.StandardProtocolFamily
@@ -90,7 +89,7 @@ class DaemonServerTest {
             onCompile = { req ->
                 calls.incrementAndGet()
                 observedRequests += req
-                Ok(IcResponse(wallMillis = 7, compiledFileCount = 1, status = Status.SUCCESS))
+                Ok(IcResponse(wallMillis = 7, compiledFileCount = 1))
             },
         )
         startServer(compiler)
@@ -201,7 +200,7 @@ class DaemonServerTest {
 
     private class FakeCompiler(
         private val onCompile: (IcRequest) -> Result<IcResponse, IcError> = { _ ->
-            Ok(IcResponse(wallMillis = 0, compiledFileCount = 0, status = Status.SUCCESS))
+            Ok(IcResponse(wallMillis = 0, compiledFileCount = 0))
         },
     ) : IncrementalCompiler {
         override fun compile(request: IcRequest): Result<IcResponse, IcError> = onCompile(request)
