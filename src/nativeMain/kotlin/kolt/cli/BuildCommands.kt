@@ -1,8 +1,13 @@
 package kolt.cli
 
 import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
 import kolt.build.*
+import kolt.build.daemon.DaemonCompilerBackend
+import kolt.build.daemon.DaemonSetup
+import kolt.build.daemon.formatDaemonPreconditionWarning
+import kolt.build.daemon.resolveDaemonPreconditions
 import kolt.config.*
 import kolt.infra.*
 import kolt.resolve.*
@@ -35,14 +40,14 @@ internal fun loadProjectConfig(): KoltConfig {
     }
 }
 
-internal fun doCheck() {
+internal fun doCheck(useDaemon: Boolean = true) {
     val startMark = TimeSource.Monotonic.markNow()
     val config = loadProjectConfig()
     // For native target, check is equivalent to a full build (konanc has no
     // syntax-only mode). Delegate to doBuild and discard its BuildResult —
     // check has no further use for it.
     if (config.target == "native") {
-        doBuild()
+        doBuild(useDaemon = useDaemon)
         return
     }
     val paths = resolveKoltPaths(EXIT_BUILD_ERROR)
@@ -73,7 +78,7 @@ internal fun doClean() {
     println("removed $BUILD_DIR/")
 }
 
-internal fun doBuild(): BuildResult {
+internal fun doBuild(useDaemon: Boolean = true): BuildResult {
     val startMark = TimeSource.Monotonic.markNow()
     val config = loadProjectConfig()
 
@@ -108,7 +113,13 @@ internal fun doBuild(): BuildResult {
         exitProcess(EXIT_BUILD_ERROR)
     }
 
-    val backend: CompilerBackend = SubprocessCompilerBackend(kotlincBin = managedKotlincBin)
+    val subprocessBackend = SubprocessCompilerBackend(kotlincBin = managedKotlincBin)
+    val backend: CompilerBackend = resolveCompilerBackend(
+        config = config,
+        paths = paths,
+        subprocessBackend = subprocessBackend,
+        useDaemon = useDaemon,
+    )
     val request = CompileRequest(
         workingDir = "",
         // TODO(#14 S5+): resolveDependencies currently returns a ':'-joined
@@ -325,7 +336,7 @@ internal fun doRun(config: KoltConfig, classpath: String?, appArgs: List<String>
     }
 }
 
-internal fun doTest(testArgs: List<String> = emptyList()) {
+internal fun doTest(testArgs: List<String> = emptyList(), useDaemon: Boolean = true) {
     // Load the config once up front so we can dispatch on target before doing
     // any compilation work. The native path compiles main + test in a single
     // konanc invocation and therefore bypasses doBuild() entirely, unlike the
@@ -335,7 +346,7 @@ internal fun doTest(testArgs: List<String> = emptyList()) {
         doNativeTest(config, testArgs)
         return
     }
-    val (_, classpath, pArgs, javaPath) = doBuild()
+    val (_, classpath, pArgs, javaPath) = doBuild(useDaemon = useDaemon)
 
     val existingTestSources = config.testSources.filter { fileExists(it) }
     if (existingTestSources.isEmpty()) {
@@ -444,6 +455,73 @@ private fun doNativeTest(config: KoltConfig, testArgs: List<String>) {
 internal fun ensureJdkBinsFromConfig(config: KoltConfig, paths: KoltPaths): JdkBins {
     val version = config.jdk ?: return JdkBins(null, null)
     return ensureJdkBins(version, paths, EXIT_BUILD_ERROR)
+}
+
+/**
+ * Picks the backend doBuild() will hand the compile request to. If
+ * [useDaemon] is false (user passed `--no-daemon`), the subprocess
+ * backend is returned directly — no fallback wrapper, no precondition
+ * probing, so the code path is exactly the pre-daemon one. Otherwise
+ * the daemon preconditions are checked; on success we return a
+ * [FallbackCompilerBackend] wrapping [DaemonCompilerBackend] with
+ * [subprocessBackend] as the fallback and [reportFallback] as the
+ * observer. On a precondition failure we print a one-line warning and
+ * degrade to the subprocess backend — daemon is never load-bearing
+ * for correctness (ADR 0016 §5).
+ */
+private fun resolveCompilerBackend(
+    config: KoltConfig,
+    paths: KoltPaths,
+    subprocessBackend: CompilerBackend,
+    useDaemon: Boolean,
+): CompilerBackend {
+    if (!useDaemon) return subprocessBackend
+
+    val absProjectPath = currentWorkingDirectory() ?: run {
+        eprintln("warning: could not determine project directory — falling back to subprocess compile")
+        return subprocessBackend
+    }
+
+    val setup = resolveDaemonPreconditions(
+        paths = paths,
+        kotlincVersion = config.kotlin,
+        absProjectPath = absProjectPath,
+    ).getOrElse { err ->
+        eprintln(formatDaemonPreconditionWarning(err))
+        return subprocessBackend
+    }
+    return buildFallbackBackend(setup, subprocessBackend)
+}
+
+private fun buildFallbackBackend(
+    setup: DaemonSetup,
+    subprocessBackend: CompilerBackend,
+): CompilerBackend {
+    // spawnDetached opens the log path with O_CREAT but not the
+    // intermediate directory — if ~/.kolt/daemon/<projectHash>/ is
+    // missing the log file is silently dropped and the daemon's stderr
+    // lands in /dev/null. The JVM side already creates the directory
+    // for the socket bind (ADR 0016 §Socket path lifecycle), but that
+    // happens after the client has already tried to open the log. We
+    // create it eagerly here so the first spawn's log is captured.
+    val dirResult = ensureDirectoryRecursive(setup.socketPath.substringBeforeLast('/'))
+    if (dirResult.getError() != null) {
+        eprintln("warning: could not create daemon state directory — falling back to subprocess compile")
+        return subprocessBackend
+    }
+
+    val daemonBackend = DaemonCompilerBackend(
+        javaBin = setup.javaBin,
+        daemonJarPath = setup.daemonJarPath,
+        compilerJars = setup.compilerJars,
+        socketPath = setup.socketPath,
+        logPath = setup.logPath,
+    )
+    return FallbackCompilerBackend(
+        primary = daemonBackend,
+        fallback = subprocessBackend,
+        onFallback = ::reportFallback,
+    )
 }
 
 internal fun createResolverDeps() = object : ResolverDeps {

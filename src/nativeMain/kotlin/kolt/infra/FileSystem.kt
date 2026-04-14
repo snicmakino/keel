@@ -184,6 +184,35 @@ private fun collectAllFileMtimes(directory: String, onFile: (Long) -> Unit) {
     }
 }
 
+/**
+ * Non-recursively lists regular files in [path] whose name ends with
+ * `.jar`, returned as absolute paths (`$path/$name`) in lexicographic
+ * order. Returns [ListFilesFailed] if the directory cannot be opened.
+ * An empty successful result is distinct from the error case, so a
+ * caller can treat "directory missing" (Err) and "directory exists but
+ * has no jars" (empty Ok) differently.
+ */
+@OptIn(ExperimentalForeignApi::class)
+fun listJarFiles(path: String): Result<List<String>, ListFilesFailed> {
+    val dir = opendir(path) ?: return Err(ListFilesFailed(path))
+    val entries = mutableListOf<String>()
+    try {
+        while (true) {
+            val entry = readdir(dir) ?: break
+            val name = entry.pointed.d_name.toKString()
+            if (name == "." || name == "..") continue
+            if (!name.endsWith(".jar")) continue
+            val childPath = "$path/$name"
+            if (isDirectory(childPath)) continue
+            entries.add(childPath)
+        }
+    } finally {
+        closedir(dir)
+    }
+    entries.sort()
+    return Ok(entries)
+}
+
 @OptIn(ExperimentalForeignApi::class)
 fun listSubdirectories(path: String): Result<List<String>, ListFilesFailed> {
     val dir = opendir(path) ?: return Err(ListFilesFailed(path))
@@ -301,6 +330,17 @@ fun homeDirectory(): Result<String, HomeNotFound> {
     } else {
         Ok(home)
     }
+}
+
+/**
+ * Returns the absolute path of the current working directory, or
+ * `null` if `getcwd(3)` fails. Distinct from [homeDirectory] so
+ * callers can use a cwd they just entered without re-reading `$HOME`.
+ */
+@OptIn(ExperimentalForeignApi::class)
+fun currentWorkingDirectory(): String? = memScoped {
+    val buf = allocArray<ByteVar>(PATH_MAX)
+    getcwd(buf, PATH_MAX.toULong())?.toKString()
 }
 
 @OptIn(ExperimentalForeignApi::class)

@@ -10,41 +10,59 @@ fun main(args: Array<String>) {
         return
     }
 
-    when (args[0]) {
-        "init" -> doInit(args.drop(1))
-        "build" -> doBuild()
-        "check" -> doCheck()
+    // Kolt-level flags (consumed here, never forwarded to subcommands
+    // or to the user program via `--`). Only `--no-daemon` lives at
+    // this layer today. The flag is only recognised *before* the `--`
+    // passthrough sentinel so a user program that accepts `--no-daemon`
+    // itself (e.g. `kolt run -- --no-daemon`) still receives it intact.
+    val argList = args.toList()
+    val passthroughStart = argList.indexOf("--")
+    val koltLevel = if (passthroughStart >= 0) argList.subList(0, passthroughStart) else argList
+    val passthrough = if (passthroughStart >= 0) argList.subList(passthroughStart, argList.size) else emptyList()
+    val useDaemon = !koltLevel.contains(NO_DAEMON_FLAG)
+    val filteredArgs = koltLevel.filter { it != NO_DAEMON_FLAG } + passthrough
+    if (filteredArgs.isEmpty()) {
+        printUsage()
+        return
+    }
+
+    when (filteredArgs[0]) {
+        "init" -> doInit(filteredArgs.drop(1))
+        "build" -> doBuild(useDaemon = useDaemon)
+        "check" -> doCheck(useDaemon = useDaemon)
         "run" -> {
-            val appArgs = args.toList().let { all ->
+            val appArgs = filteredArgs.let { all ->
                 val sep = all.indexOf("--")
                 if (sep >= 0) all.subList(sep + 1, all.size) else emptyList()
             }
-            val (config, classpath, _, javaPath) = doBuild()
+            val (config, classpath, _, javaPath) = doBuild(useDaemon = useDaemon)
             doRun(config, classpath, appArgs, javaPath)
         }
         "test" -> {
-            val testArgs = args.toList().let { all ->
+            val testArgs = filteredArgs.let { all ->
                 val sep = all.indexOf("--")
                 if (sep >= 0) all.subList(sep + 1, all.size) else emptyList()
             }
-            doTest(testArgs)
+            doTest(testArgs, useDaemon = useDaemon)
         }
-        "fmt" -> doFmt(args.drop(1))
+        "fmt" -> doFmt(filteredArgs.drop(1))
         "clean" -> doClean()
         "tree" -> doTree()
-        "deps" -> doDeps(args.drop(1))
-        "add" -> doAdd(args.drop(1))
+        "deps" -> doDeps(filteredArgs.drop(1))
+        "add" -> doAdd(filteredArgs.drop(1))
         "install" -> doInstall()
         "update" -> doUpdate()
-        "toolchain" -> doToolchain(args.drop(1))
+        "toolchain" -> doToolchain(filteredArgs.drop(1))
         "--version", "version" -> println(versionString())
         else -> {
-            eprintln("error: unknown command '${args[0]}'")
+            eprintln("error: unknown command '${filteredArgs[0]}'")
             printUsage()
             exitProcess(EXIT_BUILD_ERROR)
         }
     }
 }
+
+private const val NO_DAEMON_FLAG = "--no-daemon"
 
 private fun printUsage() {
     eprintln("usage: kolt <command>")
@@ -63,4 +81,7 @@ private fun printUsage() {
     eprintln("  update     Re-resolve dependencies and update lockfile")
     eprintln("  toolchain  Manage toolchains (install, list, remove)")
     eprintln("  version    Show version information")
+    eprintln("")
+    eprintln("flags:")
+    eprintln("  --no-daemon  Skip the warm compiler daemon for this invocation")
 }

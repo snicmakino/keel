@@ -485,6 +485,54 @@ class FileSystemTest {
         }
     }
 
+    // --- listJarFiles ---
+
+    @Test
+    fun listJarFilesReturnsSortedJarPathsOnly() {
+        val base = "/tmp/kolt_list_jars_sorted"
+        platform.posix.mkdir(base, 0b111111101u)
+        writeTestFile("$base/zeta.jar", "z")
+        writeTestFile("$base/alpha.jar", "a")
+        writeTestFile("$base/beta.jar", "b")
+        writeTestFile("$base/notes.txt", "ignored")
+        platform.posix.mkdir("$base/nested.jar", 0b111111101u) // directory, not a file
+        try {
+            val result = listJarFiles(base)
+            assertEquals(
+                listOf("$base/alpha.jar", "$base/beta.jar", "$base/zeta.jar"),
+                result.get(),
+            )
+        } finally {
+            remove("$base/zeta.jar")
+            remove("$base/alpha.jar")
+            remove("$base/beta.jar")
+            remove("$base/notes.txt")
+            platform.posix.rmdir("$base/nested.jar")
+            platform.posix.rmdir(base)
+        }
+    }
+
+    @Test
+    fun listJarFilesReturnsEmptyWhenNoJars() {
+        val base = "/tmp/kolt_list_jars_empty"
+        platform.posix.mkdir(base, 0b111111101u)
+        writeTestFile("$base/readme.md", "hi")
+        try {
+            val result = listJarFiles(base)
+            assertEquals(emptyList(), result.get())
+        } finally {
+            remove("$base/readme.md")
+            platform.posix.rmdir(base)
+        }
+    }
+
+    @Test
+    fun listJarFilesReturnsErrForNonExistentDir() {
+        val result = listJarFiles("/tmp/kolt_list_jars_nonexistent")
+        assertNull(result.get())
+        assertIs<ListFilesFailed>(result.getError())
+    }
+
     private fun writeTestFile(path: String, content: String) {
         val fp = platform.posix.fopen(path, "w") ?: error("could not create test file: $path")
         if (content.isNotEmpty()) {
