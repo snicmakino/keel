@@ -9,11 +9,14 @@ import org.jetbrains.kotlin.buildtools.api.CompilationResult
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
 import org.jetbrains.kotlin.buildtools.api.KotlinToolchains
 import org.jetbrains.kotlin.buildtools.api.SharedApiClassesClassLoader
+import org.jetbrains.kotlin.buildtools.api.SourcesChanges
 import org.jetbrains.kotlin.buildtools.api.arguments.CommonCompilerArguments
 import org.jetbrains.kotlin.buildtools.api.arguments.JvmCompilerArguments
 import org.jetbrains.kotlin.buildtools.api.jvm.JvmPlatformToolchain.Companion.jvm
+import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperation
 import java.io.File
 import java.net.URLClassLoader
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource
@@ -69,6 +72,13 @@ class BtaIncrementalCompiler private constructor(
         }
 
     private fun executeCompile(request: IcRequest): Result<IcResponse, IcError> {
+        // ADR 0019 §5: the adapter is the sole writer under `workingDir`.
+        // Lazy mkdir (not eager on daemon startup) because the daemon does
+        // not learn which project is compiling until the first request
+        // arrives. `createDirectories` is a no-op if the tree already
+        // exists, which is the common case for every non-initial request.
+        Files.createDirectories(request.workingDir)
+
         val builder = toolchain.jvm.jvmCompilationOperationBuilder(request.sources, request.outputDir)
         if (request.classpath.isNotEmpty()) {
             builder.compilerArguments[JvmCompilerArguments.CLASSPATH] =
@@ -83,10 +93,31 @@ class BtaIncrementalCompiler private constructor(
         val translatedPlugins = PluginTranslator.translate(request.projectRoot, pluginJarResolver)
         builder.compilerArguments[CommonCompilerArguments.COMPILER_PLUGINS] = translatedPlugins
 
-        // B-2a does not attach snapshotBasedIcConfigurationBuilder — the operation
-        // runs as a plain full recompile. IC state layout under `request.workingDir`
-        // is deliberately not exercised until B-2b (per issue #112 "Out of scope").
+        // ADR 0019 §5 + §Negative: attach the snapshot-based IC configuration
+        // so BTA runs in incremental mode. `SourcesChanges.ToBeCalculated`
+        // asks BTA to diff against its own persisted state under `workingDir`
+        // — the wire protocol does not carry a dirty-file delta (§4), and
+        // `kolt watch` (#15) is the future place where `SourcesChanges.Known`
+        // would show up. `dependenciesSnapshotFiles` is empty for now: per-
+        // entry `ClasspathEntrySnapshot` computation is filed as a B-2b
+        // follow-up commit in the same PR, because the shipping first-cut
+        // handles the source-only iterative-edit case (the bimodal IC win
+        // the spike measured), and classpath changes go through kolt's
+        // existing BuildCache gate before they ever reach the daemon.
+        val shrunkClasspathSnapshot = request.workingDir.resolve(SHRUNK_CLASSPATH_SNAPSHOT)
+        val icConfig = builder.snapshotBasedIcConfigurationBuilder(
+            workingDirectory = request.workingDir,
+            sourcesChanges = SourcesChanges.ToBeCalculated,
+            dependenciesSnapshotFiles = emptyList(),
+            shrunkClasspathSnapshot = shrunkClasspathSnapshot,
+        ).build()
+        builder[JvmCompilationOperation.INCREMENTAL_COMPILATION] = icConfig
 
+        // ADR 0019 §6: per-request `BuildSession` open/close. The session
+        // is JVM-local and AutoCloseable; caching it across requests was
+        // explicitly considered and rejected (B-2b sync note) because the
+        // daemon serialises compile traffic and the payoff is not worth
+        // the classloader-leak / state-mixing debugging surface.
         val policy = toolchain.createInProcessExecutionPolicy()
         val start = TimeSource.Monotonic.markNow()
         val op = builder.build()
@@ -131,6 +162,13 @@ class BtaIncrementalCompiler private constructor(
         "kolt-${request.projectId}"
 
     companion object {
+        // File name under `workingDir` where BTA persists the shrunk
+        // classpath snapshot. Promoted to a constant so a reader can
+        // grep both for the directory layout and for any future reaper
+        // that needs to recognise it.
+        internal const val SHRUNK_CLASSPATH_SNAPSHOT: String = "shrunk-classpath-snapshot.bin"
+
+
         // Loads kotlin-build-tools-impl from [btaImplJars] through a URLClassLoader
         // whose parent is SharedApiClassesClassLoader. This matches the isolation
         // policy used by Gradle's Kotlin plugin and by spike #104. Failure here is
