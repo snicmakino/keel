@@ -30,8 +30,8 @@ import com.github.michaelbull.result.getError
  * real reporter via `doBuild()`.
  */
 class FallbackCompilerBackend(
-    private val primary: CompilerBackend,
-    private val fallback: CompilerBackend,
+    internal val primary: CompilerBackend,
+    internal val fallback: CompilerBackend,
     private val onFallback: (CompileError) -> Unit = {},
 ) : CompilerBackend {
 

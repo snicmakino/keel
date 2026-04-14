@@ -43,6 +43,8 @@ class ResolveCompilerBackendTest {
         logPath = "/fake/daemon/dir/daemon.log",
     )
 
+    private val absProject = "/fake/project"
+
     @Test
     fun useDaemonFalseReturnsSubprocessWithoutProbingAnything() {
         val warnings = mutableListOf<String>()
@@ -51,7 +53,7 @@ class ResolveCompilerBackendTest {
             paths = paths,
             subprocessBackend = subprocess,
             useDaemon = false,
-            cwdResolver = { error("must not resolve cwd when useDaemon=false") },
+            absProjectPath = absProject,
             preconditionResolver = { _, _, _ -> error("must not resolve preconditions when useDaemon=false") },
             daemonDirCreator = { error("must not create daemon dir when useDaemon=false") },
             daemonBackendFactory = { error("must not construct daemon backend when useDaemon=false") },
@@ -63,25 +65,6 @@ class ResolveCompilerBackendTest {
     }
 
     @Test
-    fun cwdUnknownWarnsAndFallsBackToSubprocess() {
-        val warnings = mutableListOf<String>()
-        val backend = resolveCompilerBackend(
-            config = config,
-            paths = paths,
-            subprocessBackend = subprocess,
-            useDaemon = true,
-            cwdResolver = { null },
-            preconditionResolver = { _, _, _ -> error("must not resolve preconditions after cwd failure") },
-            daemonDirCreator = { error("must not create daemon dir after cwd failure") },
-            daemonBackendFactory = { error("must not construct daemon backend after cwd failure") },
-            warningSink = { warnings.add(it) },
-        )
-
-        assertSame(subprocess, backend)
-        assertEquals(listOf(WARNING_CWD_UNKNOWN), warnings)
-    }
-
-    @Test
     fun preconditionFailureWarnsWithFormattedWordingAndFallsBack() {
         val warnings = mutableListOf<String>()
         val backend = resolveCompilerBackend(
@@ -89,7 +72,7 @@ class ResolveCompilerBackendTest {
             paths = paths,
             subprocessBackend = subprocess,
             useDaemon = true,
-            cwdResolver = { "/fake/project" },
+            absProjectPath = absProject,
             preconditionResolver = { _, _, _ ->
                 Err(DaemonPreconditionError.DaemonJarMissing)
             },
@@ -114,7 +97,7 @@ class ResolveCompilerBackendTest {
             paths = paths,
             subprocessBackend = subprocess,
             useDaemon = true,
-            cwdResolver = { "/fake/project" },
+            absProjectPath = absProject,
             preconditionResolver = { _, _, _ -> Ok(okSetup) },
             daemonDirCreator = { Err(MkdirFailed(okSetup.daemonDir)) },
             daemonBackendFactory = { error("must not construct daemon backend after mkdir failure") },
@@ -126,7 +109,7 @@ class ResolveCompilerBackendTest {
     }
 
     @Test
-    fun happyPathReturnsFallbackCompilerBackendWrappingDaemonPrimary() {
+    fun happyPathWrapsDaemonPrimaryAndSubprocessFallback() {
         val warnings = mutableListOf<String>()
         var createdFrom: DaemonSetup? = null
         val backend = resolveCompilerBackend(
@@ -134,10 +117,10 @@ class ResolveCompilerBackendTest {
             paths = paths,
             subprocessBackend = subprocess,
             useDaemon = true,
-            cwdResolver = { "/fake/project" },
+            absProjectPath = absProject,
             preconditionResolver = { _, kotlincVersion, cwd ->
                 assertEquals("2.1.0", kotlincVersion)
-                assertEquals("/fake/project", cwd)
+                assertEquals(absProject, cwd)
                 Ok(okSetup)
             },
             daemonDirCreator = { dir ->
@@ -152,7 +135,13 @@ class ResolveCompilerBackendTest {
         )
 
         assertEquals(emptyList(), warnings)
-        assertNotNull(backend as? FallbackCompilerBackend)
+        val fallback = assertNotNull(backend as? FallbackCompilerBackend)
+        // Tightness: asserting `as FallbackCompilerBackend` alone
+        // would still pass if the factory were called but its
+        // return value thrown away and primary wired to something
+        // else. The identity checks below pin the wiring.
+        assertSame(daemonSentinel, fallback.primary)
+        assertSame(subprocess, fallback.fallback)
         assertEquals(okSetup, createdFrom)
     }
 

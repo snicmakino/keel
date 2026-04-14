@@ -115,12 +115,28 @@ internal fun doBuild(useDaemon: Boolean = true): BuildResult {
         exitProcess(EXIT_BUILD_ERROR)
     }
 
+    // Resolve cwd once, up front. Both the daemon path (which keys
+    // per-project state on the absolute project path) and the
+    // absolutise pass below need it, and there is no sensible
+    // recovery if kolt itself cannot read its own cwd: any relative
+    // path in config.sources or CLASSES_DIR would resolve
+    // inconsistently from that point on. Hard-exit is the honest
+    // behaviour — this is not a "fall back to the daemon-less path"
+    // failure mode, it is "kolt cannot function" — and it unifies
+    // the failure policy with resolveCompilerBackend, which no
+    // longer needs a cwd seam of its own.
+    val cwd = currentWorkingDirectory() ?: run {
+        eprintln("error: could not determine current working directory")
+        exitProcess(EXIT_BUILD_ERROR)
+    }
+
     val subprocessBackend = SubprocessCompilerBackend(kotlincBin = managedKotlincBin)
     val backend: CompilerBackend = resolveCompilerBackend(
         config = config,
         paths = paths,
         subprocessBackend = subprocessBackend,
         useDaemon = useDaemon,
+        absProjectPath = cwd,
     )
     // Sources and outputPath are relative to the project root in
     // kolt.toml. The subprocess backend inherits cwd via fork+exec,
@@ -131,14 +147,14 @@ internal fun doBuild(useDaemon: Boolean = true): BuildResult {
     // receives so the result is identical regardless of whether the
     // daemon or the subprocess backend serves the compile, and so a
     // future daemon-side change (e.g. chdir or relative resolution)
-    // cannot silently desynchronise the two paths. `workingDir` is
-    // still populated with the project root as a forward-compatible
-    // anchor, but no backend reads it today.
-    val cwd = currentWorkingDirectory() ?: run {
-        eprintln("error: could not determine current working directory")
-        exitProcess(EXIT_BUILD_ERROR)
-    }
+    // cannot silently desynchronise the two paths.
     val request = CompileRequest(
+        // TODO(#14): `workingDir` is populated with the project root
+        // as a forward-compatible anchor, but no backend reads it
+        // today — the native subprocess path inherits cwd via
+        // fork+exec and the JVM SharedCompilerHost.buildArgs ignores
+        // the field. Kept in the wire so a future daemon-side
+        // chdir-per-compile can honour it without a wire migration.
         workingDir = cwd,
         // TODO(#14 S5+): resolveDependencies currently returns a ':'-joined
         // String for legacy reasons, so we split it here to hand the backend a
@@ -475,12 +491,10 @@ internal fun ensureJdkBinsFromConfig(config: KoltConfig, paths: KoltPaths): JdkB
     return ensureJdkBins(version, paths, EXIT_BUILD_ERROR)
 }
 
-// Warning wording pinned as constants so unit tests can assert on
+// Warning wording pinned as a constant so unit tests can assert on
 // the exact string without hard-coding it a second time in each
 // branch's test. Kept internal so the tests in the same module can
-// reference them without exposing them on the public API.
-internal const val WARNING_CWD_UNKNOWN =
-    "warning: could not determine project directory — falling back to subprocess compile"
+// reference it without exposing it on the public API.
 internal const val WARNING_DAEMON_DIR_UNWRITABLE =
     "warning: could not create daemon state directory — falling back to subprocess compile"
 
@@ -497,9 +511,15 @@ internal const val WARNING_DAEMON_DIR_UNWRITABLE =
  * to the subprocess backend — daemon is never load-bearing for
  * correctness (ADR 0016 §5).
  *
- * Seams ([cwdResolver], [preconditionResolver], [daemonDirCreator],
+ * [absProjectPath] is **required** and must be the current absolute
+ * cwd. It is passed in by [doBuild] after that routine has already
+ * decided a failure to read cwd is a kolt-cannot-function condition
+ * and hard-exited the process; [resolveCompilerBackend] therefore
+ * does not need a separate cwd-unavailable branch of its own.
+ *
+ * Seams ([preconditionResolver], [daemonDirCreator],
  * [daemonBackendFactory], [warningSink]) are defaulted to production
- * helpers so callers pass only the first four arguments. Unit tests
+ * helpers so callers pass only the first five arguments. Unit tests
  * substitute fakes to drive each degradation branch without touching
  * the filesystem or bringing up a real daemon.
  */
@@ -508,7 +528,7 @@ internal fun resolveCompilerBackend(
     paths: KoltPaths,
     subprocessBackend: CompilerBackend,
     useDaemon: Boolean,
-    cwdResolver: () -> String? = ::currentWorkingDirectory,
+    absProjectPath: String,
     preconditionResolver: (KoltPaths, String, String) -> Result<DaemonSetup, DaemonPreconditionError> =
         { p, kotlincVersion, cwd -> resolveDaemonPreconditions(p, kotlincVersion, cwd) },
     daemonDirCreator: (String) -> Result<Unit, MkdirFailed> = ::ensureDirectoryRecursive,
@@ -516,11 +536,6 @@ internal fun resolveCompilerBackend(
     warningSink: (String) -> Unit = ::eprintln,
 ): CompilerBackend {
     if (!useDaemon) return subprocessBackend
-
-    val absProjectPath = cwdResolver() ?: run {
-        warningSink(WARNING_CWD_UNKNOWN)
-        return subprocessBackend
-    }
 
     val setup = preconditionResolver(paths, config.kotlin, absProjectPath).getOrElse { err ->
         warningSink(formatDaemonPreconditionWarning(err))
