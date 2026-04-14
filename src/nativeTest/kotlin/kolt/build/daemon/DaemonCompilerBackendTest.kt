@@ -144,6 +144,57 @@ class DaemonCompilerBackendHappyPathTest {
         assertEquals(1, failed.exitCode)
         assertEquals("Main.kt:3:5 error: expected ';'", failed.stderr)
     }
+
+    @Test
+    fun daemonProtocolErrorMapsToBackendUnavailable() {
+        // The JVM daemon's writeProtocolError wire contract emits
+        // exitCode=2, empty diagnostics, empty stdout, and a stderr
+        // prefixed "protocol error: ". Route those to
+        // BackendUnavailable so FallbackCompilerBackend falls through
+        // to subprocess compile instead of surfacing a confusing
+        // CompilationFailed.
+        val fake = FakeConnection(
+            reply = Ok(
+                Message.CompileResult(
+                    exitCode = 2,
+                    diagnostics = emptyList(),
+                    stdout = "",
+                    stderr = "protocol error: malformed frame body",
+                ),
+            ),
+        )
+        val backend = newBackend(connector = { Ok(fake) })
+
+        val err = assertNotNull(backend.compile(sampleRequest()).getError())
+        val unavailable = assertIs<CompileError.BackendUnavailable.Other>(err)
+        assertTrue(
+            unavailable.detail.contains("protocol error: malformed frame body"),
+            "detail should carry the daemon's stderr: ${unavailable.detail}",
+        )
+    }
+
+    @Test
+    fun kotlincInternalErrorExitCode2DoesNotFalsePositive() {
+        // A real kotlinc internal error can also produce exitCode=2
+        // but carries real compiler output, not the "protocol error:"
+        // prefix. Make sure the sniff is narrow enough to leave that
+        // path as CompilationFailed.
+        val fake = FakeConnection(
+            reply = Ok(
+                Message.CompileResult(
+                    exitCode = 2,
+                    diagnostics = emptyList(),
+                    stdout = "",
+                    stderr = "error: compiler backend internal error: NPE in JVMBackend",
+                ),
+            ),
+        )
+        val backend = newBackend(connector = { Ok(fake) })
+
+        val err = assertNotNull(backend.compile(sampleRequest()).getError())
+        val failed = assertIs<CompileError.CompilationFailed>(err)
+        assertEquals(2, failed.exitCode)
+    }
 }
 
 class DaemonCompilerBackendConnectAndSpawnTest {

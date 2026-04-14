@@ -281,28 +281,30 @@ internal fun mapFrameErrorToReceiveError(err: FrameError): CompileError = when (
 
 internal fun mapReplyToOutcome(reply: Message): Result<CompileOutcome, CompileError> = when (reply) {
     is Message.CompileResult ->
-        if (reply.exitCode == 0) {
-            Ok(CompileOutcome(stdout = reply.stdout, stderr = reply.stderr))
-        } else {
-            // TODO(#14 S7): distinguish "kotlinc said nonzero" (real
-            // CompilationFailed, not fallback-eligible) from "daemon
-            // raised a host-level error and wrote a protocol-error
-            // reply" (ADR 0016 §3 — host-level failures surface as
-            // `writeProtocolError` with exitCode=2 and an empty
-            // diagnostics list). Today both collapse into
-            // CompilationFailed, meaning a daemon internal error
-            // blocks the subprocess fallback. The distinction needs
-            // either (a) a new wire field or (b) sniffing exitCode==2
-            // + empty diagnostics + a marker stderr — neither is
-            // worth doing before the real integration test at S7
-            // proves which host-level failure modes are common.
-            Err(
-                CompileError.CompilationFailed(
-                    exitCode = reply.exitCode,
-                    stdout = reply.stdout,
-                    stderr = reply.stderr,
-                ),
-            )
+        when {
+            reply.exitCode == 0 ->
+                Ok(CompileOutcome(stdout = reply.stdout, stderr = reply.stderr))
+            isDaemonProtocolError(reply) ->
+                // The JVM daemon's `writeProtocolError` wire contract
+                // (ADR 0016 §3, `DaemonServer.writeProtocolError`)
+                // emits exactly this shape on host-level failures:
+                // exitCode=2, empty diagnostics, empty stdout, and a
+                // stderr prefixed with "protocol error: ". Route it
+                // to BackendUnavailable so FallbackCompilerBackend can
+                // drop to subprocess compile instead of surfacing a
+                // confusing "compilation failed: protocol error" to
+                // the user. Narrow enough to not false-positive on a
+                // real kotlinc internal-error exitCode=2, because the
+                // stderr prefix is unique to the daemon contract.
+                Err(CompileError.BackendUnavailable.Other("daemon protocol error: ${reply.stderr}"))
+            else ->
+                Err(
+                    CompileError.CompilationFailed(
+                        exitCode = reply.exitCode,
+                        stdout = reply.stdout,
+                        stderr = reply.stderr,
+                    ),
+                )
         }
     is Message.Compile,
     is Message.Ping,
@@ -314,6 +316,14 @@ internal fun mapReplyToOutcome(reply: Message): Result<CompileOutcome, CompileEr
         ),
     )
 }
+
+private const val DAEMON_PROTOCOL_ERROR_PREFIX = "protocol error: "
+
+private fun isDaemonProtocolError(reply: Message.CompileResult): Boolean =
+    reply.exitCode == 2 &&
+        reply.diagnostics.isEmpty() &&
+        reply.stdout.isEmpty() &&
+        reply.stderr.startsWith(DAEMON_PROTOCOL_ERROR_PREFIX)
 
 // Wire contract: the fields of Message.Compile must stay aligned with
 // CompileRequest so the native client and the JVM server can talk
