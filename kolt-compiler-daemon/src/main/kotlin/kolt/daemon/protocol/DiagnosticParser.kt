@@ -40,13 +40,27 @@ object DiagnosticParser {
     private val SUBPROCESS_REGEX: Regex =
         Regex("""^(?<path>.+):(?<line>\d+):(?<col>\d+):\s*(?<sev>[A-Za-z_]+):\s*(?<msg>.*)$""")
 
+    // Path must start with either `file://` or `/` so an arbitrary
+    // error-level log line like `Cannot resolve org.foo:1:2 from repo`
+    // cannot false-positive into a fake `Diagnostic`. The parser's own
+    // contract (see top-of-file comment) is Linux/macOS absolute paths
+    // only, which means a real diagnostic always begins with one of
+    // those two prefixes. A line that fits the `path:L:C msg` skeleton
+    // but lacks an absolute-path leader correctly falls through to
+    // plain-text stderr.
     private val BTA_INLINE_REGEX: Regex =
-        Regex("""^(?<path>.+):(?<line>\d+):(?<col>\d+)\s+(?<msg>.*)$""")
+        Regex("""^(?<path>(?:file://)?/[^\s].*?):(?<line>\d+):(?<col>\d+)\s+(?<msg>.*)$""")
 
     private const val FILE_URI_PREFIX: String = "file://"
 
     fun parseLine(line: String): Diagnostic? {
-        SUBPROCESS_REGEX.matchEntire(line)?.let { match ->
+        // Defensive trim: BTA may or may not terminate captured logger
+        // strings with `\n`; `matchEntire` does not consume newlines
+        // because `.` does not match `\n` by default. Strip both `\n`
+        // and `\r` so a future BTA bump that starts adding line
+        // terminators does not silently break the parser.
+        val trimmed = line.trimEnd('\n', '\r')
+        SUBPROCESS_REGEX.matchEntire(trimmed)?.let { match ->
             val severity = toSeverity(match.groups["sev"]!!.value) ?: return@let
             return Diagnostic(
                 severity = severity,
@@ -56,7 +70,7 @@ object DiagnosticParser {
                 message = match.groups["msg"]!!.value.trim(),
             )
         }
-        BTA_INLINE_REGEX.matchEntire(line)?.let { match ->
+        BTA_INLINE_REGEX.matchEntire(trimmed)?.let { match ->
             return Diagnostic(
                 severity = Severity.Error,
                 file = stripFileUri(match.groups["path"]!!.value),

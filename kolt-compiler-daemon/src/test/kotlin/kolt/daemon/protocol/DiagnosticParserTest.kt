@@ -116,6 +116,46 @@ class DiagnosticParserTest {
     }
 
     @Test
+    fun nonAbsolutePathFallsThroughInsteadOfFalsePositiveOnBtaInline() {
+        // The BTA-inline regex must not match arbitrary error-level
+        // log lines that happen to contain `word:digits:digits word`.
+        // Real diagnostics always start with an absolute path or
+        // `file://` URI; anything else is unstructured chatter and
+        // should land in plain-text stderr instead of being lifted
+        // into a fake Diagnostic with a path like `Cannot resolve`.
+        assertNull(
+            DiagnosticParser.parseLine("Cannot resolve coordinate org.foo:1:2 from repo"),
+        )
+        assertNull(DiagnosticParser.parseLine("foo:1:2 bar"))
+    }
+
+    @Test
+    fun subprocessShapeWinsOverBtaInlineShapeOnLinesThatMatchBoth() {
+        // `/foo:1:2: error: bar` is a legal subprocess shape AND would
+        // also match the BTA-inline regex if reached (path=`/foo`,
+        // line=1, col=2, msg=`error: bar`). The parser must try the
+        // subprocess regex first so the severity word is honoured and
+        // the message body is correct. A refactor that swapped the
+        // order would silently produce wrong diagnostics.
+        val parsed = DiagnosticParser.parseLine("/foo:1:2: error: bar")
+        assertEquals(Severity.Error, parsed?.severity)
+        assertEquals("/foo", parsed?.file)
+        assertEquals("bar", parsed?.message)
+    }
+
+    @Test
+    fun trailingNewlineIsStripped() {
+        // BTA may or may not terminate captured strings; defend
+        // against a future bump by trimming `\n` / `\r` before the
+        // regex tries matchEntire (which does not consume `\n`).
+        val parsed = DiagnosticParser.parseLine(
+            "file:///tmp/A.kt:1:1 boom\n",
+        )
+        assertEquals("/tmp/A.kt", parsed?.file)
+        assertEquals("boom", parsed?.message)
+    }
+
+    @Test
     fun btaInlineShapeWithoutFileUriPrefixStillParses() {
         // A future BTA release may drop the `file://` prefix. Matching
         // the shape without it keeps us forward-compatible.

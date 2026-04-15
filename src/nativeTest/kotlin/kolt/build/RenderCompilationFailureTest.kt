@@ -111,6 +111,22 @@ class RenderCompilationFailureTest {
     }
 
     @Test
+    fun fileNullWithLineColumnStillCollapsesToNoLocation() {
+        // Belt-and-suspenders: even if a future producer forgets to
+        // populate `file` but still passes line/column, the renderer
+        // must not emit a leading-colon `:5:3: error: msg` shape.
+        val error = CompileError.CompilationFailed(
+            exitCode = 1,
+            stdout = "",
+            stderr = "",
+            diagnostics = listOf(
+                Diagnostic(Severity.Error, file = null, line = 5, column = 3, message = "rogue"),
+            ),
+        )
+        assertEquals("error: rogue", renderCompilationFailure(error))
+    }
+
+    @Test
     fun rendersStderrOnlyWhenDiagnosticsAreEmpty() {
         // Pre-B-2c daemon behaviour and subprocess path with
         // ProcessError.NonZeroExit carrying captured stderr both land

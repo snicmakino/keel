@@ -98,7 +98,7 @@ sealed interface CompileError {
 // typically produce an empty string anyway (both fields are empty),
 // but the ordering invariant is that daemon-path callers print this
 // block and subprocess-path callers do not.
-fun renderCompilationFailure(error: CompileError.CompilationFailed): String {
+internal fun renderCompilationFailure(error: CompileError.CompilationFailed): String {
     val parts = mutableListOf<String>()
     for (diagnostic in error.diagnostics) {
         parts += formatDiagnostic(diagnostic)
@@ -108,8 +108,16 @@ fun renderCompilationFailure(error: CompileError.CompilationFailed): String {
 }
 
 private fun formatDiagnostic(diagnostic: Diagnostic): String {
-    val location = buildString {
-        if (diagnostic.file != null) append(diagnostic.file)
+    // file=null is the "no location" branch even when line/column
+    // happen to be non-null. Without this guard, a future producer
+    // that forgets to populate `file` while still emitting line/col
+    // would render `:5:3: error: msg` with a leading colon — ugly
+    // and unlike anything kotlinc has ever produced. kotlinc's own
+    // shape always emits position together with a file or omits both.
+    val location = if (diagnostic.file == null) {
+        ""
+    } else buildString {
+        append(diagnostic.file)
         if (diagnostic.line != null) append(':').append(diagnostic.line)
         if (diagnostic.column != null) append(':').append(diagnostic.column)
     }
