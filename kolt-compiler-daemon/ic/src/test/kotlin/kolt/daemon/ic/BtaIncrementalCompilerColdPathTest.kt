@@ -104,6 +104,27 @@ class BtaIncrementalCompilerColdPathTest {
         ).getError() ?: fail("expected Err for broken source")
 
         assertTrue(err is IcError.CompilationFailed, "expected CompilationFailed, got $err")
+        // ADR 0019 §7 diagnostics: the captured KotlinLogger error lines
+        // must surface the actual kotlinc message (source file + error
+        // text), not the synthetic "kotlinc reported COMPILATION_ERROR"
+        // stub. The stub is a last-resort fallback for the pathological
+        // case where BTA returns COMPILATION_ERROR without emitting any
+        // logger line; in practice a real type error produces at least
+        // one. A regression on this assertion would take dogfood users
+        // back to the "what did I break?" experience.
+        assertTrue(
+            err.messages.isNotEmpty(),
+            "expected at least one captured diagnostic, got: ${err.messages}",
+        )
+        val joined = err.messages.joinToString("\n")
+        assertTrue(
+            joined.contains("Broken.kt", ignoreCase = true) || joined.contains("type mismatch", ignoreCase = true),
+            "expected the captured message to reference the broken source or the type error, got:\n$joined",
+        )
+        assertTrue(
+            !joined.contains("kotlinc reported COMPILATION_ERROR"),
+            "stub fallback must not fire when real diagnostics were captured, got:\n$joined",
+        )
     }
 
     // Acceptance criterion 4 of issue #112: a kolt.toml with one enabled plugin

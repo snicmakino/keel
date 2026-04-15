@@ -8,6 +8,7 @@ import com.github.michaelbull.result.Result
 import org.jetbrains.kotlin.buildtools.api.BuildOperation
 import org.jetbrains.kotlin.buildtools.api.CompilationResult
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
+import org.jetbrains.kotlin.buildtools.api.KotlinLogger
 import org.jetbrains.kotlin.buildtools.api.KotlinToolchains
 import org.jetbrains.kotlin.buildtools.api.SharedApiClassesClassLoader
 import org.jetbrains.kotlin.buildtools.api.SourcesChanges
@@ -137,16 +138,35 @@ class BtaIncrementalCompiler private constructor(
             }
         }
 
+        // ADR 0019 §7: diagnostic capture via `KotlinLogger`. BTA does not
+        // return compile diagnostics in the `CompilationResult` value; the
+        // only path to per-source-position messages is to inject a logger
+        // and collect what BTA writes through it during the compile. We
+        // keep the captured messages on a local collector and, on
+        // `COMPILATION_ERROR`, fold the `error`-level lines into
+        // `IcError.CompilationFailed.messages` so daemon core (and the
+        // native client) can surface real compile errors to the user.
+        // Info / warn / debug lines are forwarded to the metrics sink as
+        // coarse `ic.log.<level>` counters so they stay observable without
+        // crowding the user-facing diagnostics stream.
+        val diagnostics = CapturingKotlinLogger(metrics)
+
         // ADR 0019 §6: per-request `BuildSession` open/close. The session
         // is JVM-local and AutoCloseable; caching it across requests was
         // explicitly considered and rejected (B-2b sync note) because the
         // daemon serialises compile traffic and the payoff is not worth
         // the classloader-leak / state-mixing debugging surface.
+        //
+        // NB: `builder.build()` is a pure configuration snapshot and
+        // lives outside the session scope — same pattern the spike #104
+        // reference uses. `executeOperation` is the only BTA call that
+        // needs the session to be open, and it is the only one inside
+        // the `use { }` block.
         val policy = toolchain.createInProcessExecutionPolicy()
         val start = TimeSource.Monotonic.markNow()
         val op = builder.build()
         val compilationResult = toolchain.createBuildSession().use { session ->
-            session.executeOperation(op, policy)
+            session.executeOperation(op, policy, diagnostics)
         }
         val wall = start.elapsedNow().toLong(DurationUnit.MILLISECONDS)
 
@@ -174,14 +194,25 @@ class BtaIncrementalCompiler private constructor(
                     ),
                 )
             }
-            // User source does not type-check. Daemon core reports this to the
-            // client verbatim; B-2b's self-heal retry must NOT fire on this path
-            // because a wipe+retry would just reproduce the same type error.
-            CompilationResult.COMPILATION_ERROR -> Err(
-                IcError.CompilationFailed(
-                    messages = listOf("kotlinc reported $compilationResult"),
-                ),
-            )
+            // User source does not type-check. The captured logger
+            // `error` lines are the actual kotlinc diagnostics; we fall
+            // back to a synthetic "kotlinc reported ..." line only when
+            // BTA reports COMPILATION_ERROR without emitting any error
+            // log entry (shouldn't happen in practice, but we must not
+            // surface an empty `messages` list — daemon core prints it
+            // verbatim to the user's stderr). Self-heal must NOT fire on
+            // this path: a wipe+retry would just reproduce the same
+            // type error.
+            CompilationResult.COMPILATION_ERROR -> {
+                val captured = diagnostics.errorMessages()
+                Err(
+                    IcError.CompilationFailed(
+                        messages = captured.ifEmpty {
+                            listOf("kotlinc reported $compilationResult")
+                        },
+                    ),
+                )
+            }
             // Compiler-infrastructure failures, not user-code failures. Routed as
             // `InternalError` so B-2b's `wipe workingDir + full recompile retry`
             // path (ADR 0019 §7) can fire: OOM often clears on retry with a fresh
@@ -201,6 +232,46 @@ class BtaIncrementalCompiler private constructor(
         // projectId is a stable caller-derived hash per ADR 0019 §3; it is
         // already URL/FS-safe enough to serve as a kotlinc module name.
         "kolt-${request.projectId}"
+
+    // Captures BTA's compile-time log output. `error`-level lines are
+    // retained for folding into `IcError.CompilationFailed.messages`;
+    // `warn` / `info` / `debug` / `lifecycle` lines are forwarded to
+    // the metrics sink as coarse counters so log volume is observable
+    // without polluting the user's compile-error stream. Throwables
+    // attached to error/warn calls are unwrapped and appended to the
+    // captured line so a user chasing a BTA-internal stack trace still
+    // sees the message.
+    private class CapturingKotlinLogger(
+        private val metrics: IcMetricsSink,
+    ) : KotlinLogger {
+        private val errors: MutableList<String> = mutableListOf()
+
+        override val isDebugEnabled: Boolean get() = false
+
+        override fun error(msg: String, throwable: Throwable?) {
+            errors.add(if (throwable == null) msg else "$msg: ${throwable.message ?: throwable.javaClass.name}")
+            metrics.record(METRIC_LOG_ERROR)
+        }
+
+        override fun warn(msg: String, throwable: Throwable?) {
+            metrics.record(METRIC_LOG_WARN)
+        }
+
+        override fun info(msg: String) {
+            metrics.record(METRIC_LOG_INFO)
+        }
+
+        override fun debug(msg: String) {
+            // Not recorded: debug is too noisy to count per line and
+            // `isDebugEnabled = false` keeps BTA from even producing it.
+        }
+
+        override fun lifecycle(msg: String) {
+            metrics.record(METRIC_LOG_LIFECYCLE)
+        }
+
+        fun errorMessages(): List<String> = errors.toList()
+    }
 
     private fun isEmptyDir(workingDir: Path): Boolean {
         if (!Files.exists(workingDir)) return true
@@ -233,6 +304,10 @@ class BtaIncrementalCompiler private constructor(
         internal const val METRIC_SUCCESS: String = "ic.success"
         internal const val METRIC_WALL_MS: String = "ic.wall_ms"
         internal const val METRIC_FALLBACK_TO_FULL: String = "ic.fallback_to_full"
+        internal const val METRIC_LOG_ERROR: String = "ic.log.error"
+        internal const val METRIC_LOG_WARN: String = "ic.log.warn"
+        internal const val METRIC_LOG_INFO: String = "ic.log.info"
+        internal const val METRIC_LOG_LIFECYCLE: String = "ic.log.lifecycle"
 
 
         // Loads kotlin-build-tools-impl from [btaImplJars] through a URLClassLoader
