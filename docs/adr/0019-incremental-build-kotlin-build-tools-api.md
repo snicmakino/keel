@@ -2,10 +2,13 @@
 
 ## Status
 
-Proposed (2026-04-15). Depends on #103 (Phase B-1a bench-scaling ceiling,
+Accepted (2026-04-15). Depends on #103 (Phase B-1a bench-scaling ceiling,
 merged as c722dcc) and #104 (Phase B-1b `kotlin-build-tools-api` spike,
 merged as f652eb1). This ADR is the deliverable of #105 (Phase B-1c) and
-covers the design of Phase B-2; no production code lands with it.
+covers the design of Phase B-2; B-2a (#112, adapter skeleton through the
+full-recompile path) merged as c321615 and B-2b (#113) promotes this ADR
+from Proposed to Accepted by enabling the incremental configuration,
+state layout, and self-heal described below.
 
 The parent issue #105 titles the work "kotlin-build-tools-**impl**", but
 the spike confirmed that the callable entry point is the
@@ -118,10 +121,7 @@ data class IcRequest(
 data class IcResponse(
     val wallMillis: Long,
     val compiledFileCount: Int?,  // null if metrics unavailable
-    val status: Status,
 )
-
-enum class Status { SUCCESS, ERROR }
 
 sealed interface IcError {
     data class CompilationFailed(val messages: List<String>) : IcError
@@ -215,19 +215,27 @@ build came before.
 
 ### 7. Failure classification and self-healing
 
-Three failure classes cross the adapter boundary:
+Five failure classes cross the adapter boundary:
 
 | BTA outcome | Adapter reports | Daemon action |
 |---|---|---|
-| `CompilationResult.COMPILATION_SUCCESS` | `IcResponse(status = SUCCESS)` | Return success to client |
+| `CompilationResult.COMPILATION_SUCCESS` | `Ok(IcResponse)` | Return success to client |
 | `CompilationResult.COMPILATION_ERROR` | `IcError.CompilationFailed(messages)` | Return compile-failed to client (real user code error) |
-| Thrown `KotlinBuildToolsException` or any other `Throwable` | `IcError.InternalError(cause)` + **wipe `workingDir`** | Retry once in full-recompile mode, transparently |
+| `CompilationResult.COMPILATION_OOM_ERROR` or `COMPILER_INTERNAL_ERROR` (any non-SUCCESS / non-COMPILATION_ERROR `CompilationResult` variant) | `IcError.InternalError(cause)` + **wipe `workingDir`** | Retry once in full-recompile mode, transparently |
+| Thrown `KotlinBuildToolsException` or any other `Throwable` *except* `VirtualMachineError` | `IcError.InternalError(cause)` + **wipe `workingDir`** | Retry once in full-recompile mode, transparently |
+| Thrown `VirtualMachineError` (OOM / StackOverflow / any other JVM-level `Error`) | **rethrown unchanged** — adapter does not absorb | Propagates past daemon core to `FallbackCompilerBackend` (ADR 0016 §5); never self-heal, never retry |
 
 Key rules:
 
-- **No thrown exception escapes the adapter.** Every BTA call is
-  wrapped at the boundary. A bug in BTA or a corrupted cache must not
-  kill the daemon process.
+- **No recoverable thrown exception escapes the adapter.** Every BTA
+  call is wrapped at the boundary. A bug in BTA or a corrupted cache
+  must not kill the daemon process. The single exception is
+  `VirtualMachineError`: the adapter deliberately lets it propagate
+  because absorbing an `OutOfMemoryError` into `InternalError` would
+  fire the self-heal retry path below, which allocates more objects
+  and reproduces the OOM in a loop. JVM-fatal errors belong to the
+  subprocess fallback path (ADR 0016 §5), not to IC's in-adapter
+  recovery.
 - **`IcError.InternalError` triggers silent in-adapter full recompile,
   not daemon-to-subprocess fallback.** The ADR 0016 `FallbackCompilerBackend`
   escape hatch is reserved for "the daemon JVM itself is broken". IC
@@ -241,7 +249,7 @@ Key rules:
   state and fail again in a loop. The retry does a cold compile into a
   fresh state dir, which is exactly what Phase A did on every build.
 - **Observability via metrics, not log spam.** Daemon core sees
-  `Status.SUCCESS` regardless of whether the adapter did a true
+  `Ok(IcResponse)` regardless of whether the adapter did a true
   incremental compile, fell back to full-in-adapter, or did a
   self-healing retry. The adapter emits structured metrics
   (`ic.success`, `ic.fallback_to_full`, `ic.self_heal`) so that
@@ -250,7 +258,7 @@ Key rules:
   self-heal so dogfooding notices the event; routine
   `fallback_to_full` is metrics-only.
 
-Daemon core sees one of `SUCCESS` / `CompilationFailed` / the
+Daemon core sees one of `Ok(IcResponse)` / `CompilationFailed` / the
 `InternalError` variant that survived the retry. In the last case
 (full recompile also failed after a self-heal wipe), the adapter
 surfaces the original `CompilationFailed` messages if the retry

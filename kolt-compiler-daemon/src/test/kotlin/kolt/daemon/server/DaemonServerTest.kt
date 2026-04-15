@@ -6,8 +6,8 @@ import com.github.michaelbull.result.get
 import kolt.daemon.ic.IcError
 import kolt.daemon.ic.IcRequest
 import kolt.daemon.ic.IcResponse
+import kolt.daemon.ic.IcStateLayout
 import kolt.daemon.ic.IncrementalCompiler
-import kolt.daemon.ic.Status
 import kolt.daemon.protocol.FrameCodec
 import kolt.daemon.protocol.Message
 import java.net.StandardProtocolFamily
@@ -27,6 +27,7 @@ class DaemonServerTest {
 
     private lateinit var socketDir: Path
     private lateinit var socketPath: Path
+    private lateinit var icRoot: Path
     private lateinit var server: DaemonServer
     private lateinit var serverThread: Thread
 
@@ -34,6 +35,7 @@ class DaemonServerTest {
     fun setUp() {
         socketDir = Files.createTempDirectory("kolt-daemon-server-")
         socketPath = socketDir.resolve("daemon.sock")
+        icRoot = Files.createTempDirectory("kolt-daemon-server-ic-")
     }
 
     @AfterTest
@@ -42,10 +44,16 @@ class DaemonServerTest {
         runCatching { serverThread.join(2_000) }
         runCatching { Files.deleteIfExists(socketPath) }
         runCatching { Files.deleteIfExists(socketDir) }
+        runCatching { icRoot.toFile().deleteRecursively() }
     }
 
     private fun startServer(compiler: IncrementalCompiler) {
-        server = DaemonServer(socketPath, compiler)
+        server = DaemonServer(
+            socketPath = socketPath,
+            compiler = compiler,
+            icRoot = icRoot,
+            kotlinVersion = "2.3.20",
+        )
         serverThread = Thread({ server.serve() }, "daemon-server-test").apply {
             isDaemon = true
             start()
@@ -81,7 +89,7 @@ class DaemonServerTest {
             onCompile = { req ->
                 calls.incrementAndGet()
                 observedRequests += req
-                Ok(IcResponse(wallMillis = 7, compiledFileCount = 1, status = Status.SUCCESS))
+                Ok(IcResponse(wallMillis = 7, compiledFileCount = 1))
             },
         )
         startServer(compiler)
@@ -109,6 +117,16 @@ class DaemonServerTest {
             assertEquals(Path.of("/w"), observed.projectRoot)
             assertEquals(listOf(Path.of("A.kt")), observed.sources)
             assertEquals(Path.of("build/classes"), observed.outputDir)
+            // ADR 0019 §5 / B-2a carryover #5 + #6: workingDir must be
+            // daemon-owned IC state under `icRoot / kotlinVersion /
+            // projectIdFor(projectRoot)`, not a projectRoot placeholder.
+            // projectId must be produced by `IcStateLayout` so the two
+            // call sites cannot drift apart.
+            assertEquals(IcStateLayout.projectIdFor(Path.of("/w")), observed.projectId)
+            assertEquals(
+                IcStateLayout.workingDirFor(icRoot, "2.3.20", Path.of("/w")),
+                observed.workingDir,
+            )
         }
     }
 
@@ -182,7 +200,7 @@ class DaemonServerTest {
 
     private class FakeCompiler(
         private val onCompile: (IcRequest) -> Result<IcResponse, IcError> = { _ ->
-            Ok(IcResponse(wallMillis = 0, compiledFileCount = 0, status = Status.SUCCESS))
+            Ok(IcResponse(wallMillis = 0, compiledFileCount = 0))
         },
     ) : IncrementalCompiler {
         override fun compile(request: IcRequest): Result<IcResponse, IcError> = onCompile(request)

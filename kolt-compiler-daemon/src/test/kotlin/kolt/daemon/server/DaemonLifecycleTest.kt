@@ -7,7 +7,6 @@ import kolt.daemon.ic.IcError
 import kolt.daemon.ic.IcRequest
 import kolt.daemon.ic.IcResponse
 import kolt.daemon.ic.IncrementalCompiler
-import kolt.daemon.ic.Status
 import kolt.daemon.protocol.FrameCodec
 import kolt.daemon.protocol.Message
 import java.net.StandardProtocolFamily
@@ -28,6 +27,7 @@ class DaemonLifecycleTest {
 
     private lateinit var socketDir: Path
     private lateinit var socketPath: Path
+    private lateinit var icRoot: Path
     private lateinit var serverThread: Thread
     private lateinit var server: DaemonServer
 
@@ -35,6 +35,7 @@ class DaemonLifecycleTest {
     fun setUp() {
         socketDir = Files.createTempDirectory("kolt-daemon-lifecycle-")
         socketPath = socketDir.resolve("daemon.sock")
+        icRoot = Files.createTempDirectory("kolt-daemon-lifecycle-ic-")
     }
 
     @AfterTest
@@ -43,6 +44,7 @@ class DaemonLifecycleTest {
         runCatching { serverThread.join(2_000) }
         runCatching { Files.deleteIfExists(socketPath) }
         runCatching { Files.deleteIfExists(socketDir) }
+        runCatching { icRoot.toFile().deleteRecursively() }
     }
 
     @Test
@@ -51,6 +53,8 @@ class DaemonLifecycleTest {
         server = DaemonServer(
             socketPath = socketPath,
             compiler = compiler,
+            icRoot = icRoot,
+            kotlinVersion = "2.3.20",
             config = DaemonConfig(
                 idleTimeoutMillis = 60_000,
                 maxCompiles = 2,
@@ -91,6 +95,8 @@ class DaemonLifecycleTest {
         server = DaemonServer(
             socketPath = socketPath,
             compiler = alwaysSuccess(),
+            icRoot = icRoot,
+            kotlinVersion = "2.3.20",
             config = DaemonConfig(
                 idleTimeoutMillis = 1_000,
                 maxCompiles = Int.MAX_VALUE,
@@ -110,7 +116,13 @@ class DaemonLifecycleTest {
     @Test
     fun `serve returns BindFailed when the parent directory cannot be created`() {
         val impossible = Path.of("/dev/null/kolt-daemon-impossible/daemon.sock")
-        server = DaemonServer(impossible, alwaysSuccess(), DaemonConfig())
+        server = DaemonServer(
+            socketPath = impossible,
+            compiler = alwaysSuccess(),
+            icRoot = icRoot,
+            kotlinVersion = "2.3.20",
+            config = DaemonConfig(),
+        )
         serverThread = Thread({}, "noop").apply { start(); join() }
 
         val result = server.serve()
@@ -121,7 +133,7 @@ class DaemonLifecycleTest {
 
     private fun alwaysSuccess(): IncrementalCompiler = object : IncrementalCompiler {
         override fun compile(request: IcRequest): Result<IcResponse, IcError> =
-            Ok(IcResponse(wallMillis = 0, compiledFileCount = 0, status = Status.SUCCESS))
+            Ok(IcResponse(wallMillis = 0, compiledFileCount = 0))
     }
 
     private fun waitForSocket() {
