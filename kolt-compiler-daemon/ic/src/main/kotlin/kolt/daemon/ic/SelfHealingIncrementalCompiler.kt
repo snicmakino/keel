@@ -4,6 +4,7 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.mapBoth
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Collections
 
 // Self-heal wrapper defined by ADR 0019 §7. On an `IcError.InternalError`
 // from the wrapped adapter it (a) deletes the per-project `workingDir`
@@ -60,12 +61,51 @@ class SelfHealingIncrementalCompiler(
     private val stderrWarn: (String) -> Unit = ::defaultStderrWarn,
 ) : IncrementalCompiler {
 
+    // Per-project latch: when the previous compile for a given
+    // `projectId` fired the self-heal retry path, we mark the project
+    // "just self-healed". The next `IcError.InternalError` for the
+    // same project skips the retry and surfaces the error directly
+    // instead of wiping + re-running. Issue #117 part 2: without this
+    // latch, a persistent client-side bug (e.g. the native client
+    // sending a directory where BTA expects a file) makes every
+    // incoming `Message.Compile` burn one wipe cycle with no chance
+    // of making progress. Any successful compile — or any non-
+    // InternalError failure — clears the latch for that project so a
+    // later transient corruption still gets a fresh self-heal chance.
+    //
+    // The set is synchronised because `DaemonServer` currently
+    // serialises compile traffic, but a future parallel dispatch
+    // would still want the read/modify/write to be atomic.
+    private val projectsJustSelfHealed: MutableSet<String> =
+        Collections.synchronizedSet(mutableSetOf())
+
     override fun compile(request: IcRequest): Result<IcResponse, IcError> {
         val first = delegate.compile(request)
         return first.mapBoth(
-            success = { first },
+            success = {
+                // Any successful compile clears the latch for this
+                // project — we just proved that whatever was wrong
+                // last time is either fixed or transient, so we
+                // should allow the next InternalError to self-heal
+                // normally.
+                projectsJustSelfHealed.remove(request.projectId)
+                first
+            },
             failure = { error ->
                 if (error is IcError.InternalError) {
+                    if (projectsJustSelfHealed.contains(request.projectId)) {
+                        // Consecutive InternalError for the same
+                        // project. The previous self-heal cycle
+                        // already wiped the workingDir and retried;
+                        // if a second wipe+retry would help, it would
+                        // have helped last time. Skip the retry, emit
+                        // an observability metric, and surface the
+                        // error directly so the user sees the real
+                        // kotlinc diagnostic faster.
+                        metrics.record(METRIC_SELF_HEAL_SKIPPED_CONSECUTIVE)
+                        return@mapBoth first
+                    }
+                    projectsJustSelfHealed.add(request.projectId)
                     metrics.record(METRIC_SELF_HEAL)
                     stderrWarn(
                         "kolt-compiler-daemon: self-heal fired for project working dir " +
@@ -106,6 +146,13 @@ class SelfHealingIncrementalCompiler(
                     }
                     delegate.compile(request)
                 } else {
+                    // Non-InternalError failure (CompilationFailed —
+                    // a user type error). Clear the latch so a later
+                    // InternalError on the same project still gets
+                    // a fresh self-heal chance; a failed compile
+                    // that is the user's fault is unrelated to
+                    // cache corruption.
+                    projectsJustSelfHealed.remove(request.projectId)
                     first
                 }
             },
@@ -115,6 +162,8 @@ class SelfHealingIncrementalCompiler(
     companion object {
         internal const val METRIC_SELF_HEAL: String = "ic.self_heal"
         internal const val METRIC_SELF_HEAL_WIPE_FAILED: String = "ic.self_heal_wipe_failed"
+        internal const val METRIC_SELF_HEAL_SKIPPED_CONSECUTIVE: String =
+            "ic.self_heal_skipped_consecutive"
 
         // Recursively delete the working-dir tree. `Files.walk` in post-order
         // lets us delete children before their parent, which is the only

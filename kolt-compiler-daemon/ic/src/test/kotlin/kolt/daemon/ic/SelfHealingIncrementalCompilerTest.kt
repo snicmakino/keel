@@ -323,6 +323,165 @@ class SelfHealingIncrementalCompilerTest {
     }
 
     @Test
+    fun `consecutive InternalError on the same project skips the retry and emits skipped metric`() {
+        // Regression guard for issue #117 part 2: when the underlying
+        // bug is persistent (e.g. a client-side source-path mistake),
+        // every request to the same project should NOT burn a fresh
+        // wipe+retry cycle. The first request pays the self-heal; the
+        // second surfaces the error directly without touching the
+        // workingDir.
+        val metrics = RecordingMetricsSink()
+        val calls = AtomicInteger(0)
+        val wipeCalls = AtomicInteger(0)
+        val delegate = FakeCompiler { _ ->
+            calls.incrementAndGet()
+            com.github.michaelbull.result.Err(IcError.InternalError(RuntimeException("persistent failure")))
+        }
+        val wrapper = SelfHealingIncrementalCompiler(
+            delegate = delegate,
+            wipe = { wipeCalls.incrementAndGet(); emptyList() },
+            metrics = metrics,
+            stderrWarn = { },
+        )
+        val req = request()
+
+        // Request 1: first failure fires a self-heal (wipe + retry).
+        wrapper.compile(req)
+        assertEquals(2, calls.get(), "first request: one initial attempt + one retry")
+        assertEquals(1, wipeCalls.get())
+        assertEquals(1, metrics.events.count { it.first == "ic.self_heal" })
+        assertEquals(0, metrics.events.count { it.first == "ic.self_heal_skipped_consecutive" })
+
+        // Request 2: same project, same error. The latch is set from
+        // request 1, so no wipe, no retry, no ic.self_heal — just the
+        // skipped counter.
+        wrapper.compile(req)
+        assertEquals(3, calls.get(), "second request: one attempt, no retry")
+        assertEquals(1, wipeCalls.get(), "wipe must NOT fire on the consecutive failure")
+        assertEquals(1, metrics.events.count { it.first == "ic.self_heal" })
+        assertEquals(1, metrics.events.count { it.first == "ic.self_heal_skipped_consecutive" })
+
+        // Request 3: same project, same error. Latch stays set, skip again.
+        wrapper.compile(req)
+        assertEquals(4, calls.get())
+        assertEquals(1, wipeCalls.get())
+        assertEquals(2, metrics.events.count { it.first == "ic.self_heal_skipped_consecutive" })
+    }
+
+    @Test
+    fun `a successful compile clears the self-heal latch so a later InternalError still self-heals`() {
+        val metrics = RecordingMetricsSink()
+        val sequence = listOf<Result<IcResponse, IcError>>(
+            com.github.michaelbull.result.Err(IcError.InternalError(RuntimeException("corrupt 1"))),
+            // retry of request 1 — succeeds
+            Ok(IcResponse(wallMillis = 1, compiledFileCount = 0)),
+            // request 2 — healthy
+            Ok(IcResponse(wallMillis = 1, compiledFileCount = 0)),
+            // request 3 — InternalError again; latch was cleared by
+            // the prior success so this one should self-heal again
+            com.github.michaelbull.result.Err(IcError.InternalError(RuntimeException("corrupt 2"))),
+            // retry of request 3 — succeeds
+            Ok(IcResponse(wallMillis = 1, compiledFileCount = 0)),
+        )
+        val idx = AtomicInteger(0)
+        val delegate = FakeCompiler { _ -> sequence[idx.getAndIncrement()] }
+        val wrapper = SelfHealingIncrementalCompiler(
+            delegate = delegate,
+            wipe = { emptyList() },
+            metrics = metrics,
+            stderrWarn = { },
+        )
+        val req = request()
+
+        wrapper.compile(req)  // request 1 — self-heal fires
+        wrapper.compile(req)  // request 2 — success, clears latch
+        wrapper.compile(req)  // request 3 — self-heal fires again
+
+        assertEquals(2, metrics.events.count { it.first == "ic.self_heal" })
+        assertEquals(
+            0,
+            metrics.events.count { it.first == "ic.self_heal_skipped_consecutive" },
+            "a successful compile between the two failures must reset the latch",
+        )
+    }
+
+    @Test
+    fun `CompilationFailed between two InternalErrors also clears the latch`() {
+        // User type errors are unrelated to cache corruption, so a
+        // CompilationFailed should not keep the latch set from a
+        // prior self-heal. Otherwise a developer who hits an
+        // InternalError, then a syntax error, then another
+        // InternalError (e.g. intermittent BTA bug) would lose the
+        // self-heal on the third request.
+        val metrics = RecordingMetricsSink()
+        val sequence = listOf<Result<IcResponse, IcError>>(
+            com.github.michaelbull.result.Err(IcError.InternalError(RuntimeException("corrupt 1"))),
+            Ok(IcResponse(wallMillis = 1, compiledFileCount = 0)),  // retry succeeds
+            com.github.michaelbull.result.Err(IcError.CompilationFailed(listOf("Main.kt: error"))),
+            com.github.michaelbull.result.Err(IcError.InternalError(RuntimeException("corrupt 2"))),
+            Ok(IcResponse(wallMillis = 1, compiledFileCount = 0)),  // retry succeeds
+        )
+        val idx = AtomicInteger(0)
+        val delegate = FakeCompiler { _ -> sequence[idx.getAndIncrement()] }
+        val wrapper = SelfHealingIncrementalCompiler(
+            delegate = delegate,
+            wipe = { emptyList() },
+            metrics = metrics,
+            stderrWarn = { },
+        )
+        val req = request()
+
+        wrapper.compile(req)  // InternalError → self-heal → SUCCESS
+        wrapper.compile(req)  // CompilationFailed — clears latch
+        wrapper.compile(req)  // InternalError → self-heal fires again
+
+        assertEquals(2, metrics.events.count { it.first == "ic.self_heal" })
+        assertEquals(
+            0,
+            metrics.events.count { it.first == "ic.self_heal_skipped_consecutive" },
+        )
+    }
+
+    @Test
+    fun `different projects keep independent self-heal latches`() {
+        val metrics = RecordingMetricsSink()
+        val delegate = FakeCompiler { _ ->
+            com.github.michaelbull.result.Err(IcError.InternalError(RuntimeException("corrupt")))
+        }
+        val wrapper = SelfHealingIncrementalCompiler(
+            delegate = delegate,
+            wipe = { emptyList() },
+            metrics = metrics,
+            stderrWarn = { },
+        )
+        val projectA = IcRequest(
+            projectId = "project-a",
+            projectRoot = tmpRoot,
+            sources = emptyList(),
+            classpath = emptyList(),
+            outputDir = tmpRoot.resolve("out-a"),
+            workingDir = workingDir,
+        )
+        val projectB = projectA.copy(projectId = "project-b")
+
+        wrapper.compile(projectA)  // A self-heals
+        wrapper.compile(projectB)  // B independently self-heals
+        wrapper.compile(projectA)  // A skipped
+        wrapper.compile(projectB)  // B skipped
+
+        assertEquals(
+            2,
+            metrics.events.count { it.first == "ic.self_heal" },
+            "each project gets exactly one self-heal on first InternalError",
+        )
+        assertEquals(
+            2,
+            metrics.events.count { it.first == "ic.self_heal_skipped_consecutive" },
+            "consecutive failure on each project is skipped independently",
+        )
+    }
+
+    @Test
     fun `no self-heal events when the failure is a CompilationFailed`() {
         val metrics = RecordingMetricsSink()
         val delegate = FakeCompiler { _ ->
