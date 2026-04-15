@@ -71,7 +71,23 @@ class SelfHealingIncrementalCompiler(
                         "kolt-compiler-daemon: self-heal fired for project working dir " +
                             "${request.workingDir}: ${error.cause.message ?: error.cause.javaClass.name}",
                     )
-                    val wipeLeftovers = wipe(request.workingDir)
+                    // Defensive wrap: `Files.walk` (used by `defaultWipe`)
+                    // can raise `UncheckedIOException` or `SecurityException`
+                    // if the working directory becomes unreadable mid-request.
+                    // The workingDir is daemon-owned so this is a cold path,
+                    // but `compile()` promises daemon core a `Result` — a
+                    // thrown exception here would violate that contract and
+                    // land on daemon core as a propagated stack trace instead
+                    // of a metric + retry. Treat any throw as "full wipe
+                    // failure"; the retry still runs against whatever state
+                    // remains, consistent with the partial-wipe policy in
+                    // ADR §7.
+                    val wipeLeftovers = try {
+                        wipe(request.workingDir)
+                    } catch (t: Throwable) {
+                        if (t is VirtualMachineError) throw t
+                        listOf(request.workingDir)
+                    }
                     if (wipeLeftovers.isNotEmpty()) {
                         // Partial wipe: at least one entry could not be
                         // deleted. The retry still runs — BTA's own

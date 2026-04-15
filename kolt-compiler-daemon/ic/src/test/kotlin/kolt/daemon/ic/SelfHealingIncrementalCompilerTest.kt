@@ -279,6 +279,50 @@ class SelfHealingIncrementalCompilerTest {
     }
 
     @Test
+    fun `thrown wipe is absorbed into ic_self_heal_wipe_failed and retry still runs`() {
+        val metrics = RecordingMetricsSink()
+        val calls = AtomicInteger(0)
+        val delegate = FakeCompiler { _ ->
+            when (calls.incrementAndGet()) {
+                1 -> com.github.michaelbull.result.Err(IcError.InternalError(RuntimeException("corrupt")))
+                else -> Ok(IcResponse(wallMillis = 1, compiledFileCount = 0))
+            }
+        }
+        val wrapper = SelfHealingIncrementalCompiler(
+            delegate = delegate,
+            wipe = { throw java.io.UncheckedIOException(java.io.IOException("wipe blew up")) },
+            metrics = metrics,
+            stderrWarn = { },
+        )
+
+        wrapper.compile(request()).get() ?: error("expected success after wipe-throw retry")
+
+        assertEquals(2, calls.get(), "retry must still run even when the wipe throws")
+        val wipeFailedEvent = metrics.events.single { it.first == "ic.self_heal_wipe_failed" }
+        assertEquals(
+            1L,
+            wipeFailedEvent.second,
+            "a thrown wipe is recorded as a single leftover (the workingDir root)",
+        )
+    }
+
+    @Test
+    fun `VirtualMachineError thrown by wipe still propagates past the self-heal path`() {
+        val delegate = FakeCompiler { _ ->
+            com.github.michaelbull.result.Err(IcError.InternalError(RuntimeException("corrupt")))
+        }
+        val wrapper = SelfHealingIncrementalCompiler(
+            delegate = delegate,
+            wipe = { throw OutOfMemoryError("synthetic OOM during wipe") },
+            metrics = RecordingMetricsSink(),
+            stderrWarn = { },
+        )
+
+        val thrown = kotlin.test.assertFailsWith<OutOfMemoryError> { wrapper.compile(request()) }
+        assertEquals("synthetic OOM during wipe", thrown.message)
+    }
+
+    @Test
     fun `no self-heal events when the failure is a CompilationFailed`() {
         val metrics = RecordingMetricsSink()
         val delegate = FakeCompiler { _ ->
