@@ -11,6 +11,7 @@ import kolt.daemon.ic.IcResponse
 import kolt.daemon.ic.IcStateLayout
 import kolt.daemon.ic.IncrementalCompiler
 import kolt.daemon.protocol.Diagnostic
+import kolt.daemon.protocol.DiagnosticParser
 import kolt.daemon.protocol.FrameCodec
 import kolt.daemon.protocol.FrameError
 import kolt.daemon.protocol.Message
@@ -243,12 +244,21 @@ class DaemonServer(
         )
 
     private fun icErrorToReply(error: IcError): Message.CompileResult = when (error) {
-        is IcError.CompilationFailed -> Message.CompileResult(
-            exitCode = 1,
-            diagnostics = emptyList(),
-            stdout = "",
-            stderr = error.messages.joinToString(separator = "\n"),
-        )
+        is IcError.CompilationFailed -> {
+            // ADR 0019 §7 + B-2c: split BTA's flat error list into structured
+            // `Diagnostic`s where the `path:L:C: severity: msg` shape matches,
+            // and keep anything else as free-text stderr. The native client
+            // renders `diagnostics` as an IDE-style error list and still
+            // surfaces `stderr` for unparsable lines (e.g. BTA-internal stack
+            // frames appended by CapturingKotlinLogger).
+            val (diagnostics, plain) = DiagnosticParser.parseMessages(error.messages)
+            Message.CompileResult(
+                exitCode = 1,
+                diagnostics = diagnostics,
+                stdout = "",
+                stderr = plain.joinToString(separator = "\n"),
+            )
+        }
         // ADR 0019 §7: InternalError is a daemon-internal concern — the user
         // sees "failed to compile", not "the incremental cache was corrupt".
         // B-2b's self-heal wipe+retry fires on this variant; B-2a does not
