@@ -118,6 +118,76 @@ class MainCliArgsTest {
     }
 
     @Test
+    fun pluginJarsOptionalDefaultsToEmptyMap() {
+        // ADR 0019 §9 + B-2c: `--plugin-jars` is optional. A project that uses
+        // no compiler plugins (kolt.toml has no `[plugins]` section or all
+        // entries are `false`) must not be forced to pass the flag.
+        val result = parseArgs(
+            arrayOf(
+                "--socket", "/tmp/s",
+                "--compiler-jars", "/a.jar",
+                "--bta-impl-jars", "/b.jar",
+            ),
+        )
+        val cli = assertNotNull(result.get())
+        assertEquals(emptyMap(), cli.pluginJars)
+    }
+
+    @Test
+    fun pluginJarsParsesAliasToClasspath() {
+        // Format: `<alias>=<cp>[;<alias>=<cp>...]`. Inside each `<cp>` the
+        // usual File.pathSeparator splits entries. The `;` outer separator
+        // avoids colliding with `:` (pathSeparator) on Linux.
+        val sep = java.io.File.pathSeparator
+        val result = parseArgs(
+            arrayOf(
+                "--socket", "/tmp/s",
+                "--compiler-jars", "/a.jar",
+                "--bta-impl-jars", "/b.jar",
+                "--plugin-jars", "serialization=/plugins/ser1.jar${sep}/plugins/ser2.jar",
+            ),
+        )
+        val cli = assertNotNull(result.get())
+        assertEquals(
+            mapOf("serialization" to listOf(Path.of("/plugins/ser1.jar"), Path.of("/plugins/ser2.jar"))),
+            cli.pluginJars,
+        )
+    }
+
+    @Test
+    fun pluginJarsParsesMultipleAliases() {
+        val result = parseArgs(
+            arrayOf(
+                "--socket", "/tmp/s",
+                "--compiler-jars", "/a.jar",
+                "--bta-impl-jars", "/b.jar",
+                "--plugin-jars", "serialization=/p/ser.jar;allopen=/p/open.jar",
+            ),
+        )
+        val cli = assertNotNull(result.get())
+        assertEquals(
+            mapOf(
+                "serialization" to listOf(Path.of("/p/ser.jar")),
+                "allopen" to listOf(Path.of("/p/open.jar")),
+            ),
+            cli.pluginJars,
+        )
+    }
+
+    @Test
+    fun pluginJarsMalformedEntryRejected() {
+        val result = parseArgs(
+            arrayOf(
+                "--socket", "/tmp/s",
+                "--compiler-jars", "/a.jar",
+                "--bta-impl-jars", "/b.jar",
+                "--plugin-jars", "serialization",
+            ),
+        )
+        assertEquals(CliError.MalformedPluginJars("serialization"), result.getError())
+    }
+
+    @Test
     fun unknownFlagRejected() {
         val result = parseArgs(
             arrayOf(

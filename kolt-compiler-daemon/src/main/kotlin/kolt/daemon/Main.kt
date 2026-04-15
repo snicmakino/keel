@@ -47,6 +47,13 @@ internal data class CliArgs(
     // integration tests can point at a per-run temp dir without touching
     // the developer's real cache.
     val icRoot: Path,
+    // ADR 0019 §9 + B-2c: `kolt.toml [plugins]` alias → compiler plugin
+    // classpath mapping. Parsed from `--plugin-jars alias=cp[;alias=cp]`
+    // where each `cp` is a File.pathSeparator-joined list. Empty map =
+    // no plugins requested; the adapter's PluginTranslator still drives
+    // the no-op path in that case. The daemon is the sole consumer;
+    // resolving these jars is the native client's responsibility.
+    val pluginJars: Map<String, List<Path>>,
 )
 
 internal sealed interface CliError {
@@ -56,6 +63,7 @@ internal sealed interface CliError {
     data object EmptyCompilerJars : CliError
     data object MissingBtaImplJars : CliError
     data object EmptyBtaImplJars : CliError
+    data class MalformedPluginJars(val entry: String) : CliError
 }
 
 fun main(args: Array<String>) {
@@ -79,8 +87,17 @@ fun main(args: Array<String>) {
     // "observability via metrics" rule from forking into two sinks.
     val metrics = StderrIcMetricsSink()
 
+    // ADR 0019 §9: translate the CLI-supplied alias→classpath map into the
+    // resolver signature BtaIncrementalCompiler expects. Unknown aliases
+    // return `emptyList()` so PluginTranslator can surface a plugin-not-
+    // found error at compile time rather than failing daemon startup.
+    val pluginJarResolver: (String) -> List<Path> = { alias ->
+        cli.pluginJars[alias] ?: emptyList()
+    }
+
     val adapter = BtaIncrementalCompiler.create(
         btaImplJars = cli.btaImplJars.map { it.toPath() },
+        pluginJarResolver = pluginJarResolver,
         metrics = metrics,
     ).mapBoth(
         success = { it },
@@ -125,6 +142,7 @@ internal fun parseArgs(args: Array<String>): Result<CliArgs, CliError> {
     var compilerJars: String? = null
     var btaImplJars: String? = null
     var icRoot: String? = null
+    var pluginJarsRaw: String? = null
     var i = 0
     while (i < args.size) {
         when (args[i]) {
@@ -132,6 +150,7 @@ internal fun parseArgs(args: Array<String>): Result<CliArgs, CliError> {
             "--compiler-jars" -> { compilerJars = args.getOrNull(i + 1); i += 2 }
             "--bta-impl-jars" -> { btaImplJars = args.getOrNull(i + 1); i += 2 }
             "--ic-root" -> { icRoot = args.getOrNull(i + 1); i += 2 }
+            "--plugin-jars" -> { pluginJarsRaw = args.getOrNull(i + 1); i += 2 }
             else -> return Err(CliError.UnknownFlag(args[i]))
         }
     }
@@ -143,7 +162,33 @@ internal fun parseArgs(args: Array<String>): Result<CliArgs, CliError> {
     val bjars = btaImplJars.split(File.pathSeparator).filter { it.isNotBlank() }.map { File(it) }
     if (bjars.isEmpty()) return Err(CliError.EmptyBtaImplJars)
     val icRootPath = icRoot?.let(Path::of) ?: defaultIcRoot()
-    return Ok(CliArgs(Path.of(socketPath), cjars, bjars, icRootPath))
+    val pluginJars = parsePluginJars(pluginJarsRaw).mapBoth(
+        success = { it },
+        failure = { return Err(it) },
+    )
+    return Ok(CliArgs(Path.of(socketPath), cjars, bjars, icRootPath, pluginJars))
+}
+
+// Parses `alias=cp[;alias=cp]` where each `cp` is a File.pathSeparator-joined
+// list of plugin jar paths. `null` or empty input collapses to an empty map.
+// Each entry must contain exactly one `=` and a non-empty alias + classpath;
+// otherwise `MalformedPluginJars` carries the offending raw entry back.
+internal fun parsePluginJars(raw: String?): Result<Map<String, List<Path>>, CliError> {
+    if (raw.isNullOrBlank()) return Ok(emptyMap())
+    val out = linkedMapOf<String, List<Path>>()
+    for (entry in raw.split(';')) {
+        if (entry.isBlank()) continue
+        val eq = entry.indexOf('=')
+        if (eq <= 0 || eq == entry.length - 1) return Err(CliError.MalformedPluginJars(entry))
+        val alias = entry.substring(0, eq).trim()
+        val cp = entry.substring(eq + 1)
+            .split(File.pathSeparator)
+            .filter { it.isNotBlank() }
+            .map(Path::of)
+        if (alias.isEmpty() || cp.isEmpty()) return Err(CliError.MalformedPluginJars(entry))
+        out[alias] = cp
+    }
+    return Ok(out)
 }
 
 private fun formatCliError(err: CliError): String = when (err) {
@@ -153,4 +198,6 @@ private fun formatCliError(err: CliError): String = when (err) {
     CliError.EmptyCompilerJars -> "--compiler-jars resolved to zero paths"
     CliError.MissingBtaImplJars -> "--bta-impl-jars is required"
     CliError.EmptyBtaImplJars -> "--bta-impl-jars resolved to zero paths"
+    is CliError.MalformedPluginJars ->
+        "--plugin-jars entry is malformed (expected `alias=cp[;alias=cp]`): ${err.entry}"
 }
