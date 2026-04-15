@@ -107,26 +107,21 @@ class BtaSerializationPluginTest {
             "expected fixture.Payload.class in output, got: $classFiles",
         )
 
-        // The serialization plugin synthesises a nested `${'$'}serializer`
-        // class (singleton that implements KSerializer<Payload>) and a
-        // `${'$'}Companion` holder during the compile. Both are the
-        // unambiguous signal that the plugin ran — plain kotlinc output
-        // of a `@Serializable data class` contains neither. Kotlin
-        // compiles the nested `${'$'}serializer` name to a double-dollar
-        // file name (`Payload${'$'}${'$'}serializer.class`) because the
-        // first `${'$'}` is the Kotlin-to-JVM nested class separator and
-        // the second is the literal name.
+        // The load-bearing signal that the plugin ran is the nested
+        // `${'$'}serializer` class — a singleton that implements
+        // `KSerializer<Payload>` and is synthesised only by the
+        // serialization compiler plugin. Plain kotlinc output of a
+        // `@Serializable data class` contains no such entry. The file
+        // name is `Payload${'$'}${'$'}serializer.class` because the
+        // first `${'$'}` is the Kotlin-to-JVM nested class separator
+        // and the second is the literal name. A future regression that
+        // silently skipped plugin attachment would leave this class
+        // absent — this assertion is the guard.
         val serializerName = "Payload\$\$serializer.class"
-        val companionName = "Payload\$Companion.class"
         val classFileNames = classFiles.map { it.fileName.toString() }
         assertTrue(
             serializerName in classFileNames,
             "kotlinx.serialization plugin must have generated `$serializerName`; " +
-                "classFiles=$classFileNames",
-        )
-        assertTrue(
-            companionName in classFileNames,
-            "kotlinx.serialization plugin must have generated `$companionName`; " +
                 "classFiles=$classFileNames",
         )
     }

@@ -12,9 +12,12 @@ object DiagnosticParser {
 
     // Greedy path capture up to the last `:L:C:` triple. `\d+` for both
     // line and column anchors the regex against the positional prefix so
-    // a colon inside a message body cannot be misread as a position.
+    // a colon inside a message body cannot be misread as a position. The
+    // severity token includes `_` so multi-word kotlinc severities like
+    // `strong_warning` match (`[A-Za-z]+` alone would drop those lines
+    // silently into plain-text stderr).
     private val LINE_REGEX: Regex =
-        Regex("""^(?<path>.+):(?<line>\d+):(?<col>\d+):\s*(?<sev>[A-Za-z]+):\s*(?<msg>.*)$""")
+        Regex("""^(?<path>.+):(?<line>\d+):(?<col>\d+):\s*(?<sev>[A-Za-z_]+):\s*(?<msg>.*)$""")
 
     fun parseLine(line: String): Diagnostic? {
         val match = LINE_REGEX.matchEntire(line) ?: return null
@@ -44,9 +47,12 @@ object DiagnosticParser {
         return diagnostics to plain
     }
 
+    // `strong_warning` is kotlinc's opt-in-required severity; collapse it
+    // to plain Warning so IDE-style rendering still surfaces it rather
+    // than demoting the whole line into free-text stderr.
     private fun toSeverity(raw: String): Severity? = when (raw.lowercase()) {
         "error" -> Severity.Error
-        "warning" -> Severity.Warning
+        "warning", "strong_warning" -> Severity.Warning
         "info" -> Severity.Info
         else -> null
     }

@@ -32,14 +32,14 @@ internal data class CliArgs(
     val socketPath: Path,
     // Retained per post-B-2a review decision: kolt-compiler-embeddable still
     // flows through this flag even though Phase B routes compile traffic through
-    // BtaIncrementalCompiler. Downstream B-2c work may need to reuse it for
-    // plugin-jars alongside BTA, and dropping it now would force a client-side
-    // change the moment that requirement materialises. Unused paths are ignored
-    // by the daemon rather than failing startup. `MainCliArgsTest` pins the
-    // flag as required so a future contributor cannot silently remove it
-    // from the parser without updating the native-client spawn argv in lock-
-    // step. TODO(B-2c): either consume this list (plugin plumbing) or
-    // retire the flag with a coordinated native-client argv change.
+    // BtaIncrementalCompiler. B-2c chose **not** to reuse it for plugin jars and
+    // added a separate `--plugin-jars` flag instead (see `pluginJars` below), so
+    // the two channels stay decoupled and a future retirement of `--compiler-jars`
+    // does not need to coordinate with the plugin-plumbing code path. Unused
+    // paths are ignored by the daemon rather than failing startup.
+    // `MainCliArgsTest` pins the flag as required so a future contributor
+    // cannot silently remove it from the parser without updating the native-
+    // client spawn argv in lock-step.
     val compilerJars: List<File>,
     val btaImplJars: List<File>,
     // Override for the daemon-owned IC state root (ADR 0019 §5). Defaults

@@ -16,10 +16,11 @@ import kotlin.test.assertNotNull
 //
 // `--compiler-jars` is intentionally retained after the B-2a refactor even
 // though daemon-core code no longer loads kotlin-compiler-embeddable itself
-// (the reflective `SharedCompilerHost` was removed in commit ad05de8). Phase
-// B-2c work on plugin plumbing may reuse the flag for compiler plugin jars,
-// and dropping it now would force a back-incompatible native-client change
-// the moment that requirement materialises. This test is the explicit record
+// (the reflective `SharedCompilerHost` was removed in commit ad05de8). B-2c
+// chose to introduce a separate `--plugin-jars` flag rather than overload
+// `--compiler-jars`, so the two channels stay decoupled. Dropping
+// `--compiler-jars` remains a back-incompatible change because the native
+// client still passes it on every spawn; this test is the explicit record
 // of that intent.
 class MainCliArgsTest {
 
@@ -185,6 +186,35 @@ class MainCliArgsTest {
             ),
         )
         assertEquals(CliError.MalformedPluginJars("serialization"), result.getError())
+    }
+
+    @Test
+    fun pluginJarsEmptyAliasRejected() {
+        // `=foo.jar` has no alias; `eq <= 0` catches it inside parsePluginJars.
+        val result = parseArgs(
+            arrayOf(
+                "--socket", "/tmp/s",
+                "--compiler-jars", "/a.jar",
+                "--bta-impl-jars", "/b.jar",
+                "--plugin-jars", "=foo.jar",
+            ),
+        )
+        assertEquals(CliError.MalformedPluginJars("=foo.jar"), result.getError())
+    }
+
+    @Test
+    fun pluginJarsEmptyClasspathRejected() {
+        // `alias=` has a trailing `=` with no classpath; `eq == entry.length - 1`
+        // catches it before the pathSeparator split even runs.
+        val result = parseArgs(
+            arrayOf(
+                "--socket", "/tmp/s",
+                "--compiler-jars", "/a.jar",
+                "--bta-impl-jars", "/b.jar",
+                "--plugin-jars", "serialization=",
+            ),
+        )
+        assertEquals(CliError.MalformedPluginJars("serialization="), result.getError())
     }
 
     @Test

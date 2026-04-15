@@ -4,8 +4,6 @@ package kolt.daemon.ic
 
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
 import org.jetbrains.kotlin.buildtools.api.KotlinLogger
-import java.io.PrintWriter
-import java.io.StringWriter
 
 // Captures BTA's compile-time log output. `error`-level lines are retained
 // for folding into `IcError.CompilationFailed.messages`; `warn` / `info` /
@@ -52,15 +50,19 @@ internal class CapturingKotlinLogger(
 
     private fun formatLine(msg: String, throwable: Throwable?): String {
         if (throwable == null) return msg
-        val header = "$msg: ${throwable.toString()}"
-        val firstFrame = throwable.stackTrace.firstOrNull() ?: return header
-        return "$header\n\tat $firstFrame"
-    }
-
-    @Suppress("unused") // reserved for a future verbose-mode wiring
-    private fun fullStackTrace(throwable: Throwable): String {
-        val sw = StringWriter()
-        throwable.printStackTrace(PrintWriter(sw))
-        return sw.toString()
+        // A pathological `Throwable` subclass can override `toString()` or
+        // `getMessage()` and throw. `BtaIncrementalCompiler.compile` wraps
+        // the whole compile call in a `Throwable` catch that converts any
+        // such throw into `IcError.InternalError`, so it would be caught —
+        // but a throw from inside `executeOperation`'s logger call still
+        // aborts the compile mid-flight. `runCatching` here keeps the
+        // adapter-level error path in charge: on failure we fall back to
+        // the throwable's fully-qualified class name, which is always
+        // safe because `Class.getName()` cannot throw.
+        return runCatching {
+            val header = "$msg: ${throwable.toString()}"
+            val firstFrame = throwable.stackTrace.firstOrNull() ?: return header
+            "$header\n\tat $firstFrame"
+        }.getOrElse { "$msg: ${throwable.javaClass.name}" }
     }
 }

@@ -81,6 +81,19 @@ class DiagnosticParserTest {
     }
 
     @Test
+    fun strongWarningCollapsesToWarning() {
+        // kotlinc emits `strong_warning` for opt-in-required and a few
+        // other cases; the parser must recognise it (not drop the line
+        // into plain-text stderr) and the IDE-rendered severity must be
+        // the regular Warning bucket.
+        val parsed = DiagnosticParser.parseLine(
+            "/tmp/A.kt:1:1: strong_warning: opt-in required for foo",
+        )
+        assertEquals(Severity.Warning, parsed?.severity)
+        assertEquals("opt-in required for foo", parsed?.message)
+    }
+
+    @Test
     fun trailingStackFrameLinesStayUnparsed() {
         // CapturingKotlinLogger appends `\n\tat Foo.bar(...)` for throwables.
         // That trailing frame must not masquerade as a diagnostic.
