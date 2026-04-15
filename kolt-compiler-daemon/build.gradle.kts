@@ -143,4 +143,12 @@ tasks.named("check") {
 
 tasks.test {
     useJUnitPlatform()
+    // Pass the daemon-core main source root as a system property so
+    // `AdapterBoundaryInvariantTest` can walk it and enforce ADR 0019
+    // §3 ("daemon core must not import kotlin.buildtools.*") at test
+    // time, in addition to the human-review gate.
+    systemProperty(
+        "kolt.daemon.coreMainSourceRoot",
+        layout.projectDirectory.dir("src/main/kotlin").asFile.absolutePath,
+    )
 }
