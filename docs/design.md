@@ -261,11 +261,11 @@ test_sources = ["test"]   # optional, defaults to ["test"]
 以下は現時点でkoltのスコープに含めない。将来的に再検討する可能性はあるが、初期の判断基準としてここに明記する。
 
 - **ソースフォーマッター/リンター**: ktlint, detekt等の既存ツールに委ねる。koltが内蔵する必要はない
-- **タスクランナー**: `npm scripts` のようなカスタムコマンド定義。Cargo/Goの思想に従い、ビルドツールの責務外とする
+- **タスクランナー**: `npm scripts` のようなカスタムコマンド定義。Cargo/Goの思想に従い、ビルドツールの責務外とする。ビルドライフサイクルに紐づく拡張点（例: pre/post-build hooks）は任意コマンドの定義とは別の議論であり、ここでのタスクランナー不採用とは独立している
 - **Kotlin Multiplatform（KMP）プロジェクト**: 複数ターゲットを単一プロジェクトで管理する機能。Gradleとの差別化ポイントではなく複雑性が高い
 - **Android開発**: AGP（Android Gradle Plugin）の再実装は非現実的
 - **IDE統合**: IntelliJ/VSCodeプラグイン等。ツールとしてまず成立させることが先
-- **プラグインシステム**: 拡張性は重要だが、安定したコア機能の確立が先
+- **プラグインシステム**: 第三者が実装しkoltがin-processでロードするような拡張APIは提供しない。koltはKotlin/Nativeバイナリなのでin-processでJVMプラグインを実行できず、Amperがプラグインに向かったのはKMP/Android/iOSという広いスコープゆえであり、koltのスコープ（JVM CLIツール中心）ではそのコストが見合わない。判断の詳細は [ADR 0021](adr/0021-no-plugin-system.md)。なお「宣言的な設定からjarやコマンドを指定して実行させる」形の拡張点はこの不採用の対象外（例: build hooks）
 
 ## 設計の参考ツール
 
