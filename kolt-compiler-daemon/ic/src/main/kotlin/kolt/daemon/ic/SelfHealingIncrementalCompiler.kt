@@ -40,7 +40,15 @@ class SelfHealingIncrementalCompiler(
     // to-quarantine-dir) without reopening this class. The default
     // below is what the ADR specifies: a recursive delete of the
     // per-project IC state tree.
-    private val wipe: (Path) -> Unit = ::defaultWipe,
+    //
+    // Signature note: returns the list of paths that the wipe tried
+    // and failed to delete (empty on complete success). A partial wipe
+    // on Linux is exceedingly rare (the ic state is under the daemon's
+    // home directory, sole writer per ADR §5) but still observable
+    // through the `ic.self_heal_wipe_failed` metric so a follow-up
+    // doctor can distinguish "retry produced a new failure" from
+    // "retry fired against a stale state dir because wipe leaked".
+    private val wipe: (Path) -> List<Path> = ::defaultWipe,
     // ADR 0019 §7 "observability via metrics, not log spam": self-heal
     // events are recorded here so `kolt doctor` / smoke tests can see
     // what fired. Defaults to no-op so unit tests that do not care
@@ -63,7 +71,23 @@ class SelfHealingIncrementalCompiler(
                         "kolt-compiler-daemon: self-heal fired for project working dir " +
                             "${request.workingDir}: ${error.cause.message ?: error.cause.javaClass.name}",
                     )
-                    wipe(request.workingDir)
+                    val wipeLeftovers = wipe(request.workingDir)
+                    if (wipeLeftovers.isNotEmpty()) {
+                        // Partial wipe: at least one entry could not be
+                        // deleted. The retry still runs — BTA's own
+                        // `SourcesChanges.ToBeCalculated` mode will
+                        // reconstruct what it can from the leftover
+                        // state — but the metric lets a future doctor
+                        // distinguish "retry produced a new error" from
+                        // "retry fired against a stale state dir
+                        // because wipe leaked on us". We deliberately
+                        // do not abort the retry: a partial wipe still
+                        // beats no wipe, and ADR §7 requires that a
+                        // self-heal cycle always returns *some* result
+                        // to daemon core without escalating to the
+                        // subprocess fallback.
+                        metrics.record(METRIC_SELF_HEAL_WIPE_FAILED, wipeLeftovers.size.toLong())
+                    }
                     delegate.compile(request)
                 } else {
                     first
@@ -74,16 +98,27 @@ class SelfHealingIncrementalCompiler(
 
     companion object {
         internal const val METRIC_SELF_HEAL: String = "ic.self_heal"
+        internal const val METRIC_SELF_HEAL_WIPE_FAILED: String = "ic.self_heal_wipe_failed"
 
         // Recursively delete the working-dir tree. `Files.walk` in post-order
         // lets us delete children before their parent, which is the only
-        // order `Files.delete` accepts for a non-empty directory.
-        private fun defaultWipe(workingDir: Path) {
-            if (!Files.exists(workingDir)) return
+        // order `Files.delete` accepts for a non-empty directory. Returns
+        // the list of paths that could not be deleted — expected to be
+        // empty in the common case; non-empty means a file is held open
+        // by something else on the JVM or the filesystem is returning
+        // EBUSY. Either way the retry still runs against whatever state
+        // remains.
+        private fun defaultWipe(workingDir: Path): List<Path> {
+            if (!Files.exists(workingDir)) return emptyList()
+            val leftovers = mutableListOf<Path>()
             Files.walk(workingDir).use { stream ->
                 stream.sorted(Comparator.reverseOrder())
-                    .forEach { path -> runCatching { Files.delete(path) } }
+                    .forEach { path ->
+                        runCatching { Files.delete(path) }
+                            .onFailure { leftovers.add(path) }
+                    }
             }
+            return leftovers
         }
 
         private fun defaultStderrWarn(message: String) {

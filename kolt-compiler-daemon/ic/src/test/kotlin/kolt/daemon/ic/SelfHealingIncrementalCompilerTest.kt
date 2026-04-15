@@ -52,7 +52,7 @@ class SelfHealingIncrementalCompilerTest {
         }
         val wrapper = SelfHealingIncrementalCompiler(
             delegate = delegate,
-            wipe = { wipes.incrementAndGet() },
+            wipe = { wipes.incrementAndGet(); emptyList() },
         )
 
         val result = wrapper.compile(request())
@@ -74,7 +74,7 @@ class SelfHealingIncrementalCompilerTest {
         }
         val wrapper = SelfHealingIncrementalCompiler(
             delegate = delegate,
-            wipe = { wipes.incrementAndGet() },
+            wipe = { wipes.incrementAndGet(); emptyList() },
         )
 
         val result = wrapper.compile(request())
@@ -98,7 +98,7 @@ class SelfHealingIncrementalCompilerTest {
         }
         val wrapper = SelfHealingIncrementalCompiler(
             delegate = delegate,
-            wipe = { path -> wipedPaths.add(path) },
+            wipe = { path -> wipedPaths.add(path); emptyList() },
         )
 
         val result = wrapper.compile(request())
@@ -119,7 +119,7 @@ class SelfHealingIncrementalCompilerTest {
         }
         val wrapper = SelfHealingIncrementalCompiler(
             delegate = delegate,
-            wipe = { wipes.incrementAndGet() },
+            wipe = { wipes.incrementAndGet(); emptyList() },
         )
 
         val result = wrapper.compile(request())
@@ -142,7 +142,7 @@ class SelfHealingIncrementalCompilerTest {
         }
         val wrapper = SelfHealingIncrementalCompiler(
             delegate = delegate,
-            wipe = { },
+            wipe = { emptyList() },
         )
 
         val result = wrapper.compile(request())
@@ -163,7 +163,7 @@ class SelfHealingIncrementalCompilerTest {
         }
         val wrapper = SelfHealingIncrementalCompiler(
             delegate = delegate,
-            wipe = { wipes.incrementAndGet() },
+            wipe = { wipes.incrementAndGet(); emptyList() },
         )
 
         val thrown = assertFailsWith<OutOfMemoryError> { wrapper.compile(request()) }
@@ -209,7 +209,7 @@ class SelfHealingIncrementalCompilerTest {
         }
         val wrapper = SelfHealingIncrementalCompiler(
             delegate = delegate,
-            wipe = { /* no-op wipe for metric-only focus */ },
+            wipe = { emptyList() },
             metrics = metrics,
             stderrWarn = { warnings.add(it) },
         )
@@ -240,6 +240,42 @@ class SelfHealingIncrementalCompilerTest {
 
         assertTrue(metrics.events.isEmpty(), "no retry → no ic.self_heal metric")
         assertTrue(warnings.isEmpty(), "no retry → no stderr warning")
+    }
+
+    @Test
+    fun `partial wipe records ic_self_heal_wipe_failed but still runs the retry`() {
+        val metrics = RecordingMetricsSink()
+        val calls = AtomicInteger(0)
+        val delegate = FakeCompiler { _ ->
+            when (calls.incrementAndGet()) {
+                1 -> com.github.michaelbull.result.Err(IcError.InternalError(RuntimeException("corrupt")))
+                else -> Ok(IcResponse(wallMillis = 1, compiledFileCount = 0))
+            }
+        }
+        val stuckPaths = listOf(
+            workingDir.resolve("locked-1.bin"),
+            workingDir.resolve("locked-2.bin"),
+        )
+        val wrapper = SelfHealingIncrementalCompiler(
+            delegate = delegate,
+            wipe = { stuckPaths },  // simulate two files that could not be deleted
+            metrics = metrics,
+            stderrWarn = { },
+        )
+
+        // Retry still runs and succeeds even though the wipe reported leftovers.
+        wrapper.compile(request()).get() ?: error("expected success after partial-wipe retry")
+
+        assertEquals(2, calls.get(), "delegate must still be retried after a partial wipe")
+        val selfHealCount = metrics.events.count { it.first == "ic.self_heal" }
+        val wipeFailedCount = metrics.events.count { it.first == "ic.self_heal_wipe_failed" }
+        assertEquals(1, selfHealCount, "ic.self_heal still fires once per retry cycle")
+        assertEquals(1, wipeFailedCount, "ic.self_heal_wipe_failed is emitted once per partial wipe")
+        // The value of the `ic.self_heal_wipe_failed` metric is the
+        // leftover count so `kolt doctor` can distinguish "one stuck
+        // file" from "wipe was completely ineffective".
+        val wipeFailedEvent = metrics.events.single { it.first == "ic.self_heal_wipe_failed" }
+        assertEquals(stuckPaths.size.toLong(), wipeFailedEvent.second)
     }
 
     @Test
