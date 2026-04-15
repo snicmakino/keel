@@ -94,6 +94,39 @@ class DiagnosticParserTest {
     }
 
     @Test
+    fun parsesBtaInlineShapeWithFileUriAndNoSeverityWord() {
+        // BTA 2.3.20 `KotlinLogger.error` emits this shape on a real
+        // compile error; verified against dogfood output on the B-2c
+        // merge. The `file://` prefix must be stripped and the
+        // severity defaults to `Error` because only error-level lines
+        // reach `CapturingKotlinLogger.errors`.
+        val parsed = DiagnosticParser.parseLine(
+            "file:///tmp/kolt/File12.kt:3:17 Initializer type mismatch: expected 'Int', actual 'String'.",
+        )
+        assertEquals(
+            Diagnostic(
+                severity = Severity.Error,
+                file = "/tmp/kolt/File12.kt",
+                line = 3,
+                column = 17,
+                message = "Initializer type mismatch: expected 'Int', actual 'String'.",
+            ),
+            parsed,
+        )
+    }
+
+    @Test
+    fun btaInlineShapeWithoutFileUriPrefixStillParses() {
+        // A future BTA release may drop the `file://` prefix. Matching
+        // the shape without it keeps us forward-compatible.
+        val parsed = DiagnosticParser.parseLine(
+            "/tmp/kolt/File12.kt:3:17 Initializer type mismatch",
+        )
+        assertEquals("/tmp/kolt/File12.kt", parsed?.file)
+        assertEquals(Severity.Error, parsed?.severity)
+    }
+
+    @Test
     fun trailingStackFrameLinesStayUnparsed() {
         // CapturingKotlinLogger appends `\n\tat Foo.bar(...)` for throwables.
         // That trailing frame must not masquerade as a diagnostic.
