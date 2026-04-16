@@ -3,6 +3,8 @@
 [![Unit tests](https://github.com/snicmakino/kolt/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/snicmakino/kolt/actions/workflows/unit-tests.yml)
 [![Self-host smoke test](https://github.com/snicmakino/kolt/actions/workflows/self-host-smoke.yml/badge.svg)](https://github.com/snicmakino/kolt/actions/workflows/self-host-smoke.yml)
 
+English | [日本語](README.ja.md)
+
 > v0.10.0 — Early-stage project. Expect breaking changes.
 
 ### Not yet supported
@@ -318,7 +320,7 @@ kolt aims to be what `go build` is to Go or `cargo build` is to Rust — a fast,
 
 ## Architecture
 
-See [docs/architecture.md](docs/architecture.md) for the internal design — component overview, build flow, daemon lifecycle, and architectural decisions.
+See [docs/architecture.md](docs/architecture.md) ([日本語](docs/architecture.ja.md)) for the internal design — component overview, build flow, daemon lifecycle, and architectural decisions.
 
 ## Claude Code Integration
 
