@@ -7,20 +7,6 @@ English | [日本語](README.ja.md)
 
 > v0.10.0 — Early-stage project. Expect breaking changes.
 
-### Not yet supported
-
-Planned for v1.0:
-
-- Library packaging (currently `app` only)
-- `kolt publish` / `kolt new`
-- macOS and linuxArm64 targets
-- Private Maven repository authentication
-
-Planned post-1.0:
-
-- Multi-module projects
-- Mixed Kotlin/Java source compilation
-
 A lightweight build tool for Kotlin. TOML config — no Kotlin DSL build scripts to evaluate. Distributed as a single Kotlin/Native binary — no Java install required to use it.
 
 The tool itself starts instantly. Actual compilation delegates to `kotlinc` / `konanc`, so build times track the Kotlin compiler directly. Incremental builds via mtime-based caching skip unchanged sources entirely. A warm JVM compiler daemon amortizes JVM startup across successive builds — typical warm-build latency is ~0.3 s.
@@ -291,6 +277,20 @@ kolt toolchain install   # Download kotlinc version specified in kolt.toml
 
 Toolchains are stored under `~/.kolt/toolchains/kotlinc/{version}/`. When a managed toolchain is available, kolt uses it automatically; otherwise it falls back to system `kotlinc` on PATH.
 
+### Not yet supported
+
+Planned for v1.0:
+
+- Library packaging (currently `app` only)
+- `kolt publish` / `kolt new`
+- macOS and linuxArm64 targets
+- Private Maven repository authentication
+
+Planned post-1.0:
+
+- Multi-module projects
+- Mixed Kotlin/Java source compilation
+
 ## Why kolt?
 
 Gradle is powerful but heavy for simple Kotlin projects. It imposes:
@@ -300,11 +300,6 @@ Gradle is powerful but heavy for simple Kotlin projects. It imposes:
 - Task graph construction
 
 kolt aims to be what `go build` is to Go or `cargo build` is to Rust — a fast, focused tool for building Kotlin projects with a declarative config file and zero ceremony.
-
-## Prerequisites
-
-- `kotlinc` on PATH (matching the version in `kolt.toml`)
-- `java` on PATH (for running JVM targets and tests)
 
 ## Exit Codes
 
@@ -329,9 +324,6 @@ This project includes [Claude Code](https://claude.ai/code) skills. If you use C
 ## Name
 
 **kolt** = **Kot**lin + bo**lt** — fast, lightweight Kotlin tooling.
-
-> Previously named `keel`. Renamed in v0.9.0 to avoid collision with
-> [keel.sh](https://keel.sh) and [Spinnaker keel](https://github.com/spinnaker/keel).
 
 ## License
 
