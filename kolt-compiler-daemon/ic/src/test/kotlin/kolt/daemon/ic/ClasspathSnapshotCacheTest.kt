@@ -134,6 +134,25 @@ class ClasspathSnapshotCacheTest {
         assertTrue(misses >= 1, "at least one miss expected after file deletion")
     }
 
+    @Test
+    fun `non-existent classpath entry causes all-or-nothing fallback to empty list`() {
+        val toolchain = loadToolchain()
+        val snapshotsDir = Files.createTempDirectory("cp-cache-aon-")
+            .resolve("snapshots").apply { createDirectories() }
+
+        val metrics = RecordingMetricsSink()
+        val cache = ClasspathSnapshotCache(toolchain, snapshotsDir, metrics)
+
+        val classpath = fixtureClasspath + Path.of("/nonexistent/bogus.jar")
+
+        val result = cache.getOrComputeSnapshots(classpath)
+        assertEquals(emptyList<Path>(), result, "any failure must fall back to empty list")
+
+        val events = metrics.snapshotAndReset()
+        val errors = events.count { it.first == ClasspathSnapshotCache.METRIC_ERROR }
+        assertEquals(0, errors, "non-existent entry returns null, not an error")
+    }
+
     private class RecordingMetricsSink : IcMetricsSink {
         private val events: MutableList<Pair<String, Long>> = mutableListOf()
         override fun record(name: String, value: Long) {

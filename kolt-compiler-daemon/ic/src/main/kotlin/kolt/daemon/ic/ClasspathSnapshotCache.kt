@@ -18,7 +18,11 @@ import kotlin.time.TimeSource
 // that share the same dependency jars. See ADR 0019 §Negative follow-up.
 //
 // Thread safety: `ConcurrentHashMap.compute` serialises concurrent
-// requests for the same cache key. Different keys proceed in parallel.
+// requests for the same cache key. The BTA snapshot call (~310ms for
+// kotlin-stdlib) runs inside the lock, which can block unrelated keys
+// that hash to the same bin. Acceptable because DaemonServer currently
+// serialises compile traffic; if a future parallel dispatch materialises,
+// replace with a `computeIfAbsent(key) { CompletableFuture }` pattern.
 class ClasspathSnapshotCache(
     private val toolchain: KotlinToolchains,
     private val snapshotsDir: Path,
@@ -30,11 +34,17 @@ class ClasspathSnapshotCache(
     // `getOrComputeSnapshots` checks `Files.exists` before declaring a hit.
     private val cache: ConcurrentHashMap<String, Path> = ConcurrentHashMap()
 
+    // Returns snapshot file paths in classpath order on success, or an
+    // empty list if any entry fails. All-or-nothing: BTA's behaviour on
+    // partial `dependenciesSnapshotFiles` is unspecified, so a partial
+    // list risks worse precision than no list at all. An empty return
+    // matches the pre-#127 behaviour (`emptyList()`).
     fun getOrComputeSnapshots(classpath: List<Path>): List<Path> {
         Files.createDirectories(snapshotsDir)
         val start = TimeSource.Monotonic.markNow()
-        val result = classpath.mapNotNull { entry ->
-            try {
+        val result = mutableListOf<Path>()
+        for (entry in classpath) {
+            val snapshot = try {
                 getOrCompute(entry)
             } catch (vme: VirtualMachineError) {
                 throw vme
@@ -42,6 +52,12 @@ class ClasspathSnapshotCache(
                 metrics.record(METRIC_ERROR)
                 null
             }
+            if (snapshot == null) {
+                val wallMs = start.elapsedNow().toLong(DurationUnit.MILLISECONDS)
+                metrics.record(METRIC_WALL_MS, wallMs)
+                return emptyList()
+            }
+            result.add(snapshot)
         }
         val wallMs = start.elapsedNow().toLong(DurationUnit.MILLISECONDS)
         metrics.record(METRIC_WALL_MS, wallMs)
@@ -52,7 +68,10 @@ class ClasspathSnapshotCache(
         if (!Files.exists(entry)) return null
         val attrs = Files.readAttributes(entry, java.nio.file.attribute.BasicFileAttributes::class.java)
         val key = keyFor(entry, attrs.lastModifiedTime().toMillis(), attrs.size())
-        val snapshotPath = snapshotsDir.resolve("$key.snapshot")
+        // Include jar basename for debuggability: `ls classpath-snapshots/`
+        // shows `kotlin-stdlib-2.3.20-a3f2e9b1.snapshot` instead of a bare hash.
+        val basename = entry.fileName?.toString()?.removeSuffix(".jar") ?: key
+        val snapshotPath = snapshotsDir.resolve("$basename-$key.snapshot")
 
         // Fast path: in-memory cache hit + file still exists on disk
         val cached = cache[key]
