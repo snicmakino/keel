@@ -515,6 +515,7 @@ internal fun createDaemonBackend(
         socketPath = socketPath,
         logPath = logPath,
         pluginJars = pluginJars,
+        onSpawn = { eprintln("starting compiler daemon...") },
     )
 }
 

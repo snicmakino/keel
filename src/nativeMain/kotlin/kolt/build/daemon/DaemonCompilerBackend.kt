@@ -41,6 +41,7 @@ class DaemonCompilerBackend internal constructor(
     private val spawner: DaemonSpawner = defaultDaemonSpawner,
     private val clockMs: () -> Long = ::monotonicMs,
     private val sleeper: (Int) -> Unit = defaultSleeper,
+    private val onSpawn: () -> Unit = {},
 ) : CompilerBackend {
 
     constructor(
@@ -51,6 +52,7 @@ class DaemonCompilerBackend internal constructor(
         socketPath: String,
         logPath: String? = null,
         pluginJars: Map<String, List<String>> = emptyMap(),
+        onSpawn: () -> Unit = {},
     ) : this(
         javaBin = javaBin,
         daemonJarPath = daemonJarPath,
@@ -61,6 +63,7 @@ class DaemonCompilerBackend internal constructor(
         pluginJars = pluginJars,
         connector = defaultDaemonConnector,
         spawner = defaultDaemonSpawner,
+        onSpawn = onSpawn,
     )
 
     override fun compile(request: CompileRequest): Result<CompileOutcome, CompileError> {
@@ -87,6 +90,7 @@ class DaemonCompilerBackend internal constructor(
             }
         } ?: return Ok(first.get()!!)
 
+        onSpawn()
         val spawnErr = spawner(
             spawnArgv(),
             logPath,
