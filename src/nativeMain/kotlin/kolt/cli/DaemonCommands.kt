@@ -12,7 +12,7 @@ import kolt.infra.listSubdirectories
 import kolt.infra.net.UnixSocket
 import kotlin.system.exitProcess
 
-private val DAEMON_SUBCOMMANDS = setOf("stop")
+private val DAEMON_SUBCOMMANDS = setOf("stop", "reap")
 
 internal fun validateDaemonSubcommand(args: List<String>): Boolean =
     args.isNotEmpty() && args[0] in DAEMON_SUBCOMMANDS
@@ -24,6 +24,7 @@ internal fun doDaemon(args: List<String>) {
     }
     when (args[0]) {
         "stop" -> doDaemonStop(args.drop(1))
+        "reap" -> doDaemonReap()
         else -> {
             eprintln("error: unknown daemon command '${args[0]}'")
             printDaemonUsage()
@@ -81,9 +82,20 @@ private fun sendShutdown(socketPath: String): Boolean {
     return sent
 }
 
+private fun doDaemonReap() {
+    val paths = resolveKoltPaths(EXIT_CONFIG_ERROR)
+    val result = reapStaleDaemons(paths.daemonBaseDir)
+    if (result.reaped == 0) {
+        println("no stale daemons found")
+    } else {
+        println("reaped ${result.reaped} stale daemon dir${if (result.reaped > 1) "s" else ""}")
+    }
+}
+
 private fun printDaemonUsage() {
     eprintln("usage: kolt daemon <command>")
     eprintln("")
     eprintln("commands:")
     eprintln("  stop       Stop the compiler daemon (--all for all daemons)")
+    eprintln("  reap       Remove stale daemon directories and orphaned sockets")
 }
