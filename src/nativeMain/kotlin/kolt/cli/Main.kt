@@ -23,7 +23,7 @@ fun main(args: Array<String>) {
     }
 
     when (filteredArgs[0]) {
-        "init" -> doInit(filteredArgs.drop(1))
+        "init" -> doInit(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
         "build" -> doBuild(useDaemon = useDaemon).getOrElse { exitProcess(it) }
         "check" -> doCheck(useDaemon = useDaemon).getOrElse { exitProcess(it) }
         "run" -> {
@@ -41,15 +41,15 @@ fun main(args: Array<String>) {
             }
             doTest(testArgs, useDaemon = useDaemon).getOrElse { exitProcess(it) }
         }
-        "fmt" -> doFmt(filteredArgs.drop(1))
+        "fmt" -> doFmt(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
         "clean" -> doClean().getOrElse { exitProcess(it) }
-        "deps" -> doDeps(filteredArgs.drop(1))
-        "add" -> doDeps(listOf("add") + filteredArgs.drop(1))
-        "install" -> doDeps(listOf("install"))
-        "update" -> doDeps(listOf("update"))
-        "tree" -> doDeps(listOf("tree"))
-        "toolchain" -> doToolchain(filteredArgs.drop(1))
-        "daemon" -> doDaemon(filteredArgs.drop(1))
+        "deps" -> doDeps(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
+        "add" -> doDeps(listOf("add") + filteredArgs.drop(1)).getOrElse { exitProcess(it) }
+        "install" -> doDeps(listOf("install")).getOrElse { exitProcess(it) }
+        "update" -> doDeps(listOf("update")).getOrElse { exitProcess(it) }
+        "tree" -> doDeps(listOf("tree")).getOrElse { exitProcess(it) }
+        "toolchain" -> doToolchain(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
+        "daemon" -> doDaemon(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
         "--version", "version" -> println(versionString())
         else -> {
             eprintln("error: unknown command '${filteredArgs[0]}'")

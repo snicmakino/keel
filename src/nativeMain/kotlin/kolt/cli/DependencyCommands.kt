@@ -1,5 +1,8 @@
 package kolt.cli
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
 import kolt.build.*
@@ -13,15 +16,14 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.toKString
 import platform.posix.PATH_MAX
 import platform.posix.getcwd
-import kotlin.system.exitProcess
 
 private const val SRC_DIR = "src"
 
 @OptIn(ExperimentalForeignApi::class)
-internal fun doInit(args: List<String>) {
+internal fun doInit(args: List<String>): Result<Unit, Int> {
     if (fileExists(KOLT_TOML)) {
         eprintln("error: $KOLT_TOML already exists")
-        exitProcess(EXIT_CONFIG_ERROR)
+        return Err(EXIT_CONFIG_ERROR)
     }
 
     val projectName = if (args.isNotEmpty()) {
@@ -33,7 +35,7 @@ internal fun doInit(args: List<String>) {
         }
         if (cwd == null) {
             eprintln("error: could not determine current directory")
-            exitProcess(EXIT_CONFIG_ERROR)
+            return Err(EXIT_CONFIG_ERROR)
         }
         inferProjectName(cwd)
     }
@@ -41,19 +43,19 @@ internal fun doInit(args: List<String>) {
     if (!isValidProjectName(projectName)) {
         eprintln("error: invalid project name '$projectName'")
         eprintln("  project name must start with a letter or digit and contain only letters, digits, '.', '-', '_'")
-        exitProcess(EXIT_CONFIG_ERROR)
+        return Err(EXIT_CONFIG_ERROR)
     }
 
     writeFileAsString(KOLT_TOML, generateKoltToml(projectName)).getOrElse { error ->
         eprintln("error: could not write ${error.path}")
-        exitProcess(EXIT_BUILD_ERROR)
+        return Err(EXIT_BUILD_ERROR)
     }
     println("created $KOLT_TOML")
 
     if (!fileExists(SRC_DIR)) {
         ensureDirectory(SRC_DIR).getOrElse { error ->
             eprintln("error: could not create directory ${error.path}")
-            exitProcess(EXIT_BUILD_ERROR)
+            return Err(EXIT_BUILD_ERROR)
         }
     }
 
@@ -61,7 +63,7 @@ internal fun doInit(args: List<String>) {
     if (!fileExists(mainKtPath)) {
         writeFileAsString(mainKtPath, generateMainKt()).getOrElse { error ->
             eprintln("error: could not write ${error.path}")
-            exitProcess(EXIT_BUILD_ERROR)
+            return Err(EXIT_BUILD_ERROR)
         }
         println("created $mainKtPath")
     }
@@ -70,7 +72,7 @@ internal fun doInit(args: List<String>) {
     if (!fileExists(testDir)) {
         ensureDirectory(testDir).getOrElse { error ->
             eprintln("error: could not create directory ${error.path}")
-            exitProcess(EXIT_BUILD_ERROR)
+            return Err(EXIT_BUILD_ERROR)
         }
     }
 
@@ -78,33 +80,34 @@ internal fun doInit(args: List<String>) {
     if (!fileExists(testKtPath)) {
         writeFileAsString(testKtPath, generateTestKt()).getOrElse { error ->
             eprintln("error: could not write ${error.path}")
-            exitProcess(EXIT_BUILD_ERROR)
+            return Err(EXIT_BUILD_ERROR)
         }
         println("created $testKtPath")
     }
 
     println("initialized project '$projectName'")
+    return Ok(Unit)
 }
 
-internal fun doAdd(args: List<String>) {
+internal fun doAdd(args: List<String>): Result<Unit, Int> {
     val addArgs = parseAddArgs(args).getOrElse { error ->
         when (error) {
             is AddArgsError.MissingCoordinate -> eprintln("usage: kolt add <group:artifact[:version]> [--test]")
             is AddArgsError.InvalidFormat -> eprintln("error: invalid coordinate '${error.input}'")
         }
-        exitProcess(EXIT_DEPENDENCY_ERROR)
+        return Err(EXIT_DEPENDENCY_ERROR)
     }
 
     val toml = readFileAsString(KOLT_TOML).getOrElse { error ->
         eprintln("error: could not read ${error.path}")
-        exitProcess(EXIT_CONFIG_ERROR)
+        return Err(EXIT_CONFIG_ERROR)
     }
 
     val config = parseConfig(toml).getOrElse { error ->
         when (error) {
             is ConfigError.ParseFailed -> eprintln("error: ${error.message}")
         }
-        exitProcess(EXIT_CONFIG_ERROR)
+        return Err(EXIT_CONFIG_ERROR)
     }
 
     val version = if (addArgs.version != null) {
@@ -112,6 +115,7 @@ internal fun doAdd(args: List<String>) {
     } else {
         println("fetching latest version for ${addArgs.group}:${addArgs.artifact}...")
         fetchLatestVersion(addArgs.group, addArgs.artifact, config.repositories.values.toList())
+            .getOrElse { return Err(it) }
     }
 
     val groupArtifact = "${addArgs.group}:${addArgs.artifact}"
@@ -119,28 +123,28 @@ internal fun doAdd(args: List<String>) {
         when (error) {
             is AlreadyExists -> eprintln("error: '${error.groupArtifact}' already exists in ${if (addArgs.isTest) "[test-dependencies]" else "[dependencies]"}")
         }
-        exitProcess(EXIT_DEPENDENCY_ERROR)
+        return Err(EXIT_DEPENDENCY_ERROR)
     }
 
     writeFileAsString(KOLT_TOML, updatedToml).getOrElse { error ->
         eprintln("error: could not write ${error.path}")
-        exitProcess(EXIT_CONFIG_ERROR)
+        return Err(EXIT_CONFIG_ERROR)
     }
 
     val section = if (addArgs.isTest) "[test-dependencies]" else "[dependencies]"
     println("added $groupArtifact = \"$version\" to $section")
 
-    doInstall()
+    return doInstall()
 }
 
-private fun fetchLatestVersion(group: String, artifact: String, repos: List<String>): String {
-    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); exitProcess(EXIT_DEPENDENCY_ERROR) }
+private fun fetchLatestVersion(group: String, artifact: String, repos: List<String>): Result<String, Int> {
+    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_DEPENDENCY_ERROR) }
     val groupPath = group.replace('.', '/')
     val metadataPath = "${paths.cacheBase}/$groupPath/$artifact/maven-metadata.xml"
 
     ensureDirectoryRecursive("${paths.cacheBase}/$groupPath/$artifact").getOrElse { error ->
         eprintln("error: could not create directory ${error.path}")
-        exitProcess(EXIT_DEPENDENCY_ERROR)
+        return Err(EXIT_DEPENDENCY_ERROR)
     }
 
     val fetchErr = downloadFromRepositories(
@@ -155,35 +159,36 @@ private fun fetchLatestVersion(group: String, artifact: String, repos: List<Stri
             is DownloadError.WriteFailed -> eprintln("error: could not write metadata to ${fetchErr.path}")
             is DownloadError.NetworkError -> eprintln("error: network error fetching metadata for $group:$artifact: ${fetchErr.message}")
         }
-        exitProcess(EXIT_DEPENDENCY_ERROR)
+        return Err(EXIT_DEPENDENCY_ERROR)
     }
 
     val xml = readFileAsString(metadataPath).getOrElse { error ->
         eprintln("error: could not read ${error.path}")
-        exitProcess(EXIT_DEPENDENCY_ERROR)
+        return Err(EXIT_DEPENDENCY_ERROR)
     }
 
     return parseMetadataXml(xml).getOrElse { error ->
         eprintln("error: ${error.message}")
-        exitProcess(EXIT_DEPENDENCY_ERROR)
-    }
+        return Err(EXIT_DEPENDENCY_ERROR)
+    }.let { Ok(it) }
 }
 
-internal fun doInstall() {
-    val config = loadProjectConfig().getOrElse { exitProcess(it) }
-    resolveDependencies(config).getOrElse { exitProcess(it) }
+internal fun doInstall(): Result<Unit, Int> {
+    val config = loadProjectConfig().getOrElse { return Err(it) }
+    resolveDependencies(config).getOrElse { return Err(it) }
     println("install complete")
+    return Ok(Unit)
 }
 
-internal fun doUpdate() {
-    val config = loadProjectConfig().getOrElse { exitProcess(it) }
+internal fun doUpdate(): Result<Unit, Int> {
+    val config = loadProjectConfig().getOrElse { return Err(it) }
     val allDeps = mergeAllDeps(config)
     if (allDeps.isEmpty()) {
         println("no dependencies to update")
-        return
+        return Ok(Unit)
     }
 
-    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); exitProcess(EXIT_DEPENDENCY_ERROR) }
+    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_DEPENDENCY_ERROR) }
 
     for ((groupArtifact, version) in allDeps) {
         val coord = parseCoordinate(groupArtifact, version).getOrElse { continue }
@@ -197,30 +202,31 @@ internal fun doUpdate() {
     println("updating dependencies...")
     val resolveResult = resolve(resolveConfig, null, paths.cacheBase, createResolverDeps()).getOrElse { error ->
         eprintln(formatResolveError(error))
-        exitProcess(EXIT_DEPENDENCY_ERROR)
+        return Err(EXIT_DEPENDENCY_ERROR)
     }
 
     val lockfile = buildLockfileFromResolved(resolveConfig, resolveResult.deps)
     val lockJson = serializeLockfile(lockfile)
     writeFileAsString(LOCK_FILE, lockJson).getOrElse { error ->
         eprintln("error: could not write ${error.path}")
-        exitProcess(EXIT_DEPENDENCY_ERROR)
+        return Err(EXIT_DEPENDENCY_ERROR)
     }
     println("updated ${resolveResult.deps.size} dependencies")
+    return Ok(Unit)
 }
 
-internal fun doTree() {
-    val config = loadProjectConfig().getOrElse { exitProcess(it) }
+internal fun doTree(): Result<Unit, Int> {
+    val config = loadProjectConfig().getOrElse { return Err(it) }
 
     val hasAnyDeps = config.dependencies.isNotEmpty() ||
         config.testDependencies.isNotEmpty() ||
         autoInjectedTestDeps(config).isNotEmpty()
     if (!hasAnyDeps) {
         println("no dependencies")
-        return
+        return Ok(Unit)
     }
 
-    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); exitProcess(EXIT_DEPENDENCY_ERROR) }
+    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_DEPENDENCY_ERROR) }
 
     if (config.target == "native") {
         val nativeLookup = createNativeLookup(
@@ -238,7 +244,7 @@ internal fun doTree() {
             val testTree = buildNativeDependencyTree(config.testDependencies, nativeLookup)
             println(formatDependencyTree(testTree))
         }
-        return
+        return Ok(Unit)
     }
 
     val allTestDeps = autoInjectedTestDeps(config) + config.testDependencies
@@ -253,6 +259,7 @@ internal fun doTree() {
         val testTree = buildDependencyTree(allTestDeps, pomLookup)
         println(formatDependencyTree(testTree))
     }
+    return Ok(Unit)
 }
 
 private val DEPS_SUBCOMMANDS = setOf("add", "install", "update", "tree")
@@ -260,16 +267,17 @@ private val DEPS_SUBCOMMANDS = setOf("add", "install", "update", "tree")
 internal fun validateDepsSubcommand(args: List<String>): Boolean =
     args.isNotEmpty() && args[0] in DEPS_SUBCOMMANDS
 
-internal fun doDeps(args: List<String>) {
+internal fun doDeps(args: List<String>): Result<Unit, Int> {
     if (!validateDepsSubcommand(args)) {
         printDepsUsage()
-        exitProcess(EXIT_BUILD_ERROR)
+        return Err(EXIT_BUILD_ERROR)
     }
-    when (args[0]) {
+    return when (args[0]) {
         "add" -> doAdd(args.drop(1))
         "install" -> doInstall()
         "update" -> doUpdate()
         "tree" -> doTree()
+        else -> Ok(Unit)
     }
 }
 
