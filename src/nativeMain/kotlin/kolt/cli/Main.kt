@@ -16,7 +16,8 @@ fun main(args: Array<String>) {
     val koltLevel = if (passthroughStart >= 0) argList.subList(0, passthroughStart) else argList
     val passthrough = if (passthroughStart >= 0) argList.subList(passthroughStart, argList.size) else emptyList()
     val useDaemon = !koltLevel.contains(NO_DAEMON_FLAG)
-    val filteredArgs = koltLevel.filter { it != NO_DAEMON_FLAG } + passthrough
+    val watch = koltLevel.contains(WATCH_FLAG)
+    val filteredArgs = koltLevel.filter { it != NO_DAEMON_FLAG && it != WATCH_FLAG } + passthrough
     if (filteredArgs.isEmpty()) {
         printUsage()
         return
@@ -24,22 +25,29 @@ fun main(args: Array<String>) {
 
     when (filteredArgs[0]) {
         "init" -> doInit(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
-        "build" -> doBuild(useDaemon = useDaemon).getOrElse { exitProcess(it) }
-        "check" -> doCheck(useDaemon = useDaemon).getOrElse { exitProcess(it) }
+        "build" -> if (watch) watchCommandLoop("build", useDaemon)
+            else doBuild(useDaemon = useDaemon).getOrElse { exitProcess(it) }
+        "check" -> if (watch) watchCommandLoop("check", useDaemon)
+            else doCheck(useDaemon = useDaemon).getOrElse { exitProcess(it) }
         "run" -> {
             val appArgs = filteredArgs.let { all ->
                 val sep = all.indexOf("--")
                 if (sep >= 0) all.subList(sep + 1, all.size) else emptyList()
             }
-            val (config, classpath, javaPath) = doBuild(useDaemon = useDaemon).getOrElse { exitProcess(it) }
-            doRun(config, classpath, appArgs, javaPath).getOrElse { exitProcess(it) }
+            if (watch) {
+                watchRunLoop(useDaemon, appArgs)
+            } else {
+                val (config, classpath, javaPath) = doBuild(useDaemon = useDaemon).getOrElse { exitProcess(it) }
+                doRun(config, classpath, appArgs, javaPath).getOrElse { exitProcess(it) }
+            }
         }
         "test" -> {
             val testArgs = filteredArgs.let { all ->
                 val sep = all.indexOf("--")
                 if (sep >= 0) all.subList(sep + 1, all.size) else emptyList()
             }
-            doTest(testArgs, useDaemon = useDaemon).getOrElse { exitProcess(it) }
+            if (watch) watchCommandLoop("test", useDaemon, testArgs)
+            else doTest(testArgs, useDaemon = useDaemon).getOrElse { exitProcess(it) }
         }
         "fmt" -> doFmt(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
         "clean" -> doClean().getOrElse { exitProcess(it) }
@@ -60,6 +68,7 @@ fun main(args: Array<String>) {
 }
 
 private const val NO_DAEMON_FLAG = "--no-daemon"
+private const val WATCH_FLAG = "--watch"
 
 private fun printUsage() {
     eprintln("usage: kolt <command>")
@@ -80,5 +89,6 @@ private fun printUsage() {
     eprintln("  version    Show version information")
     eprintln("")
     eprintln("flags:")
+    eprintln("  --watch      Watch source files and re-run on change")
     eprintln("  --no-daemon  Skip the warm compiler daemon for this invocation")
 }
