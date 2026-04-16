@@ -65,6 +65,11 @@ class BtaIncrementalCompiler private constructor(
     // stay terse; Main wires `StderrIcMetricsSink` in production so
     // dogfood runs leave a parsable structured-metric trail.
     private val metrics: IcMetricsSink,
+    // ADR 0019 §Negative follow-up (#127): caches ClasspathEntrySnapshot
+    // files keyed by (path, mtime, size). Shared across projects under a
+    // version-stamped directory so kotlin-stdlib and common deps are
+    // snapshotted once per daemon lifetime.
+    private val classpathSnapshotCache: ClasspathSnapshotCache,
 ) : IncrementalCompiler {
 
     // Advisory `flock` held on `<workingDir>/LOCK` for the daemon
@@ -149,32 +154,14 @@ class BtaIncrementalCompiler private constructor(
         val translatedPlugins = PluginTranslator.translate(request.projectRoot, pluginJarResolver)
         builder.compilerArguments[CommonCompilerArguments.COMPILER_PLUGINS] = translatedPlugins
 
-        // ADR 0019 §5 + §Negative: attach the snapshot-based IC configuration
-        // so BTA runs in incremental mode. `SourcesChanges.ToBeCalculated`
-        // asks BTA to diff against its own persisted state under `workingDir`
-        // — the wire protocol does not carry a dirty-file delta (§4), and
-        // `kolt watch` (#15) is the future place where `SourcesChanges.Known`
-        // would show up. `dependenciesSnapshotFiles` is empty for now: per-
-        // entry `ClasspathEntrySnapshot` computation is filed as a post-B-2
-        // follow-up, because the shipping first-cut handles the source-only
-        // iterative-edit case (the bimodal IC win the spike measured), and
-        // classpath changes go through kolt's existing BuildCache gate
-        // before they ever reach the daemon.
-        //
-        // `shrunkClasspathSnapshot` is still a required argument to
-        // `snapshotBasedIcConfigurationBuilder`, so we pass a daemon-owned
-        // path under `workingDir`. With empty `dependenciesSnapshotFiles`
-        // there is nothing for BTA to shrink, and the impl in 2.3.20 may
-        // never create the file — the spike observed a 4-byte empty
-        // snapshot when deps were empty. The file name is promoted to the
-        // `SHRUNK_CLASSPATH_SNAPSHOT` constant so the post-B-2 reaper (and
-        // any future debugging session that wonders why this file
-        // occasionally does not exist) can recognise it.
+        // #127: cached by ClasspathSnapshotCache; see class doc for key/error policy.
+        val dependenciesSnapshotFiles = classpathSnapshotCache.getOrComputeSnapshots(request.classpath)
+
         val shrunkClasspathSnapshot = btaWorkingDir.resolve(SHRUNK_CLASSPATH_SNAPSHOT)
         val icConfig = builder.snapshotBasedIcConfigurationBuilder(
             workingDirectory = btaWorkingDir,
             sourcesChanges = SourcesChanges.ToBeCalculated,
-            dependenciesSnapshotFiles = emptyList(),
+            dependenciesSnapshotFiles = dependenciesSnapshotFiles,
             shrunkClasspathSnapshot = shrunkClasspathSnapshot,
         ).build()
         builder[JvmCompilationOperation.INCREMENTAL_COMPILATION] = icConfig
@@ -387,6 +374,10 @@ class BtaIncrementalCompiler private constructor(
             // enabled entries.
             pluginJarResolver: (alias: String) -> List<Path> = { _ -> emptyList() },
             metrics: IcMetricsSink = NoopIcMetricsSink,
+            // ADR 0019 §Negative follow-up (#127): shared directory for cached
+            // ClasspathEntrySnapshot files. When null, a temp directory is used
+            // (test convenience — production always passes the real path).
+            classpathSnapshotsDir: Path? = null,
         ): Result<BtaIncrementalCompiler, IcError.InternalError> =
             try {
                 require(btaImplJars.isNotEmpty()) {
@@ -394,11 +385,15 @@ class BtaIncrementalCompiler private constructor(
                 }
                 val urls = btaImplJars.map { it.toUri().toURL() }.toTypedArray()
                 val implLoader = URLClassLoader(urls, SharedApiClassesClassLoader())
+                val toolchain = KotlinToolchains.loadImplementation(implLoader)
+                val snapshotsDir = classpathSnapshotsDir
+                    ?: Files.createTempDirectory("kolt-cp-snapshots-")
                 Ok(
                     BtaIncrementalCompiler(
-                        toolchain = KotlinToolchains.loadImplementation(implLoader),
+                        toolchain = toolchain,
                         pluginJarResolver = pluginJarResolver,
                         metrics = metrics,
+                        classpathSnapshotCache = ClasspathSnapshotCache(toolchain, snapshotsDir, metrics),
                     ),
                 )
             } catch (vme: VirtualMachineError) {

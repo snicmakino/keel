@@ -37,6 +37,7 @@ object IcStateLayout {
     const val BREADCRUMB_FILE: String = "project.path"
     const val LOCK_FILE: String = "LOCK"
     const val BTA_SUBDIR: String = "bta"
+    const val CLASSPATH_SNAPSHOTS_SUBDIR: String = "classpath-snapshots"
 
     fun projectIdFor(projectRoot: Path): String {
         val md = MessageDigest.getInstance("SHA-256")
@@ -46,4 +47,7 @@ object IcStateLayout {
 
     fun workingDirFor(icRoot: Path, kotlinVersion: String, projectRoot: Path): Path =
         icRoot.resolve(kotlinVersion).resolve(projectIdFor(projectRoot))
+
+    fun classpathSnapshotsDirFor(icRoot: Path, kotlinVersion: String): Path =
+        icRoot.resolve(kotlinVersion).resolve(CLASSPATH_SNAPSHOTS_SUBDIR)
 }

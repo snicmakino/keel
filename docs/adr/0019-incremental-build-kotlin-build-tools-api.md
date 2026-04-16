@@ -382,11 +382,11 @@ already shipped and known to work.
   `IcError.InternalError` self-heal in §7, plus the adapter integration
   test that exercises the full cold-then-incremental cycle on every
   build.
-- **Classpath snapshots are recomputed per request.** B-2 computes
-  `ClasspathEntrySnapshot` on every incoming `Message.Compile` for
-  the project's non-stdlib classpath entries. Caching these keyed by
-  (path, mtime, size) is a clear follow-up, but is intentionally out
-  of scope for the first B-2 cut so the shipping surface stays small.
+- ~~**Classpath snapshots are recomputed per request.**~~ Resolved by
+  #127: `ClasspathSnapshotCache` caches `ClasspathEntrySnapshot` files
+  keyed by `(path, mtime, size)` in a shared, version-stamped
+  directory. Steady-state kotlin-stdlib snapshotting cost was ~310ms
+  per request before caching.
 - **Plugin loading is unverified.** The spike fixtures used plain
   Kotlin; no `kotlinx.serialization`, no `kotlin-test`, no kapt. B-2
   must prototype at least one real plugin (kotlinx.serialization is
@@ -513,10 +513,13 @@ dependency on the current B-2 surface.
   matching caller edit on a linear-5 fixture; recompile set is
   `>= 2 && < totalCount`, pinning both "cascade happened" and
   "cascade stopped short of full".
-- **Classpath snapshot caching**: cache `ClasspathEntrySnapshot`
-  keyed by `(path, mtime, size)` so repeated builds on an unchanged
-  classpath skip re-snapshotting. Measure before implementing.
-  Remains post-B-2 per §Consequences / Negative.
+- ~~**Classpath snapshot caching**~~ — done in #127
+  (`ClasspathSnapshotCache`). Each classpath entry is snapshotted via
+  `classpathSnapshottingOperationBuilder` and cached keyed by
+  `(path, mtime, size)`. Snapshot files are shared across projects
+  under `<icRoot>/<kotlinVersion>/classpath-snapshots/`. Phase 0
+  measurement showed kotlin-stdlib snapshotting costs ~310ms steady
+  state, confirming caching is load-bearing.
 - **Scaling run on jvm-100 / jvm-250**: point the
   `spike/bench-scaling/` harness at a B-2 daemon to confirm the
   per-file slope drops as predicted. #103's ceiling and #96's slope
