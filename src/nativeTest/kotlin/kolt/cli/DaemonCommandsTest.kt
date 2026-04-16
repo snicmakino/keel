@@ -22,6 +22,11 @@ class ValidateDaemonSubcommandTest {
     }
 
     @Test
+    fun reapIsValid() {
+        assertTrue(validateDaemonSubcommand(listOf("reap")))
+    }
+
+    @Test
     fun unknownSubcommandIsInvalid() {
         assertFalse(validateDaemonSubcommand(listOf("restart")))
     }
