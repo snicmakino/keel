@@ -1,42 +1,43 @@
 package kolt.cli
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
 import kolt.build.formatCommand
 import kolt.config.*
 import kolt.infra.*
 import kolt.tool.*
-import kotlin.system.exitProcess
 
-internal fun doFmt(args: List<String>) {
+internal fun doFmt(args: List<String>): Result<Unit, Int> {
     val checkOnly = "--check" in args
 
-    val config = loadProjectConfig()
+    val config = loadProjectConfig().getOrElse { return Err(it) }
 
-    val paths = resolveKoltPaths(EXIT_FORMAT_ERROR)
-    val ktfmtPath = ensureTool(paths, KTFMT_SPEC, EXIT_FORMAT_ERROR)
+    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_FORMAT_ERROR) }
+    val ktfmtPath = ensureTool(paths, KTFMT_SPEC).getOrElse { eprintln("error: $it"); return Err(EXIT_FORMAT_ERROR) }
 
-    val files = buildList {
-        for (dir in config.sources) {
-            if (isDirectory(dir)) {
-                addAll(listKotlinFiles(dir).getOrElse { error ->
-                    eprintln("error: could not read directory ${error.path}")
-                    exitProcess(EXIT_FORMAT_ERROR)
-                })
-            }
+    val files = mutableListOf<String>()
+    for (dir in config.sources) {
+        if (isDirectory(dir)) {
+            files.addAll(listKotlinFiles(dir).getOrElse { error ->
+                eprintln("error: could not read directory ${error.path}")
+                return Err(EXIT_FORMAT_ERROR)
+            })
         }
-        for (dir in config.testSources) {
-            if (isDirectory(dir)) {
-                addAll(listKotlinFiles(dir).getOrElse { error ->
-                    eprintln("error: could not read directory ${error.path}")
-                    exitProcess(EXIT_FORMAT_ERROR)
-                })
-            }
+    }
+    for (dir in config.testSources) {
+        if (isDirectory(dir)) {
+            files.addAll(listKotlinFiles(dir).getOrElse { error ->
+                eprintln("error: could not read directory ${error.path}")
+                return Err(EXIT_FORMAT_ERROR)
+            })
         }
     }
 
     if (files.isEmpty()) {
         println("no kotlin files to format")
-        return
+        return Ok(Unit)
     }
 
     val cmd = formatCommand(ktfmtPath, files, checkOnly, style = config.fmtStyle)
@@ -52,7 +53,7 @@ internal fun doFmt(args: List<String>) {
             is ProcessError.NonZeroExit -> eprintln(if (checkOnly) "error: format check failed" else "error: formatting failed")
             else -> eprintln("error: failed to run ktfmt")
         }
-        exitProcess(EXIT_FORMAT_ERROR)
+        return Err(EXIT_FORMAT_ERROR)
     }
 
     if (checkOnly) {
@@ -60,4 +61,5 @@ internal fun doFmt(args: List<String>) {
     } else {
         println("formatted ${files.size} files")
     }
+    return Ok(Unit)
 }

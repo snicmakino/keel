@@ -4,28 +4,26 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
-import kolt.config.KoltPaths
-import kolt.config.resolveKoltPaths
+import kolt.config.*
 import kolt.infra.*
 import kolt.tool.installJdkToolchain
 import kolt.tool.installKonancToolchain
 import kolt.tool.installKotlincToolchain
-import kotlin.system.exitProcess
 
 private val KNOWN_TOOLCHAINS = listOf("kotlinc", "jdk", "konanc")
 
-internal fun doToolchain(args: List<String>) {
+internal fun doToolchain(args: List<String>): Result<Unit, Int> {
     if (args.isEmpty()) {
         printToolchainUsage()
-        exitProcess(EXIT_CONFIG_ERROR)
+        return Err(EXIT_CONFIG_ERROR)
     }
-    when (args[0]) {
+    return when (args[0]) {
         "install" -> doToolchainInstall()
         "list" -> doToolchainList()
         "remove" -> doToolchainRemove(args.drop(1))
         else -> {
             printToolchainUsage()
-            exitProcess(EXIT_CONFIG_ERROR)
+            Err(EXIT_CONFIG_ERROR)
         }
     }
 }
@@ -39,24 +37,26 @@ private fun printToolchainUsage() {
     eprintln("  remove     Remove an installed toolchain (e.g. kolt toolchain remove kotlinc 2.1.0)")
 }
 
-private fun doToolchainInstall() {
-    val config = loadProjectConfig()
-    val paths = resolveKoltPaths(EXIT_CONFIG_ERROR)
-    installKotlincToolchain(config.kotlin, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
+private fun doToolchainInstall(): Result<Unit, Int> {
+    val config = loadProjectConfig().getOrElse { return Err(it) }
+    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_CONFIG_ERROR) }
+    installKotlincToolchain(config.kotlin, paths).getOrElse { eprintln("error: ${it.message}"); return Err(EXIT_BUILD_ERROR) }
     if (config.jdk != null) {
-        installJdkToolchain(config.jdk, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
+        installJdkToolchain(config.jdk, paths).getOrElse { eprintln("error: ${it.message}"); return Err(EXIT_BUILD_ERROR) }
     }
     if (config.target == "native") {
-        installKonancToolchain(config.kotlin, paths).getOrElse { exitWithToolchainError(it, EXIT_BUILD_ERROR) }
+        installKonancToolchain(config.kotlin, paths).getOrElse { eprintln("error: ${it.message}"); return Err(EXIT_BUILD_ERROR) }
     }
+    return Ok(Unit)
 }
 
-private fun doToolchainList() {
-    val paths = resolveKoltPaths(EXIT_CONFIG_ERROR)
+private fun doToolchainList(): Result<Unit, Int> {
+    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_CONFIG_ERROR) }
     val kotlincVersions = listInstalledVersions("${paths.toolchainsDir}/kotlinc")
     val jdkVersions = listInstalledVersions("${paths.toolchainsDir}/jdk")
     val konancVersions = listInstalledVersions("${paths.toolchainsDir}/konanc")
     println(formatToolchainList(kotlincVersions, jdkVersions, konancVersions))
+    return Ok(Unit)
 }
 
 private fun listInstalledVersions(dir: String): List<String> {
@@ -108,22 +108,23 @@ internal fun resolveToolchainPathForRemove(name: String, version: String, paths:
     return if (fileExists(dir)) dir else null
 }
 
-private fun doToolchainRemove(args: List<String>) {
+private fun doToolchainRemove(args: List<String>): Result<Unit, Int> {
     val parsed = validateToolchainRemoveArgs(args).getOrElse { error ->
         eprintln(error)
-        exitProcess(EXIT_CONFIG_ERROR)
+        return Err(EXIT_CONFIG_ERROR)
     }
 
-    val paths = resolveKoltPaths(EXIT_CONFIG_ERROR)
+    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_CONFIG_ERROR) }
     val toolchainPath = resolveToolchainPathForRemove(parsed.name, parsed.version, paths)
     if (toolchainPath == null) {
         eprintln("error: ${parsed.name} ${parsed.version} is not installed")
-        exitProcess(EXIT_BUILD_ERROR)
+        return Err(EXIT_BUILD_ERROR)
     }
 
     removeDirectoryRecursive(toolchainPath).getOrElse { err ->
         eprintln("error: could not remove ${parsed.name} ${parsed.version}: ${err.path}")
-        exitProcess(EXIT_BUILD_ERROR)
+        return Err(EXIT_BUILD_ERROR)
     }
     println("removed ${parsed.name} ${parsed.version}")
+    return Ok(Unit)
 }

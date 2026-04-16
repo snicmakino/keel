@@ -1,5 +1,8 @@
 package kolt.cli
 
+import com.github.michaelbull.result.Err
+import com.github.michaelbull.result.Ok
+import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
 import kolt.build.daemon.projectHashOf
 import kolt.config.resolveKoltPaths
@@ -10,49 +13,49 @@ import kolt.infra.eprintln
 import kolt.infra.fileExists
 import kolt.infra.listSubdirectories
 import kolt.infra.net.UnixSocket
-import kotlin.system.exitProcess
 
 private val DAEMON_SUBCOMMANDS = setOf("stop", "reap")
 
 internal fun validateDaemonSubcommand(args: List<String>): Boolean =
     args.isNotEmpty() && args[0] in DAEMON_SUBCOMMANDS
 
-internal fun doDaemon(args: List<String>) {
+internal fun doDaemon(args: List<String>): Result<Unit, Int> {
     if (args.isEmpty()) {
         printDaemonUsage()
-        exitProcess(EXIT_CONFIG_ERROR)
+        return Err(EXIT_CONFIG_ERROR)
     }
-    when (args[0]) {
+    return when (args[0]) {
         "stop" -> doDaemonStop(args.drop(1))
         "reap" -> doDaemonReap()
         else -> {
             eprintln("error: unknown daemon command '${args[0]}'")
             printDaemonUsage()
-            exitProcess(EXIT_CONFIG_ERROR)
+            Err(EXIT_CONFIG_ERROR)
         }
     }
 }
 
-private fun doDaemonStop(args: List<String>) {
+private fun doDaemonStop(args: List<String>): Result<Unit, Int> {
     val all = args.contains("--all")
-    val paths = resolveKoltPaths(EXIT_CONFIG_ERROR)
+    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_CONFIG_ERROR) }
 
     if (all) {
         stopAllDaemons(paths.daemonBaseDir)
     } else {
         val cwd = currentWorkingDirectory() ?: run {
             eprintln("error: could not determine project directory")
-            exitProcess(EXIT_CONFIG_ERROR)
+            return Err(EXIT_CONFIG_ERROR)
         }
         val hash = projectHashOf(cwd)
         val socketPath = paths.daemonSocketPath(hash)
         if (!fileExists(socketPath)) {
             println("no daemon running for this project")
-            return
+            return Ok(Unit)
         }
         val stopped = sendShutdown(socketPath)
         if (stopped) println("daemon stopped") else println("no daemon running for this project")
     }
+    return Ok(Unit)
 }
 
 private fun stopAllDaemons(daemonBaseDir: String) {
@@ -82,14 +85,15 @@ private fun sendShutdown(socketPath: String): Boolean {
     return sent
 }
 
-private fun doDaemonReap() {
-    val paths = resolveKoltPaths(EXIT_CONFIG_ERROR)
+private fun doDaemonReap(): Result<Unit, Int> {
+    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_CONFIG_ERROR) }
     val result = reapStaleDaemons(paths.daemonBaseDir)
     if (result.reaped == 0) {
         println("no stale daemons found")
     } else {
         println("reaped ${result.reaped} stale daemon dir${if (result.reaped > 1) "s" else ""}")
     }
+    return Ok(Unit)
 }
 
 private fun printDaemonUsage() {
