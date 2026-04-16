@@ -5,6 +5,7 @@ import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.mapBoth
 import kolt.daemon.ic.BtaIncrementalCompiler
+import kolt.daemon.ic.IcStateLayout
 import kolt.daemon.ic.SelfHealingIncrementalCompiler
 import kolt.daemon.ic.StderrIcMetricsSink
 import kolt.daemon.reaper.IcReaper
@@ -100,6 +101,10 @@ fun main(args: Array<String>) {
         btaImplJars = cli.btaImplJars.map { it.toPath() },
         pluginJarResolver = pluginJarResolver,
         metrics = metrics,
+        classpathSnapshotsDir = IcStateLayout.classpathSnapshotsDirFor(
+            cli.icRoot,
+            KOLT_DAEMON_KOTLIN_VERSION,
+        ),
     ).mapBoth(
         success = { it },
         failure = { err ->
