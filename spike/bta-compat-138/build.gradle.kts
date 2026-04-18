@@ -29,6 +29,8 @@ val implMatrix = listOf("2.1.0", "2.2.20", "2.3.0", "2.3.10", "2.3.20")
 implMatrix.forEach { version ->
     val implName = "btaImpl_${version.replace('.', '_')}"
     val fixtureName = "fixture_${version.replace('.', '_')}"
+    val pluginFixtureName = "pluginFixture_${version.replace('.', '_')}"
+    val pluginJarName = "pluginJar_${version.replace('.', '_')}"
     configurations.create(implName) {
         isCanBeResolved = true
         isCanBeConsumed = false
@@ -37,8 +39,25 @@ implMatrix.forEach { version ->
         isCanBeResolved = true
         isCanBeConsumed = false
     }
+    configurations.create(pluginFixtureName) {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+    }
+    configurations.create(pluginJarName) {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+        isTransitive = false
+    }
     dependencies.add(implName, "org.jetbrains.kotlin:kotlin-build-tools-impl:$version")
     dependencies.add(fixtureName, "org.jetbrains.kotlin:kotlin-stdlib:$version")
+    // Plugin smoke test: @Serializable needs stdlib for the impl version + the
+    // serialization runtime on the classpath. `kotlinx-serialization-core` is
+    // the runtime annotation/descriptor library; the compiler plugin is a
+    // separate artefact pulled into `pluginJar_<ver>` below.
+    dependencies.add(pluginFixtureName, "org.jetbrains.kotlin:kotlin-stdlib:$version")
+    dependencies.add(pluginFixtureName, "org.jetbrains.kotlinx:kotlinx-serialization-core:1.9.0")
+    // `*-embeddable` is the shaded jar kotlinc expects for `-Xplugin=`.
+    dependencies.add(pluginJarName, "org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable:$version")
 }
 
 dependencies {
@@ -57,8 +76,12 @@ tasks.named<JavaExec>("run") {
     implMatrix.forEach { version ->
         val implName = "btaImpl_${version.replace('.', '_')}"
         val fixtureName = "fixture_${version.replace('.', '_')}"
+        val pluginFixtureName = "pluginFixture_${version.replace('.', '_')}"
+        val pluginJarName = "pluginJar_${version.replace('.', '_')}"
         systemProperty("bta.impl.classpath.$version", configurations.getByName(implName).asPath)
         systemProperty("fixture.classpath.$version", configurations.getByName(fixtureName).asPath)
+        systemProperty("plugin.fixture.classpath.$version", configurations.getByName(pluginFixtureName).asPath)
+        systemProperty("plugin.jar.$version", configurations.getByName(pluginJarName).asPath)
     }
     systemProperty("bta.impl.matrix", implMatrix.joinToString(","))
 }
