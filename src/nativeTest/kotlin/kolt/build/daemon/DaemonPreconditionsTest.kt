@@ -72,6 +72,53 @@ class DaemonPreconditionsTest {
         assertEquals(KOTLIN_VERSION_FLOOR, err.floor)
     }
 
+    // #146: Linux `sun_path` tops out at 108 bytes. A deep `$HOME` (CI runner,
+    // NFS mount) can push the projected socket path past the cap before
+    // any daemon spawn. The precondition check catches this upfront so the
+    // fallback rail handles it instead of surfacing as `bind() ENAMETOOLONG`.
+    @Test
+    fun socketPathAboveSunPathCapShortCircuits() {
+        // Synthesise a `$HOME` that, after the full `<home>/.kolt/daemon/<16hex>/<version>/daemon-noplugins.sock`
+        // build-up, exceeds 108 bytes. The tail for `2.3.20` is 59 bytes; so any
+        // `$HOME` of 50+ chars reliably overflows.
+        val longHome = "/home/" + "x".repeat(96)
+        val longPaths = KoltPaths(home = longHome)
+        val result = resolveDaemonPreconditions(
+            paths = longPaths,
+            kotlincVersion = bundledVersion,
+            absProjectPath = absProject,
+            bundledKotlinVersion = bundledVersion,
+            ensureJavaBin = { error("must not probe JDK when socket path exceeds sun_path") },
+            resolveDaemonJar = { error("must not probe daemon jar when socket path exceeds sun_path") },
+            listCompilerJars = { error("must not list compiler jars when socket path exceeds sun_path") },
+            resolveBundledBtaImplJars = { error("must not probe BTA-impl jars when socket path exceeds sun_path") },
+            fetchBtaImplJars = mustNotFetch,
+        )
+
+        val err = assertIs<DaemonPreconditionError.SocketPathTooLong>(result.getError())
+        assertEquals(SUN_PATH_CAPACITY, err.maxBytes)
+        assertTrue(err.projectedBytes > SUN_PATH_CAPACITY, "projected should exceed cap: $err")
+        assertTrue(err.socketPath.startsWith(longHome), "socket path should be rooted at home: ${err.socketPath}")
+    }
+
+    @Test
+    fun socketPathInsideSunPathCapPasses() {
+        // `/home/makino` + typical 16-hex hash + `2.3.20` + `daemon-noplugins.sock`
+        // ≈ 71 bytes; well under the 108-byte cap.
+        val result = resolveDaemonPreconditions(
+            paths = paths,
+            kotlincVersion = bundledVersion,
+            absProjectPath = absProject,
+            bundledKotlinVersion = bundledVersion,
+            ensureJavaBin = { Ok("/fake/java") },
+            resolveDaemonJar = { okJar },
+            listCompilerJars = { fakeJars },
+            resolveBundledBtaImplJars = { okBtaImpl },
+            fetchBtaImplJars = mustNotFetch,
+        )
+        assertNotNull(result.get())
+    }
+
     // Post-#148: `[plugins]` on the floor (2.3.0) is accepted through the
     // fetcher — the daemon routes plugins via `-Xplugin=` passthrough which
     // works across the full 2.3.x family, so there is no version carve-out
@@ -321,6 +368,20 @@ class DaemonPreconditionsTest {
                 resolvedEmpty.contains("resolver returned no jars") &&
                 resolvedEmpty.contains("falling back to subprocess compile"),
             "unexpected resolved-empty warning: $resolvedEmpty",
+        )
+        val tooLong = formatDaemonPreconditionWarning(
+            DaemonPreconditionError.SocketPathTooLong(
+                socketPath = "/very/long/path/to/daemon.sock",
+                projectedBytes = 120,
+                maxBytes = 108,
+            ),
+        )
+        assertTrue(
+            tooLong.contains("108") &&
+                tooLong.contains("/very/long/path/to/daemon.sock") &&
+                tooLong.contains("falling back to subprocess compile") &&
+                tooLong.contains("--no-daemon"),
+            "unexpected socket-path-too-long warning: $tooLong",
         )
     }
 }
