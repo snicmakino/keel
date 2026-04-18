@@ -27,6 +27,21 @@ internal data class DaemonSetup(
 // SharedApiClassesClassLoader exposes.
 internal const val KOTLIN_VERSION_FLOOR = "2.3.0"
 
+// Linux AF_UNIX `sun_path` field is a 108-byte char array. `bind()` on a
+// longer path fails with `ENAMETOOLONG` / `EINVAL` at daemon spawn —
+// *after* we have already spent money installing toolchains and launching
+// the JVM. Checked up front as a precondition so the fallback rail catches
+// the miss cleanly instead. See #146.
+internal const val SUN_PATH_CAPACITY: Int = 108
+
+// `applyPluginsFingerprintToFile` (in BuildCommands.kt) injects either
+// `-noplugins` (10 bytes) or `-<8hex>` (9 bytes) before `.sock`. The
+// no-plugins case is the worst case; use it as a conservative upper bound
+// so the precondition stays independent of the plugin set. Over-estimating
+// by 1 byte is fine — sun_path is a hard kernel limit, and we'd rather
+// fall back to subprocess one byte early than crash at bind().
+private const val MAX_FINGERPRINT_SUFFIX_BYTES: Int = "-noplugins".length
+
 // None of these are build failures — ADR 0016 §5.
 internal sealed interface DaemonPreconditionError {
     data class BootstrapJdkInstallFailed(
@@ -53,6 +68,15 @@ internal sealed interface DaemonPreconditionError {
         val version: String,
         val cause: BtaImplFetchError,
     ) : DaemonPreconditionError
+
+    // #146: projected socket path would exceed Linux sun_path capacity.
+    // Caught as a precondition because the alternative — `bind()` failing
+    // mid-spawn — leaves half-initialised daemon state behind.
+    data class SocketPathTooLong(
+        val socketPath: String,
+        val projectedBytes: Int,
+        val maxBytes: Int,
+    ) : DaemonPreconditionError
 }
 
 internal fun resolveDaemonPreconditions(
@@ -75,6 +99,23 @@ internal fun resolveDaemonPreconditions(
             DaemonPreconditionError.KotlinVersionBelowFloor(
                 requested = kotlincVersion,
                 floor = KOTLIN_VERSION_FLOOR,
+            ),
+        )
+    }
+
+    // sun_path length check is pure string math, do it before any disk
+    // probe. `setup.socketPath` gets a `-<fingerprint>` suffix added later
+    // by `applyPluginsFingerprintToFile`; we over-estimate with the
+    // longer `-noplugins` variant so the gate is plugin-set-agnostic.
+    val projectHash = projectHashOf(absProjectPath)
+    val baseSocketPath = paths.daemonSocketPath(projectHash, kotlincVersion)
+    val projectedSocketBytes = baseSocketPath.length + MAX_FINGERPRINT_SUFFIX_BYTES
+    if (projectedSocketBytes > SUN_PATH_CAPACITY) {
+        return Err(
+            DaemonPreconditionError.SocketPathTooLong(
+                socketPath = baseSocketPath,
+                projectedBytes = projectedSocketBytes,
+                maxBytes = SUN_PATH_CAPACITY,
             ),
         )
     }
@@ -115,7 +156,6 @@ internal fun resolveDaemonPreconditions(
         }
     }
 
-    val projectHash = projectHashOf(absProjectPath)
     return Ok(
         DaemonSetup(
             javaBin = javaBin,
@@ -123,7 +163,7 @@ internal fun resolveDaemonPreconditions(
             compilerJars = compilerJars,
             btaImplJars = btaImplJars,
             daemonDir = paths.daemonDir(projectHash, kotlincVersion),
-            socketPath = paths.daemonSocketPath(projectHash, kotlincVersion),
+            socketPath = baseSocketPath,
             logPath = paths.daemonLogPath(projectHash, kotlincVersion),
         ),
     )
@@ -144,6 +184,10 @@ internal fun formatDaemonPreconditionWarning(err: DaemonPreconditionError): Stri
     is DaemonPreconditionError.BtaImplFetchFailed ->
         "warning: could not fetch kotlin-build-tools-impl ${err.version} from Maven Central " +
             "(${formatBtaImplFetchError(err.cause)}) — falling back to subprocess compile"
+    is DaemonPreconditionError.SocketPathTooLong ->
+        "warning: daemon socket path ${err.socketPath} would be ${err.projectedBytes} bytes, " +
+            "exceeding the Linux AF_UNIX ${err.maxBytes}-byte limit — falling back to subprocess compile. " +
+            "Move the project under a shorter \$HOME, or pass --no-daemon to silence this warning."
 }
 
 private fun formatBtaImplFetchError(err: BtaImplFetchError): String = when (err) {
