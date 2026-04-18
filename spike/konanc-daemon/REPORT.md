@@ -2,12 +2,12 @@
 
 ## Summary
 
-- K2Native can run as a persistent JVM process. `K2Native.exec()` is safe to call repeatedly in the same JVM — no state leakage observed across 4 consecutive invocations per fixture.
-- Stage 1 (source → klib) warm speedup: **1.6–7.8x** depending on fixture size. Small projects benefit most (JVM startup dominates); larger projects see diminishing returns as compilation work itself grows.
-- Stage 2 (klib → kexe, linking) warm speedup: **1.5x** on native-10 (11.6s warm vs 18.0s cold subprocess).
-- Both stages produce correct output: the linked binary runs and prints expected results.
-- No BTA (kotlin-build-tools-api) equivalent exists for native — the daemon must invoke K2Native reflectively via `CLICompiler.exec(PrintStream, String[])`.
-- Recommendation: **proceed to implementation**. The JVM daemon architecture (ADR 0016) can be extended with a native compilation backend that hosts K2Native in the same persistent JVM.
+- K2Native can run as a persistent JVM process. `K2Native.exec()` is safe to call repeatedly in the same JVM — no state leakage observed across 4 consecutive invocations per fixture (§1).
+- Stage 1 (source → klib): warm JVM eliminates ~2.4–4.0s of fixed JVM startup cost, consistent across fixture sizes (§2).
+- Stage 2 (klib → kexe, linking): 6.4s saved on native-10. Only one fixture size measured — stage 2 size scaling is unknown (§2).
+- Both stages produce correct output: the linked binary runs and prints expected results (§2).
+- No BTA (kotlin-build-tools-api) equivalent exists for native — the daemon must invoke K2Native reflectively via `CLICompiler.exec(PrintStream, String[])` (§3).
+- Recommendation: **feasibility confirmed**. Implementation should proceed only after a stress test (100+ invocations) and native IC (#160) ships and establishes post-IC baselines (§5).
 
 ## §1 Feasibility
 
@@ -21,14 +21,14 @@ All invocations returned `ExitCode.OK`. The output klib and kexe are identical t
 
 ### Stage 1: source → klib
 
-| size | cold subprocess median (ms) | warm-hot best (ms) | speedup |
-|------|----------------------------:|--------------------:|--------:|
-| 1    | 3,379                       | 432                 | 7.8x    |
-| 10   | 4,584                       | 620                 | 7.4x    |
-| 25   | 5,137                       | 2,757               | 1.9x    |
-| 50   | 6,220                       | 3,796               | 1.6x    |
+| size | cold subprocess median (ms) | warm-hot best (ms) | saved (ms) | speedup |
+|------|----------------------------:|--------------------:|-----------:|--------:|
+| 1    | 3,379                       | 432                 | 2,947      | 7.8x    |
+| 10   | 4,584                       | 620                 | 3,964      | 7.4x    |
+| 25   | 5,137                       | 2,757               | 2,380      | 1.9x    |
+| 50   | 6,220                       | 3,796               | 2,424      | 1.6x    |
 
-The warm JVM eliminates ~3s of fixed startup cost. At small fixture sizes this dominates; at 50 files the compilation work itself is ~4s so the relative gain shrinks.
+Absolute savings are 2.4–4.0s regardless of fixture size. The warm JVM eliminates a ~3s fixed JVM startup cost; the speedup ratio varies because the compilation work itself grows with file count.
 
 JIT warmup is visible: run 2 is slower than runs 3–4 (e.g. native-1: 673 → 432 → 458ms).
 
@@ -41,6 +41,8 @@ JIT warmup is visible: run 2 is slower than runs 3–4 (e.g. native-1: 673 → 4
 | warm-hot (2nd in JVM) | 11,629 |
 
 Stage 2 is link-dominated (LLVM backend), so the JVM warmup benefit is smaller but still meaningful: **6.4s saved** per link on native-10.
+
+Only native-10 was measured for stage 2. Size 25/50 data would clarify whether the 6.4s saving is size-independent (fixed JVM cost) or scales with link work. This is a gap worth filling before implementation.
 
 ### Correctness
 
@@ -81,14 +83,16 @@ kolt's native build is two stages (library + link). Both stages call `konanc` wi
 
 ## §5 Recommendation
 
-**Proceed to implementation.** The feasibility question is answered: K2Native runs repeatedly in a persistent JVM with correct output and significant speedup.
+**Feasibility confirmed.** K2Native runs repeatedly in a persistent JVM with correct output and meaningful speedup (~3s fixed cost eliminated).
 
-Implementation path:
-1. Add a native compilation backend to the existing daemon jar, or ship a separate `kolt-native-daemon` jar.
-2. Use `K2Native.exec()` reflectively, same pattern as the prototype.
-3. Parse `konanc` stderr for diagnostics (reuse existing `DiagnosticParser` patterns).
-4. Start with a separate daemon process (avoids `-Dkonan.home` conflict with JVM daemon).
-5. Defer native IC integration to a follow-up — the daemon speedup alone is worth shipping.
+Implementation should proceed only after:
+
+1. **Native IC ships first.** Spike #160 showed IC alone delivers 30–39% reduction on touch builds — a larger improvement than daemon alone. IC is lower-risk (CLI flag, no daemon infrastructure) and establishes post-IC baselines that inform whether daemon investment is justified.
+2. **Stress test (≥100 invocations)** confirms no state leakage at scale. The current 4-invocation test is minimum feasibility; ADR 0016's JVM daemon spike ran 50 invocations and found heap drift invisible at 10. LLVM backend static state is a particular concern.
+3. **Stage 2 size scaling** is measured (native-25, native-50) to confirm the 6.4s saving is size-independent.
+4. **Architectural questions** around the second daemon process are addressed in an ADR: socket paths, daemon reaper, fallback backend, observability, `kolt daemon stop --all` enumeration.
+
+Sequencing: native IC implementation → IC dogfood → daemon stress test → daemon ADR → daemon implementation.
 
 ## Raw data
 
