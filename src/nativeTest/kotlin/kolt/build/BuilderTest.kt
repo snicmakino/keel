@@ -493,4 +493,35 @@ class BuilderTest {
             cmd.args
         )
     }
+
+    @Test
+    fun checkCommandOmitsLanguageVersionWhenCompilerEqualsVersion() {
+        val cmd = checkCommand(testConfig(kotlinVersion = "2.3.20", kotlinCompiler = "2.3.20"))
+
+        assertFalse(cmd.contains("-language-version"))
+        assertFalse(cmd.contains("-api-version"))
+    }
+
+    @Test
+    fun checkCommandInjectsLanguageVersionWhenCompilerHigherThanVersion() {
+        val cmd = checkCommand(testConfig(kotlinVersion = "2.1.0", kotlinCompiler = "2.3.20"))
+
+        val langIdx = cmd.indexOf("-language-version")
+        val apiIdx = cmd.indexOf("-api-version")
+        assertTrue(langIdx >= 0, "missing -language-version in $cmd")
+        assertTrue(apiIdx >= 0, "missing -api-version in $cmd")
+        assertEquals("2.1.0", cmd[langIdx + 1])
+        assertEquals("2.1.0", cmd[apiIdx + 1])
+    }
+
+    @Test
+    fun nativeLibraryCommandInjectsLanguageVersionWhenCompilerHigherThanVersion() {
+        val cmd = nativeLibraryCommand(testConfig(target = "native", kotlinVersion = "2.1.0", kotlinCompiler = "2.3.20"))
+
+        val langIdx = cmd.args.indexOf("-language-version")
+        val apiIdx = cmd.args.indexOf("-api-version")
+        assertTrue(langIdx >= 0)
+        assertEquals("2.1.0", cmd.args[langIdx + 1])
+        assertEquals("2.1.0", cmd.args[apiIdx + 1])
+    }
 }

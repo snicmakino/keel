@@ -24,6 +24,16 @@ data class BuildCommand(
     val outputPath: String
 )
 
+// #162: when `[kotlin] compiler` outruns `version`, pin the language/API surface
+// to `version` so a 2.3.x daemon can still compile 2.1-language projects.
+// Returns an empty list on equal (or unset-compiler) to keep the common case
+// flag-free — warning-free on every kotlinc release.
+internal fun languageVersionArgs(config: KoltConfig): List<String> {
+    val lang = config.kotlin.version
+    if (config.kotlin.effectiveCompiler == lang) return emptyList()
+    return listOf("-language-version", lang, "-api-version", lang)
+}
+
 fun checkCommand(
     config: KoltConfig,
     classpath: String? = null,
@@ -38,6 +48,7 @@ fun checkCommand(
     addAll(config.build.sources)
     add("-jvm-target")
     add(config.build.jvmTarget)
+    addAll(languageVersionArgs(config))
     addAll(pluginArgs)
 }
 
@@ -64,6 +75,7 @@ fun nativeLibraryCommand(
         }
         add("-o")
         add(outputBase)
+        addAll(languageVersionArgs(config))
         addAll(pluginArgs)
     }
     return BuildCommand(args = args, outputPath = outputBase)
@@ -118,6 +130,7 @@ fun nativeTestLibraryCommand(
         }
         add("-o")
         add(outputBase)
+        addAll(languageVersionArgs(config))
         addAll(pluginArgs)
     }
     return BuildCommand(args = args, outputPath = outputBase)
