@@ -49,6 +49,15 @@ private data class RunOutcome(
 )
 
 fun main(args: Array<String>) {
+    val mode = args.firstOrNull() ?: "bta-compat"
+    when (mode) {
+        "bta-compat" -> runBtaCompat(args.drop(1))
+        "plugin-smoke" -> runPluginSmoke(args.drop(1))
+        else -> error("unknown mode '$mode' (expected 'bta-compat' or 'plugin-smoke')")
+    }
+}
+
+private fun runBtaCompat(args: List<String>) {
     val fixtureDir = Path.of(args.getOrElse(0) { "fixtures/linear-10" }).toAbsolutePath()
     val workRoot = Path.of(args.getOrElse(1) { "/tmp/bta-compat-work" }).toAbsolutePath()
     val matrix = System.getProperty("bta.impl.matrix")!!.split(",")
@@ -262,4 +271,159 @@ private fun touchSourceFile(path: Path) {
     val uniq = System.nanoTime()
     val marker = "\nfun spikeTouch$uniq(): Long = $uniq\n"
     Files.writeString(path, marker, java.nio.file.StandardOpenOption.APPEND)
+}
+
+// --- plugin-smoke mode --------------------------------------------------
+
+private enum class PluginVerdict { GREEN, RED_COMPILE, RED_NO_GEN, RED_METHOD, RED_LINKAGE, RED_OTHER }
+
+private data class PluginOutcome(
+    val implVersion: String,
+    val verdict: PluginVerdict,
+    val compilationResult: String?,
+    val generatedClasses: List<String>,
+    val hasSerializerClass: Boolean,
+    val error: Throwable?,
+)
+
+private fun runPluginSmoke(args: List<String>) {
+    val fixtureDir = Path.of(args.getOrElse(0) { "fixtures/plugin-serialization" }).toAbsolutePath()
+    val workRoot = Path.of(args.getOrElse(1) { "/tmp/bta-compat-plugin-work" }).toAbsolutePath()
+    val matrix = System.getProperty("bta.impl.matrix")!!.split(",")
+
+    println("=== BTA plugin-smoke spike (#138/#143) ===")
+    println("adapter compile-time API: 2.3.20")
+    println("mechanism: applyArgumentStrings([\"-Xplugin=<serialization-plugin>\"])")
+    println("fixture: $fixtureDir")
+    println("workdir: $workRoot")
+    println("matrix:  ${matrix.joinToString(", ")}")
+    println()
+
+    val outcomes = matrix.map { version ->
+        println("--- impl $version ---")
+        val outcome = runPluginOne(version, fixtureDir, workRoot.resolve(version))
+        printPluginOutcome(outcome)
+        println()
+        outcome
+    }
+
+    println("=== summary ===")
+    outcomes.forEach { o ->
+        val tail = o.error?.let { " :: ${it.javaClass.name}: ${it.message?.take(200)}" } ?: ""
+        val extra = " compile=${o.compilationResult ?: "-"} hasSerializer=${o.hasSerializerClass}"
+        println("${o.implVersion.padEnd(8)}  ${o.verdict}$extra$tail")
+    }
+}
+
+@OptIn(ExperimentalPathApi::class)
+private fun runPluginOne(implVersion: String, fixtureDir: Path, workDir: Path): PluginOutcome {
+    resetDir(workDir)
+    val sourcesDir = workDir.resolve("sources").also { copyFixture(fixtureDir, it) }
+    val classesDir = workDir.resolve("classes").also { it.createDirectories() }
+    val icDir = workDir.resolve("ic").also { it.createDirectories() }
+    val shrunk = workDir.resolve("snapshots").also { it.createDirectories() }
+        .resolve("shrunk-classpath-snapshot.bin")
+
+    val pluginFixtureClasspath = System.getProperty("plugin.fixture.classpath.$implVersion")
+        ?: return PluginOutcome(implVersion, PluginVerdict.RED_OTHER, null, emptyList(), false,
+            IllegalStateException("plugin.fixture.classpath.$implVersion not set"))
+    val pluginJar = System.getProperty("plugin.jar.$implVersion")
+        ?: return PluginOutcome(implVersion, PluginVerdict.RED_OTHER, null, emptyList(), false,
+            IllegalStateException("plugin.jar.$implVersion not set"))
+
+    val toolchain = try {
+        loadToolchain(implVersion)
+    } catch (t: Throwable) {
+        return PluginOutcome(implVersion, classifyPlugin(t), null, emptyList(), false, t)
+    }
+
+    val sources: List<Path> = sourcesDir.walk()
+        .filter { it.extension == "kt" || it.extension == "java" }
+        .sorted().toList()
+
+    val compilationResult = try {
+        val builder = toolchain.jvm.jvmCompilationOperationBuilder(sources, classesDir)
+        // Passthrough under test: deliver the serialization plugin via the
+        // CLI-style `-Xplugin=` argument rather than the structured
+        // `COMPILER_PLUGINS` key (which is 2.3.20-only). `applyArgumentStrings`
+        // is the only BTA-API surface present in 2.3.0 that accepts raw
+        // kotlinc CLI tokens; the 2.3.20 `Kotlin230AndBelowWrapper` itself
+        // uses this method to move arguments from the builder to the real
+        // impl, so the passthrough is load-bearing for the wrapper path.
+        //
+        // Order matters: `applyArgumentStrings` resets non-mentioned
+        // arguments to their parser defaults (observed: moduleName becomes
+        // null). Call it before the structured `set(...)` calls so the
+        // builder ends with the structured values we care about.
+        builder.compilerArguments.applyArgumentStrings(listOf("-Xplugin=$pluginJar"))
+        builder.compilerArguments[JvmCompilerArguments.CLASSPATH] = pluginFixtureClasspath
+        builder.compilerArguments[JvmCompilerArguments.MODULE_NAME] = "spike-plugin-smoke"
+        builder.compilerArguments[JvmCompilerArguments.NO_STDLIB] = true
+        builder.compilerArguments[JvmCompilerArguments.NO_REFLECT] = true
+
+        val icConfig = builder.snapshotBasedIcConfigurationBuilder(
+            workingDirectory = icDir,
+            sourcesChanges = SourcesChanges.ToBeCalculated,
+            dependenciesSnapshotFiles = emptyList(),
+            shrunkClasspathSnapshot = shrunk,
+        ).build()
+        builder[JvmCompilationOperation.INCREMENTAL_COMPILATION] = icConfig
+
+        builder[BuildOperation.METRICS_COLLECTOR] = object : BuildMetricsCollector {
+            override fun collectMetric(name: String, type: BuildMetricsCollector.ValueType, value: Long) { /* ignore */ }
+        }
+
+        val op = builder.build()
+        val policy = toolchain.createInProcessExecutionPolicy()
+        toolchain.createBuildSession().use { session -> session.executeOperation(op, policy) }
+    } catch (t: Throwable) {
+        return PluginOutcome(implVersion, classifyPlugin(t), null, emptyList(), false, t)
+    }
+
+    val generated = classesDir.walk()
+        .filter { it.extension == "class" }
+        .map { it.relativeTo(classesDir).toString() }
+        .sorted().toList()
+    // serialization plugin synthesises a `$serializer` nested class inside the
+    // annotated data class's output. Its presence is the GREEN signal.
+    val hasSerializer = generated.any { it.contains("\$\$serializer") || it.endsWith("\$serializer.class") }
+
+    val verdict = when {
+        compilationResult != CompilationResult.COMPILATION_SUCCESS -> PluginVerdict.RED_COMPILE
+        !hasSerializer -> PluginVerdict.RED_NO_GEN
+        else -> PluginVerdict.GREEN
+    }
+
+    return PluginOutcome(
+        implVersion = implVersion,
+        verdict = verdict,
+        compilationResult = compilationResult.name,
+        generatedClasses = generated,
+        hasSerializerClass = hasSerializer,
+        error = null,
+    )
+}
+
+private fun classifyPlugin(t: Throwable): PluginVerdict {
+    var cur: Throwable? = t
+    while (cur != null) {
+        when (cur) {
+            is NoSuchMethodError, is AbstractMethodError -> return PluginVerdict.RED_METHOD
+            is LinkageError, is NoClassDefFoundError -> return PluginVerdict.RED_LINKAGE
+        }
+        cur = cur.cause
+    }
+    return PluginVerdict.RED_OTHER
+}
+
+private fun printPluginOutcome(o: PluginOutcome) {
+    println("verdict: ${o.verdict}")
+    o.compilationResult?.let { println("compile: $it") }
+    println("generated classes (${o.generatedClasses.size}):")
+    o.generatedClasses.forEach { println("  $it") }
+    println("has \$serializer: ${o.hasSerializerClass}")
+    o.error?.let { t ->
+        println("error: ${t.javaClass.name}: ${t.message}")
+        t.printStackTrace(System.out)
+    }
 }
