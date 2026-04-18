@@ -1,6 +1,8 @@
 package bench
 
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.PrintStream
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.CountDownLatch
 import kotlin.system.measureTimeMillis
@@ -171,12 +173,17 @@ fun main() {
         )
         r.firstFailure?.let { e ->
             println("  first failure: ${e::class.qualifiedName}: ${e.message}")
+            r.firstFailureExitCode?.let { println("  exit code: $it") }
             e.stackTrace.take(6).forEach { println("    at $it") }
             var cause = e.cause
             while (cause != null && cause !== e) {
                 println("  caused by: ${cause::class.qualifiedName}: ${cause.message}")
                 cause.stackTrace.take(3).forEach { println("    at $it") }
                 cause = cause.cause
+            }
+            r.firstFailureStderr?.let { text ->
+                println("  captured stderr (truncated to 40 lines):")
+                text.lineSequence().take(40).forEach { println("    $it") }
             }
         }
     }
@@ -325,6 +332,8 @@ private data class ConcurrentResult(
     val totalCompiles: Int,
     val failures: Int,
     val firstFailure: Throwable?,
+    val firstFailureStderr: String?,
+    val firstFailureExitCode: String?,
     val perCompileTimes: List<Long>,
 )
 
@@ -338,16 +347,20 @@ private fun runConcurrent(
     val allTimes = Array(threads) { LongArray(perThread) }
     val failureCounts = IntArray(threads)
     val firstErrors = arrayOfNulls<Throwable>(threads)
+    val firstStderrs = arrayOfNulls<String>(threads)
+    val firstExitCodes = arrayOfNulls<String>(threads)
     val workers = (0 until threads).map { idx ->
         Thread({
             startLatch.await()
             for (i in 0 until perThread) {
                 val src = listOf(rotatingSources[(idx * perThread + i) % rotatingSources.size])
+                val buf = ByteArrayOutputStream()
+                val stream = PrintStream(buf)
                 var result: CompileResult? = null
                 var error: Throwable? = null
                 val ms = measureTimeMillis {
                     try {
-                        result = driver.compile(src, freshOutputDir())
+                        result = driver.compile(src, freshOutputDir(), stream)
                     } catch (e: Throwable) {
                         error = if (e is InvocationTargetException) (e.cause ?: e) else e
                     }
@@ -358,6 +371,8 @@ private fun runConcurrent(
                     if (firstErrors[idx] == null) {
                         firstErrors[idx] = error
                             ?: RuntimeException("compile failed: $result")
+                        firstStderrs[idx] = buf.toString().takeIf { it.isNotBlank() }
+                        firstExitCodes[idx] = (result as? CompileResult.Failed)?.exitCode
                     }
                 }
             }
@@ -367,13 +382,15 @@ private fun runConcurrent(
     startLatch.countDown()
     workers.forEach { it.join() }
     val wallMs = System.currentTimeMillis() - wallStart
-    val firstFailure = firstErrors.firstOrNull { it != null }
+    val firstIdx = firstErrors.indexOfFirst { it != null }
     return ConcurrentResult(
         threads = threads,
         wallMs = wallMs,
         totalCompiles = threads * perThread,
         failures = failureCounts.sum(),
-        firstFailure = firstFailure,
+        firstFailure = if (firstIdx >= 0) firstErrors[firstIdx] else null,
+        firstFailureStderr = if (firstIdx >= 0) firstStderrs[firstIdx] else null,
+        firstFailureExitCode = if (firstIdx >= 0) firstExitCodes[firstIdx] else null,
         perCompileTimes = allTimes.flatMap { it.toList() },
     )
 }
