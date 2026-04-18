@@ -22,15 +22,19 @@ class SharedLoaderCompileDriver(
         execMethod = cliCompiler.getMethod("exec", PrintStream::class.java, Array<String>::class.java)
     }
 
-    fun compile(sources: List<File>, outputDir: File): CompileResult {
+    fun compile(
+        sources: List<File>,
+        outputDir: File,
+        errorStream: PrintStream = nullPrintStream,
+    ): CompileResult {
         val args = buildCompileArgs(sources, outputDir, compileClasspath)
-        val exitCode = execMethod.invoke(compiler, nullPrintStream, args) as Enum<*>
+        val exitCode = execMethod.invoke(compiler, errorStream, args) as Enum<*>
         return if (exitCode.name == "OK") CompileResult.Ok
         else CompileResult.Failed(exitCode.name, emptyList())
     }
 
     companion object {
-        private val nullPrintStream = PrintStream(java.io.OutputStream.nullOutputStream())
+        val nullPrintStream: PrintStream = PrintStream(java.io.OutputStream.nullOutputStream())
     }
 }
 
