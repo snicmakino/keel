@@ -4,6 +4,7 @@ import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getError
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -449,6 +450,33 @@ class ConfigTest {
         assertTrue(
             error.message.contains("[build] target") && error.message.contains("[build.targets"),
             "expected mutual-exclusion error, got: ${error.message}"
+        )
+    }
+
+    @Test
+    fun emptyBuildTargetsTableWithoutScalarReportsTargetRequired() {
+        val toml = """
+            name = "my-app"
+            version = "0.1.0"
+
+            [kotlin]
+            version = "2.1.0"
+
+            [build]
+            main = "com.example.main"
+            sources = ["src"]
+
+            [build.targets]
+        """.trimIndent()
+
+        val result = parseConfig(toml)
+
+        assertNull(result.get())
+        val error = assertIs<ConfigError.ParseFailed>(result.getError())
+        assertTrue(error.message.contains("target"), "missing 'target' in: ${error.message}")
+        assertFalse(
+            error.message.contains("multi-target"),
+            "should not report multi-target for empty table, got: ${error.message}"
         )
     }
 
