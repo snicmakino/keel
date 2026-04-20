@@ -213,6 +213,29 @@ fun listJarFiles(path: String): Result<List<String>, ListFilesFailed> {
     return Ok(entries)
 }
 
+// Counterpart to `listSubdirectories` that returns entries which are NOT
+// directories — regular files, sockets, symlinks. Unix daemon sockets land
+// here (S_IFSOCK is not S_IFDIR).
+@OptIn(ExperimentalForeignApi::class)
+fun listFiles(path: String): Result<List<String>, ListFilesFailed> {
+    val dir = opendir(path) ?: return Err(ListFilesFailed(path))
+    val entries = mutableListOf<String>()
+    try {
+        while (true) {
+            val entry = readdir(dir) ?: break
+            val name = entry.pointed.d_name.toKString()
+            if (name == "." || name == "..") continue
+            if (!isDirectory("$path/$name")) {
+                entries.add(name)
+            }
+        }
+    } finally {
+        closedir(dir)
+    }
+    entries.sort()
+    return Ok(entries)
+}
+
 @OptIn(ExperimentalForeignApi::class)
 fun listSubdirectories(path: String): Result<List<String>, ListFilesFailed> {
     val dir = opendir(path) ?: return Err(ListFilesFailed(path))

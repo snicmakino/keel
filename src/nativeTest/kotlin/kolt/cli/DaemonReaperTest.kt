@@ -199,6 +199,74 @@ class DaemonReaperTest {
         }
     }
 
+    // #181: `createDaemonBackend` fingerprints the socket filename
+    // (`daemon-noplugins.sock` or `daemon-<8hex>.sock`). The reaper probed
+    // only the bare `daemon.sock`, so fingerprinted orphans never got
+    // swept. Post-fix, enumeration matches any `daemon*.sock` under a
+    // version dir.
+    @Test
+    fun fingerprintedOrphanedSocketIsReaped() {
+        val base = createTempDir("reaper-fp-orphan-")
+        val projectDir = "$base/fp111"
+        val versionDir = "$projectDir/2.3.20"
+        ensureDirectoryRecursive(versionDir).getOrElse { error("mkdir failed") }
+        writeFileAsString("$versionDir/daemon-noplugins.sock", "").getOrElse { error("write failed") }
+
+        val result = reapStaleDaemons(base)
+
+        assertEquals(1, result.reaped)
+        assertFalse(fileExists(versionDir))
+        assertFalse(fileExists(projectDir))
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    @Test
+    fun fingerprintedLiveDaemonIsPreserved() {
+        val base = createTempDir("reaper-fp-alive-")
+        val projectDir = "$base/fp222"
+        val versionDir = "$projectDir/2.3.20"
+        ensureDirectoryRecursive(versionDir).getOrElse { error("mkdir failed") }
+
+        val socketPath = "$versionDir/daemon-abcd1234.sock"
+        val listenFd = bindAndListen(socketPath)
+        try {
+            val result = reapStaleDaemons(base)
+            assertEquals(0, result.reaped)
+            assertEquals(1, result.alive)
+            assertTrue(fileExists(versionDir), "live fingerprinted daemon dir must not be deleted")
+        } finally {
+            close(listenFd)
+            unlink(socketPath)
+        }
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    @Test
+    fun versionDirWithOneLiveFingerprintSurvivesEvenIfSiblingIsStale() {
+        // Mixed state: one fingerprint's daemon is alive, a sibling
+        // fingerprint's socket is stale. The version dir must stay because
+        // reaping would unlink the live socket; the stale sibling rides
+        // along and gets swept the next time it's the only one left.
+        val base = createTempDir("reaper-fp-mixed-")
+        val projectDir = "$base/fp333"
+        val versionDir = "$projectDir/2.3.20"
+        ensureDirectoryRecursive(versionDir).getOrElse { error("mkdir failed") }
+
+        writeFileAsString("$versionDir/daemon-noplugins.sock", "").getOrElse { error("write failed") }
+        val liveSocket = "$versionDir/daemon-abcd1234.sock"
+        val listenFd = bindAndListen(liveSocket)
+        try {
+            val result = reapStaleDaemons(base)
+            assertEquals(0, result.reaped, "version dir must not be wiped while a fingerprint is alive")
+            assertEquals(1, result.alive)
+            assertTrue(fileExists(liveSocket), "live socket must not be unlinked")
+            assertTrue(fileExists(versionDir))
+        } finally {
+            close(listenFd)
+            unlink(liveSocket)
+        }
+    }
+
     @Test
     fun icSiblingIsNotReaped() {
         val base = createTempDir("reaper-ic-")

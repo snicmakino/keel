@@ -9,32 +9,33 @@ import kotlin.test.assertEquals
 
 // Pins the `stopProjectDaemons` enumeration shape. Each version directory
 // under `<daemonBaseDir>/<projectHash>/` can contain both a JVM daemon
-// socket (`daemon.sock`, ADR 0016) AND a native daemon socket
-// (`native-daemon.sock`, ADR 0024 §3). `daemon stop` must signal both.
-// The legacy pre-#138 socket (`<projectHash>/daemon.sock`, no version
-// segment) only ever held a JVM daemon — the native daemon did not exist
-// before #170 — so only the JVM shutdown helper probes it.
+// socket (`daemon.sock` / `daemon-<fp>.sock`, ADR 0016 + #138 plugin
+// fingerprint) AND a native daemon socket (`native-daemon.sock`,
+// ADR 0024 §3). `daemon stop` must signal all of them. The legacy pre-#138
+// socket (`<projectHash>/daemon.sock`, no version segment) only ever held a
+// JVM daemon — the native daemon did not exist before #170 — so only the
+// JVM shutdown helper probes it.
 class DaemonStopEnumerationTest {
 
     private class FakeFs(
         private val existing: Set<String> = emptySet(),
         private val subdirs: Map<String, List<String>> = emptyMap(),
+        private val files: Map<String, List<String>> = emptyMap(),
     ) {
         fun exists(path: String): Boolean = path in existing
         fun list(path: String): Result<List<String>, ListFilesFailed> =
             subdirs[path]?.let(::Ok) ?: Err(ListFilesFailed(path))
+        fun listFiles(path: String): Result<List<String>, ListFilesFailed> =
+            files[path]?.let(::Ok) ?: Err(ListFilesFailed(path))
     }
 
     @Test
     fun enumeratesBothJvmAndNativeSocketsUnderEachVersionDir() {
         val projectDir = "/home/u/.kolt/daemon/abc123"
         val fs = FakeFs(
-            existing = setOf(
-                "$projectDir",
-                "$projectDir/2.3.20/daemon.sock",
-                "$projectDir/2.3.20/native-daemon.sock",
-            ),
+            existing = setOf(projectDir),
             subdirs = mapOf(projectDir to listOf("2.3.20")),
+            files = mapOf("$projectDir/2.3.20" to listOf("daemon.sock", "native-daemon.sock")),
         )
         val jvmSockets = mutableListOf<String>()
         val nativeSockets = mutableListOf<String>()
@@ -43,6 +44,7 @@ class DaemonStopEnumerationTest {
             projectDir = projectDir,
             fileExists = fs::exists,
             listSubdirectories = fs::list,
+            listFiles = fs::listFiles,
             sendJvmShutdown = { jvmSockets += it; true },
             sendNativeShutdown = { nativeSockets += it; true },
         )
@@ -53,64 +55,153 @@ class DaemonStopEnumerationTest {
     }
 
     @Test
-    fun versionDirWithOnlyJvmSocketCountsOnlyJvm() {
+    fun enumeratesFingerprintedJvmSocket() {
+        // #138 plugin fingerprint: `applyPluginsFingerprintToFile` rewrites
+        // `daemon.sock` → `daemon-noplugins.sock` (no plugins) or
+        // `daemon-<8hex>.sock`. Before #181 these were invisible to `stop`.
         val projectDir = "/home/u/.kolt/daemon/hash"
         val fs = FakeFs(
-            existing = setOf("$projectDir", "$projectDir/2.3.20/daemon.sock"),
+            existing = setOf(projectDir),
             subdirs = mapOf(projectDir to listOf("2.3.20")),
+            files = mapOf("$projectDir/2.3.20" to listOf("daemon-noplugins.sock")),
         )
-        var nativeCalls = 0
+        val jvmSockets = mutableListOf<String>()
 
         val stopped = stopProjectDaemons(
             projectDir = projectDir,
             fileExists = fs::exists,
             listSubdirectories = fs::list,
-            sendJvmShutdown = { true },
-            sendNativeShutdown = { nativeCalls++; true },
+            listFiles = fs::listFiles,
+            sendJvmShutdown = { jvmSockets += it; true },
+            sendNativeShutdown = { error("must not send") },
         )
 
         assertEquals(1, stopped)
-        assertEquals(0, nativeCalls, "native send must not fire when the socket is absent")
+        assertEquals(listOf("$projectDir/2.3.20/daemon-noplugins.sock"), jvmSockets)
+    }
+
+    @Test
+    fun enumeratesMultipleFingerprintedJvmSocketsInOneVersionDir() {
+        // A project can have several plugin configurations coexisting
+        // (e.g. test compile vs main compile) → multiple fingerprinted
+        // daemons under the same version dir. Stop must hit all of them.
+        val projectDir = "/home/u/.kolt/daemon/hash"
+        val fs = FakeFs(
+            existing = setOf(projectDir),
+            subdirs = mapOf(projectDir to listOf("2.3.20")),
+            files = mapOf(
+                "$projectDir/2.3.20" to listOf(
+                    "daemon-abcd1234.sock",
+                    "daemon-noplugins.sock",
+                ),
+            ),
+        )
+        val jvmSockets = mutableListOf<String>()
+
+        val stopped = stopProjectDaemons(
+            projectDir = projectDir,
+            fileExists = fs::exists,
+            listSubdirectories = fs::list,
+            listFiles = fs::listFiles,
+            sendJvmShutdown = { jvmSockets += it; true },
+            sendNativeShutdown = { error("must not send") },
+        )
+
+        assertEquals(2, stopped)
+        assertEquals(
+            listOf(
+                "$projectDir/2.3.20/daemon-abcd1234.sock",
+                "$projectDir/2.3.20/daemon-noplugins.sock",
+            ),
+            jvmSockets,
+        )
+    }
+
+    @Test
+    fun nativeDaemonSockIsNotMatchedByJvmEnumeration() {
+        // `native-daemon.sock` starts with `native-`, not `daemon-`, so the
+        // JVM fingerprint pattern must not pick it up. A native-only
+        // version dir counts as one native shutdown, zero JVM.
+        val projectDir = "/home/u/.kolt/daemon/hash"
+        val fs = FakeFs(
+            existing = setOf(projectDir),
+            subdirs = mapOf(projectDir to listOf("2.3.20")),
+            files = mapOf("$projectDir/2.3.20" to listOf("native-daemon.sock")),
+        )
+        val nativeSockets = mutableListOf<String>()
+
+        val stopped = stopProjectDaemons(
+            projectDir = projectDir,
+            fileExists = fs::exists,
+            listSubdirectories = fs::list,
+            listFiles = fs::listFiles,
+            sendJvmShutdown = { error("must not send — `native-daemon.sock` is not a JVM daemon") },
+            sendNativeShutdown = { nativeSockets += it; true },
+        )
+
+        assertEquals(1, stopped)
+        assertEquals(listOf("$projectDir/2.3.20/native-daemon.sock"), nativeSockets)
+    }
+
+    @Test
+    fun versionDirWithOnlyJvmSocketCountsOnlyJvm() {
+        val projectDir = "/home/u/.kolt/daemon/hash"
+        val fs = FakeFs(
+            existing = setOf(projectDir),
+            subdirs = mapOf(projectDir to listOf("2.3.20")),
+            files = mapOf("$projectDir/2.3.20" to listOf("daemon.sock")),
+        )
+
+        val stopped = stopProjectDaemons(
+            projectDir = projectDir,
+            fileExists = fs::exists,
+            listSubdirectories = fs::list,
+            listFiles = fs::listFiles,
+            sendJvmShutdown = { true },
+            sendNativeShutdown = { error("must not send") },
+        )
+
+        assertEquals(1, stopped)
     }
 
     @Test
     fun versionDirWithOnlyNativeSocketCountsOnlyNative() {
         val projectDir = "/home/u/.kolt/daemon/hash"
         val fs = FakeFs(
-            existing = setOf("$projectDir", "$projectDir/2.3.20/native-daemon.sock"),
+            existing = setOf(projectDir),
             subdirs = mapOf(projectDir to listOf("2.3.20")),
+            files = mapOf("$projectDir/2.3.20" to listOf("native-daemon.sock")),
         )
-        var jvmCalls = 0
 
         val stopped = stopProjectDaemons(
             projectDir = projectDir,
             fileExists = fs::exists,
             listSubdirectories = fs::list,
-            sendJvmShutdown = { jvmCalls++; true },
+            listFiles = fs::listFiles,
+            sendJvmShutdown = { error("must not send") },
             sendNativeShutdown = { true },
         )
 
         assertEquals(1, stopped)
-        assertEquals(0, jvmCalls, "jvm send must not fire when the socket is absent")
     }
 
     @Test
     fun multipleVersionDirsEnumerateAllSockets() {
         val projectDir = "/home/u/.kolt/daemon/hash"
         val fs = FakeFs(
-            existing = setOf(
-                "$projectDir",
-                "$projectDir/2.3.20/daemon.sock",
-                "$projectDir/2.3.20/native-daemon.sock",
-                "$projectDir/2.4.0/daemon.sock",
-            ),
+            existing = setOf(projectDir),
             subdirs = mapOf(projectDir to listOf("2.3.20", "2.4.0")),
+            files = mapOf(
+                "$projectDir/2.3.20" to listOf("daemon.sock", "native-daemon.sock"),
+                "$projectDir/2.4.0" to listOf("daemon-noplugins.sock"),
+            ),
         )
 
         val stopped = stopProjectDaemons(
             projectDir = projectDir,
             fileExists = fs::exists,
             listSubdirectories = fs::list,
+            listFiles = fs::listFiles,
             sendJvmShutdown = { true },
             sendNativeShutdown = { true },
         )
@@ -123,44 +214,42 @@ class DaemonStopEnumerationTest {
         // Pre-#138 layout: a single `<projectHash>/daemon.sock`, no version
         // subdirectory. Native daemon was introduced in #170 and never
         // lived under the legacy layout, so only the JVM shutdown helper
-        // is tried at this path.
+        // is tried at this path. Enumeration uses `fileExists` here because
+        // the legacy filename is fixed and no sibling fingerprints exist.
         val projectDir = "/home/u/.kolt/daemon/hash"
         val fs = FakeFs(
-            existing = setOf("$projectDir", "$projectDir/daemon.sock"),
+            existing = setOf(projectDir, "$projectDir/daemon.sock"),
             subdirs = mapOf(projectDir to emptyList()),
         )
         val jvmSockets = mutableListOf<String>()
-        var nativeCalls = 0
 
         val stopped = stopProjectDaemons(
             projectDir = projectDir,
             fileExists = fs::exists,
             listSubdirectories = fs::list,
+            listFiles = fs::listFiles,
             sendJvmShutdown = { jvmSockets += it; true },
-            sendNativeShutdown = { nativeCalls++; true },
+            sendNativeShutdown = { error("must not send") },
         )
 
         assertEquals(1, stopped)
         assertEquals(listOf("$projectDir/daemon.sock"), jvmSockets)
-        assertEquals(0, nativeCalls, "native shutdown must not probe the legacy layout")
     }
 
     @Test
     fun failingSendDoesNotCount() {
         val projectDir = "/home/u/.kolt/daemon/hash"
         val fs = FakeFs(
-            existing = setOf(
-                "$projectDir",
-                "$projectDir/2.3.20/daemon.sock",
-                "$projectDir/2.3.20/native-daemon.sock",
-            ),
+            existing = setOf(projectDir),
             subdirs = mapOf(projectDir to listOf("2.3.20")),
+            files = mapOf("$projectDir/2.3.20" to listOf("daemon.sock", "native-daemon.sock")),
         )
 
         val stopped = stopProjectDaemons(
             projectDir = projectDir,
             fileExists = fs::exists,
             listSubdirectories = fs::list,
+            listFiles = fs::listFiles,
             sendJvmShutdown = { false },
             sendNativeShutdown = { true },
         )
@@ -170,18 +259,11 @@ class DaemonStopEnumerationTest {
 
     @Test
     fun jvmSuccessDoesNotCoverForNativeFailureInSameVersionDir() {
-        // Each arm reports independently — a half-dead daemon pair should
-        // count as 1, not 2. Mirrors `failingSendDoesNotCount` but with
-        // the opposite failure half so the pair together pin "count only
-        // the arm that actually sent" on both legs.
         val projectDir = "/home/u/.kolt/daemon/hash"
         val fs = FakeFs(
-            existing = setOf(
-                "$projectDir",
-                "$projectDir/2.3.20/daemon.sock",
-                "$projectDir/2.3.20/native-daemon.sock",
-            ),
+            existing = setOf(projectDir),
             subdirs = mapOf(projectDir to listOf("2.3.20")),
+            files = mapOf("$projectDir/2.3.20" to listOf("daemon.sock", "native-daemon.sock")),
         )
         val jvmSockets = mutableListOf<String>()
         val nativeSockets = mutableListOf<String>()
@@ -190,6 +272,7 @@ class DaemonStopEnumerationTest {
             projectDir = projectDir,
             fileExists = fs::exists,
             listSubdirectories = fs::list,
+            listFiles = fs::listFiles,
             sendJvmShutdown = { jvmSockets += it; true },
             sendNativeShutdown = { nativeSockets += it; false },
         )
@@ -207,6 +290,7 @@ class DaemonStopEnumerationTest {
             projectDir = "/nowhere",
             fileExists = fs::exists,
             listSubdirectories = fs::list,
+            listFiles = fs::listFiles,
             sendJvmShutdown = { error("must not send") },
             sendNativeShutdown = { error("must not send") },
         )
