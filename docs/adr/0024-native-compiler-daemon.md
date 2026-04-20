@@ -50,7 +50,7 @@ Lifecycle config (initial values, tunable later):
 | Idle timeout | 10 min | Shorter than JVM daemon (30 min) — native builds are less frequent |
 | Max compiles | 500 | Conservative; stress test showed no drift at 100 |
 | Heap watermark | 2 GB | Stage 2 linking uses significant LLVM backend memory |
-| `-Xmx` | 4 GB | Stress test ran cleanly at this limit |
+| `-Xmx` | 4 GB | Stress test ran cleanly at this limit; pinned as `NativeDaemonBackend.HEAP_CEILING_XMX` (native client) — tune the constant and this row together |
 
 The daemon is spawned on demand by the native client (same pattern as JVM daemon) and exits cleanly when any threshold is reached.
 
