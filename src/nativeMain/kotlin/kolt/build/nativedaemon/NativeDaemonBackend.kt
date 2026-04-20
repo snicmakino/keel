@@ -132,9 +132,7 @@ class NativeDaemonBackend internal constructor(
         )
     }
 
-    // ADR 0024 §8 pins the three daemon CLI flags; the heap ceiling lives in
-    // `HEAP_CEILING_XMX` so tuning is a one-edit change paired with the ADR
-    // 0024 §3 table.
+    // ADR 0024 §8: the three daemon CLI flags.
     private fun spawnArgv(): List<String> = buildList {
         add(javaBin)
         add(HEAP_CEILING_XMX)
@@ -153,15 +151,9 @@ class NativeDaemonBackend internal constructor(
         internal const val MAX_BACKOFF_MS = 200
         internal const val CONNECT_TOTAL_BUDGET_MS: Long = 3000L
 
-        // SSoT for the native daemon's JVM heap ceiling. ADR 0024 §3 is the
-        // prose rationale (spike validated reflective K2Native.exec() at 4G;
-        // stage 2 LLVM linking OOMs below it on medium fixtures); keep the
-        // constant and the §3 table row in lockstep.
-        //
-        // Asymmetry: `kolt.build.daemon.DaemonCompilerBackend.spawnArgv`
-        // deliberately omits `-Xmx`. BTA's steady-state heap is modest and
-        // leaves `-Xmx` to the JVM default, while K2Native's LLVM backend
-        // allocates enough during linking that an explicit ceiling is needed.
+        // Heap ceiling SSoT — lockstep with ADR 0024 §3.
+        // JVM daemon's spawnArgv omits `-Xmx` by design: BTA's steady-state
+        // heap is modest; K2Native's LLVM backend needs an explicit ceiling.
         internal const val HEAP_CEILING_XMX = "-Xmx4G"
     }
 }

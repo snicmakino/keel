@@ -354,8 +354,7 @@ class NativeDaemonBackendConnectAndSpawnTest {
         backend.compile(sampleArgs)
 
         val argv = assertNotNull(capturedArgv)
-        // ADR 0024 §3 pins the heap ceiling; the constant is the SSoT so the
-        // assertion names it rather than the literal.
+        // Pin the literal so a typo in the constant is caught here.
         assertEquals("-Xmx4G", NativeDaemonBackend.HEAP_CEILING_XMX)
         assertTrue(NativeDaemonBackend.HEAP_CEILING_XMX in argv, "missing heap ceiling: $argv")
         // ADR 0024 §8: the three daemon-side CLI flags are non-negotiable.
