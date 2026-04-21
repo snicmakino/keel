@@ -11,10 +11,7 @@ import kotlin.test.assertEquals
 // under `<daemonBaseDir>/<projectHash>/` can contain both a JVM daemon
 // socket (`daemon.sock` / `daemon-<fp>.sock`, ADR 0016 + #138 plugin
 // fingerprint) AND a native daemon socket (`native-daemon.sock`,
-// ADR 0024 §3). `daemon stop` must signal all of them. The legacy pre-#138
-// socket (`<projectHash>/daemon.sock`, no version segment) only ever held a
-// JVM daemon — the native daemon did not exist before #170 — so only the
-// JVM shutdown helper probes it.
+// ADR 0024 §3). `daemon stop` must signal all of them.
 class DaemonStopEnumerationTest {
 
     private class FakeFs(
@@ -207,33 +204,6 @@ class DaemonStopEnumerationTest {
         )
 
         assertEquals(3, stopped, "three sockets across two version dirs")
-    }
-
-    @Test
-    fun legacyDaemonSockIsJvmOnly() {
-        // Pre-#138 layout: a single `<projectHash>/daemon.sock`, no version
-        // subdirectory. Native daemon was introduced in #170 and never
-        // lived under the legacy layout, so only the JVM shutdown helper
-        // is tried at this path. Enumeration uses `fileExists` here because
-        // the legacy filename is fixed and no sibling fingerprints exist.
-        val projectDir = "/home/u/.kolt/daemon/hash"
-        val fs = FakeFs(
-            existing = setOf(projectDir, "$projectDir/daemon.sock"),
-            subdirs = mapOf(projectDir to emptyList()),
-        )
-        val jvmSockets = mutableListOf<String>()
-
-        val stopped = stopProjectDaemons(
-            projectDir = projectDir,
-            fileExists = fs::exists,
-            listSubdirectories = fs::list,
-            listFiles = fs::listFiles,
-            sendJvmShutdown = { jvmSockets += it; true },
-            sendNativeShutdown = { error("must not send") },
-        )
-
-        assertEquals(1, stopped)
-        assertEquals(listOf("$projectDir/daemon.sock"), jvmSockets)
     }
 
     @Test

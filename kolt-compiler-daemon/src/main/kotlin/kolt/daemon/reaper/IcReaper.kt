@@ -25,8 +25,9 @@ import java.nio.file.StandardOpenOption
 //     `IcStateLayout.projectIdFor` is a one-way SHA-256, we cannot
 //     recover the project path from the hash — so the adapter drops a
 //     `project.path` breadcrumb at cold path and the reaper reads it
-//     back. No breadcrumb → keep (legacy state from before this reaper
-//     shipped is preserved, not nuked).
+//     back. Anything that does not resolve to an existing on-disk path
+//     (missing breadcrumb, empty content, unparseable path, vanished
+//     projectRoot) is dropped into `tryDelete`.
 //
 // Exclusion: an advisory `tryLock` probe on `<projectIdDir>/LOCK`.
 // `BtaIncrementalCompiler` holds this lock for the daemon's lifetime,
@@ -41,7 +42,6 @@ object IcReaper {
         val scanned: Int,
         val removed: Int,
         val skippedLocked: Int,
-        val skippedMissingBreadcrumb: Int,
         val errors: List<String>,
     )
 
@@ -51,7 +51,6 @@ object IcReaper {
         var scanned = 0
         var removed = 0
         var skippedLocked = 0
-        var skippedMissingBreadcrumb = 0
         val errors = mutableListOf<String>()
 
         directoryChildren(icRoot).forEach { versionDir ->
@@ -70,27 +69,7 @@ object IcReaper {
                 } else {
                     directoryChildren(versionDir).forEach { projectIdDir ->
                         scanned++
-                        val breadcrumb = projectIdDir.resolve(BREADCRUMB)
-                        if (!Files.isRegularFile(breadcrumb)) {
-                            skippedMissingBreadcrumb++
-                            return@forEach
-                        }
-                        val projectRoot = runCatching { Files.readString(breadcrumb).trim() }.getOrNull()
-                        if (projectRoot.isNullOrEmpty()) {
-                            skippedMissingBreadcrumb++
-                            return@forEach
-                        }
-                        // A corrupt breadcrumb (mid-write crash, garbage
-                        // bytes, encoding mismatch) must not crash the
-                        // reaper. Treat the dir as if no breadcrumb were
-                        // present so it is preserved, not deleted.
-                        val resolvedProjectRoot = try {
-                            Path.of(projectRoot)
-                        } catch (_: InvalidPathException) {
-                            skippedMissingBreadcrumb++
-                            return@forEach
-                        }
-                        if (Files.exists(resolvedProjectRoot)) return@forEach
+                        if (breadcrumbPointsToExistingPath(projectIdDir)) return@forEach
                         when (val outcome = tryDelete(projectIdDir)) {
                             DeleteOutcome.Removed -> removed++
                             DeleteOutcome.Locked -> skippedLocked++
@@ -108,10 +87,25 @@ object IcReaper {
         metrics.record("reaper.scanned", scanned.toLong())
         metrics.record("reaper.removed", removed.toLong())
         metrics.record("reaper.skipped_locked", skippedLocked.toLong())
-        metrics.record("reaper.skipped_missing_breadcrumb", skippedMissingBreadcrumb.toLong())
         if (errors.isNotEmpty()) metrics.record("reaper.error", errors.size.toLong())
 
-        return Report(scanned, removed, skippedLocked, skippedMissingBreadcrumb, errors.toList())
+        return Report(scanned, removed, skippedLocked, errors.toList())
+    }
+
+    // Breadcrumb is live only when it resolves to an on-disk path that still
+    // exists. Anything else — missing file, empty content, unparseable path —
+    // falls through to `tryDelete`, where the LOCK probe is the last line of
+    // defence against clobbering an in-flight compile.
+    private fun breadcrumbPointsToExistingPath(projectIdDir: Path): Boolean {
+        val breadcrumb = projectIdDir.resolve(BREADCRUMB)
+        val projectRoot = runCatching { Files.readString(breadcrumb).trim() }.getOrNull()
+        if (projectRoot.isNullOrEmpty()) return false
+        val resolvedProjectRoot = try {
+            Path.of(projectRoot)
+        } catch (_: InvalidPathException) {
+            return false
+        }
+        return Files.exists(resolvedProjectRoot)
     }
 
     fun runDetached(
@@ -200,7 +194,6 @@ object IcReaper {
         scanned = 0,
         removed = 0,
         skippedLocked = 0,
-        skippedMissingBreadcrumb = 0,
         errors = emptyList(),
     )
 
