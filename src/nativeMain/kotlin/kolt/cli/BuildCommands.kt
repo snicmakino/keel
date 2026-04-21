@@ -441,7 +441,29 @@ private fun runCinterop(config: KoltConfig, paths: KoltPaths): Result<List<Strin
     return Ok(klibs)
 }
 
+// ADR 0023 §1: library kind has no entry point; `kolt run` pre-empts the
+// build pipeline with this canonical stderr line.
+private const val RUN_LIB_ERROR = "library projects cannot be run"
+
+// Pure kind guard for `kolt run` / `kolt run --watch`. Returns
+// `Err(EXIT_CONFIG_ERROR)` for library configs (ADR 0023 §1) and `Ok`
+// for apps. Lifted to a top-level helper so `doRun` and `watchRunLoop`
+// share one rejection path and the guard can be tested hermetically
+// per design.md §Testing Strategy.
+internal fun rejectIfLibrary(
+    config: KoltConfig,
+    eprint: (String) -> Unit = ::eprintln,
+): Result<Unit, Int> {
+    if (!config.isLibrary()) return Ok(Unit)
+    eprint("error: $RUN_LIB_ERROR")
+    return Err(EXIT_CONFIG_ERROR)
+}
+
 internal fun doRun(config: KoltConfig, classpath: String?, appArgs: List<String> = emptyList(), javaPath: String? = null): Result<Unit, Int> {
+    // ADR 0023 §1 kind gate: reject libraries before any artifact lookup
+    // or process launch. Target-agnostic by design (R4.3).
+    rejectIfLibrary(config).getOrElse { return Err(it) }
+
     if (config.build.target in NATIVE_TARGETS) {
         val kexePath = outputKexePath(config)
         if (!fileExists(kexePath)) {
@@ -463,7 +485,8 @@ internal fun doRun(config: KoltConfig, classpath: String?, appArgs: List<String>
     }
 
     // Parser invariant `kind == "app" ⇒ main != null` guarantees non-null;
-    // the `?: return` keeps ADR 0001 safe until the Task 3.2 kind gate lands.
+    // the kind gate above pre-empts libs, so this `?: return` is ADR 0001
+    // safety for the parser invariant and is unreachable on apps at runtime.
     val jvmMain = config.build.main ?: return Err(EXIT_BUILD_ERROR)
     val cmd = runCommand(config, main = jvmMain, classpath = classpath, appArgs = appArgs, javaPath = javaPath)
     executeCommand(cmd.args).getOrElse { error ->

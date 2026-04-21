@@ -37,6 +37,11 @@ fun main(args: Array<String>) {
             if (watch) {
                 watchRunLoop(useDaemon, appArgs)
             } else {
+                // ADR 0023 §1 kind gate: reject libraries before the
+                // build pipeline runs (R4.2). doRun has the same guard
+                // for defense-in-depth when called through other paths.
+                val parsed = loadProjectConfig().getOrElse { exitProcess(it) }
+                rejectIfLibrary(parsed).getOrElse { exitProcess(it) }
                 val (config, classpath, javaPath) = doBuild(useDaemon = useDaemon).getOrElse { exitProcess(it) }
                 doRun(config, classpath, appArgs, javaPath).getOrElse { exitProcess(it) }
             }

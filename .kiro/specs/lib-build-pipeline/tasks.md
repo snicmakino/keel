@@ -44,14 +44,14 @@ convention, red/green/refactor do not need to be separate commits).
 
 ## 3. Run command — reject libraries before build work
 
-- [ ] 3.1 Add failing tests for the library-run rejection
+- [x] 3.1 Add failing tests for the library-run rejection
   - Assert that the run command against a library config exits with the config-error exit code and emits the canonical `library projects cannot be run` substring to stderr
   - Assert the rejection occurs before any artifact resolution or build invocation
   - Assert that run-watch against a library rejects once and exits cleanly (no per-source-change error spam)
   - Observable: three new failing tests in a dedicated file.
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [ ] 3.2 Add the kind guard in the run command and the run-watch loop entry
+- [x] 3.2 Add the kind guard in the run command and the run-watch loop entry
   - Introduce the canonical run-rejection message as a top-level `private const val` near the run command with an ADR 0023 §1 citation comment
   - As the first statement after config parsing in both the single-shot run command and the run-watch loop entry, check `isLibrary()` and return `Err(EXIT_CONFIG_ERROR)` with the canonical stderr line
   - Observable: the 3.1 tests pass; existing run-command tests for apps stay green; no build work executes when a library is asked to run.
