@@ -3,6 +3,7 @@ package kolt.cli
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
 import kolt.config.KoltPaths
 import kolt.config.resolveKoltPaths
@@ -14,7 +15,16 @@ import kolt.infra.formatBytes
 import kolt.infra.removeDirectoryRecursive
 
 internal data class CacheCleanArgs(val includeTools: Boolean)
-internal data class CacheCleanSummary(val removedPaths: List<String>, val freedBytes: Long)
+
+// `error` is non-null when removal of one of the targets fails; the
+// `removedPaths` and `freedBytes` fields still report whatever was
+// successfully cleared up to that point so the caller can tell the
+// user how much was reclaimed before the failure.
+internal data class CacheCleanResult(
+    val removedPaths: List<String>,
+    val freedBytes: Long,
+    val error: RemoveFailed? = null,
+)
 
 internal fun parseCacheCleanArgs(args: List<String>): Result<CacheCleanArgs, String> {
     var includeTools = false
@@ -41,7 +51,7 @@ internal fun doCache(args: List<String>): Result<Unit, Int> {
     }
 }
 
-internal fun cleanCacheDirs(paths: KoltPaths, includeTools: Boolean): Result<CacheCleanSummary, RemoveFailed> {
+internal fun cleanCacheDirs(paths: KoltPaths, includeTools: Boolean): CacheCleanResult {
     val targets = mutableListOf(paths.cacheBase)
     if (includeTools) targets.add(paths.toolsDir)
 
@@ -49,11 +59,18 @@ internal fun cleanCacheDirs(paths: KoltPaths, includeTools: Boolean): Result<Cac
     var freed = 0L
     for (target in targets) {
         if (!fileExists(target)) continue
-        freed += directorySize(target)
-        removeDirectoryRecursive(target).getOrElse { return Err(it) }
+        // Size is computed before removal but only credited *after* a
+        // successful remove, so a partial failure doesn't claim freed
+        // bytes for a target that's still on disk.
+        val targetSize = directorySize(target)
+        val err = removeDirectoryRecursive(target).getError()
+        if (err != null) {
+            return CacheCleanResult(removed, freed, err)
+        }
+        freed += targetSize
         removed.add(target)
     }
-    return Ok(CacheCleanSummary(removed, freed))
+    return CacheCleanResult(removed, freed)
 }
 
 private fun doCacheClean(args: List<String>): Result<Unit, Int> {
@@ -65,16 +82,21 @@ private fun doCacheClean(args: List<String>): Result<Unit, Int> {
 
     val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_CONFIG_ERROR) }
 
-    val summary = cleanCacheDirs(paths, parsed.includeTools).getOrElse { err ->
-        eprintln("error: could not remove ${err.path}")
+    val result = cleanCacheDirs(paths, parsed.includeTools)
+    for (path in result.removedPaths) println("removed $path")
+
+    if (result.error != null) {
+        eprintln("error: could not remove ${result.error.path}")
+        if (result.freedBytes > 0) {
+            println("partially freed ${formatBytes(result.freedBytes)} before failure")
+        }
         return Err(EXIT_BUILD_ERROR)
     }
 
-    for (path in summary.removedPaths) println("removed $path")
-    if (summary.freedBytes == 0L) {
+    if (result.freedBytes == 0L) {
         println("nothing to clean")
     } else {
-        println("freed ${formatBytes(summary.freedBytes)}")
+        println("freed ${formatBytes(result.freedBytes)}")
     }
     return Ok(Unit)
 }

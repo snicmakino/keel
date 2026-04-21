@@ -9,6 +9,7 @@ import kolt.infra.fileExists
 import kolt.infra.formatBytes
 import kolt.infra.removeDirectoryRecursive
 import kolt.infra.writeFileAsString
+import kotlin.test.assertNull
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.toKString
@@ -89,10 +90,11 @@ class CacheCommandsTest {
         ensureDirectoryRecursive(paths.cacheBase).getOrElse { error("mkdir cache failed") }
         writeFileAsString("${paths.cacheBase}/a.jar", "0123456789").getOrElse { error("seed a.jar failed") }
 
-        val summary = cleanCacheDirs(paths, includeTools = false).getOrElse { error("clean failed: $it") }
+        val result = cleanCacheDirs(paths, includeTools = false)
 
-        assertEquals(10L, summary.freedBytes)
-        assertEquals(listOf(paths.cacheBase), summary.removedPaths)
+        assertNull(result.error)
+        assertEquals(10L, result.freedBytes)
+        assertEquals(listOf(paths.cacheBase), result.removedPaths)
         assertFalse(fileExists(paths.cacheBase))
     }
 
@@ -101,10 +103,11 @@ class CacheCommandsTest {
         tmpDir = createTempDir("kolt-clean-nothing-")
         val paths = KoltPaths(home = tmpDir)
 
-        val summary = cleanCacheDirs(paths, includeTools = false).getOrElse { error("clean failed: $it") }
+        val result = cleanCacheDirs(paths, includeTools = false)
 
-        assertEquals(0L, summary.freedBytes)
-        assertTrue(summary.removedPaths.isEmpty())
+        assertNull(result.error)
+        assertEquals(0L, result.freedBytes)
+        assertTrue(result.removedPaths.isEmpty())
     }
 
     @Test
@@ -116,10 +119,11 @@ class CacheCommandsTest {
         writeFileAsString("${paths.cacheBase}/a.jar", "12345").getOrElse { error("seed a.jar failed") }
         writeFileAsString("${paths.toolsDir}/ktfmt.jar", "67890").getOrElse { error("seed ktfmt failed") }
 
-        val summary = cleanCacheDirs(paths, includeTools = true).getOrElse { error("clean failed: $it") }
+        val result = cleanCacheDirs(paths, includeTools = true)
 
-        assertEquals(10L, summary.freedBytes)
-        assertEquals(2, summary.removedPaths.size)
+        assertNull(result.error)
+        assertEquals(10L, result.freedBytes)
+        assertEquals(2, result.removedPaths.size)
         assertFalse(fileExists(paths.cacheBase))
         assertFalse(fileExists(paths.toolsDir))
     }
@@ -132,9 +136,32 @@ class CacheCommandsTest {
         ensureDirectoryRecursive(paths.toolsDir).getOrElse { error("mkdir tools failed") }
         writeFileAsString("${paths.toolsDir}/ktfmt.jar", "67890").getOrElse { error("seed ktfmt failed") }
 
-        cleanCacheDirs(paths, includeTools = false).getOrElse { error("clean failed: $it") }
+        cleanCacheDirs(paths, includeTools = false)
 
         assertTrue(fileExists(paths.toolsDir), "tools dir must survive when --tools is not set")
+    }
+
+    @Test
+    fun cleanCacheDirsReportsPartialOnRemoveFailure() {
+        // Seed cacheBase as a directory we can clean, and toolsDir as a
+        // *regular file* so removeDirectoryRecursive's opendir() bails.
+        // After the failure, the cacheBase removal should still be reported.
+        tmpDir = createTempDir("kolt-clean-partial-")
+        val paths = KoltPaths(home = tmpDir)
+        ensureDirectoryRecursive(paths.cacheBase).getOrElse { error("mkdir cache failed") }
+        writeFileAsString("${paths.cacheBase}/a.jar", "12345").getOrElse { error("seed a.jar failed") }
+        ensureDirectoryRecursive(paths.toolsDir.substringBeforeLast('/'))
+            .getOrElse { error("mkdir parent failed") }
+        writeFileAsString(paths.toolsDir, "not a directory").getOrElse { error("seed file failed") }
+
+        val result = cleanCacheDirs(paths, includeTools = true)
+
+        assertNotNull(result.error)
+        assertEquals(paths.toolsDir, result.error.path)
+        assertEquals(listOf(paths.cacheBase), result.removedPaths)
+        assertEquals(5L, result.freedBytes)
+        assertFalse(fileExists(paths.cacheBase))
+        assertTrue(fileExists(paths.toolsDir), "tools 'dir' (actually a file) survives")
     }
 
     private fun createTempDir(prefix: String): String {
