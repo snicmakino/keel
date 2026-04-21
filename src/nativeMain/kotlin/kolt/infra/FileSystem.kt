@@ -142,6 +142,10 @@ fun fileMtime(path: String): Long? {
     }
 }
 
+// `lstat` (not `stat`) so a symlink's own inode size is counted rather
+// than the size of whatever it points at — prevents double-counting
+// when a symlink inside the tree targets a file also enumerated here,
+// and prevents escaping the tree via symlinks to outside paths.
 @OptIn(ExperimentalForeignApi::class)
 fun directorySize(path: String): Long {
     if (!fileExists(path)) return 0L
