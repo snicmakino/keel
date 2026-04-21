@@ -236,7 +236,7 @@ class ConfigTest {
     }
 
     @Test
-    fun nativeTargetIsRejectedWithMigrationHint() {
+    fun nativeTargetIsRejectedAsInvalid() {
         val toml = """
             name = "my-app"
             version = "0.1.0"
@@ -255,7 +255,6 @@ class ConfigTest {
         assertNull(result.get())
         val error = assertIs<ConfigError.ParseFailed>(result.getError())
         assertTrue(error.message.contains("native"), "missing 'native' in: ${error.message}")
-        assertTrue(error.message.contains("linuxX64"), "missing migration hint in: ${error.message}")
     }
 
     @Test
@@ -524,7 +523,7 @@ class ConfigTest {
     }
 
     @Test
-    fun nativeInTargetTableIsRejectedWithMigrationHint() {
+    fun nativeInTargetTableIsRejectedAsInvalid() {
         val toml = """
             name = "my-app"
             version = "0.1.0"
@@ -544,7 +543,6 @@ class ConfigTest {
         assertNull(result.get())
         val error = assertIs<ConfigError.ParseFailed>(result.getError())
         assertTrue(error.message.contains("native"), "missing 'native' in: ${error.message}")
-        assertTrue(error.message.contains("linuxX64"), "missing migration hint in: ${error.message}")
     }
 
     @Test

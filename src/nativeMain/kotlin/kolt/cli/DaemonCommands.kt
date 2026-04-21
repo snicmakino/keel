@@ -72,15 +72,6 @@ internal fun stopProjectDaemons(
 ): Int {
     if (!fileExists(projectDir)) return 0
     var stopped = 0
-    // Pre-#138 layout: JVM daemon socket sat directly under <projectHash>/.
-    // The native daemon (ADR 0024, #170) post-dates the versioned layout,
-    // so it has no legacy variant — only the JVM shutdown is attempted here.
-    // Enumeration uses `fileExists` because the legacy filename is fixed and
-    // no sibling fingerprints ever lived at this layer.
-    val legacySocket = "$projectDir/daemon.sock"
-    if (fileExists(legacySocket) && sendJvmShutdown(legacySocket)) {
-        stopped++
-    }
     val versionDirs = listSubdirectories(projectDir).getOrElse { return stopped }
     for (versionDir in versionDirs) {
         // ADR 0024 §3: both daemons share <projectHash>/<version>/, keyed

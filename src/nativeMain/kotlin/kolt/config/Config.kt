@@ -140,12 +140,6 @@ private fun validateKind(kind: String): Result<Unit, ConfigError> {
 }
 
 private fun validateTarget(target: String): Result<Unit, ConfigError> {
-    if (target == "native") {
-        return Err(ConfigError.ParseFailed(
-            "target = \"native\" is no longer accepted. " +
-                "Use a specific Konan target, e.g. target = \"linuxX64\""
-        ))
-    }
     if (target !in VALID_TARGETS) {
         return Err(ConfigError.ParseFailed(
             "invalid target '$target' (valid targets: ${VALID_TARGETS.joinToString(", ")})"

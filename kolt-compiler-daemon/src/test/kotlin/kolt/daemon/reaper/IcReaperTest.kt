@@ -40,7 +40,6 @@ class IcReaperTest {
         assertEquals(0, report.scanned)
         assertEquals(0, report.removed)
         assertEquals(0, report.skippedLocked)
-        assertEquals(0, report.skippedMissingBreadcrumb)
         assertTrue(report.errors.isEmpty())
     }
 
@@ -92,15 +91,25 @@ class IcReaperTest {
     }
 
     @Test
-    fun `Rule B keeps projectId without breadcrumb and counts it as skipped`() {
-        val legacy = icRoot.resolve("2.3.20").resolve("eeeeeeeeeeeeeeee").createDirectories()
-        legacy.resolve("state.bin").writeText("legacy")
+    fun `Rule B removes projectId when breadcrumb is missing entirely`() {
+        val orphan = icRoot.resolve("2.3.20").resolve("eeeeeeeeeeeeeeee").createDirectories()
+        orphan.resolve("state.bin").writeText("orphan")
 
         val report = IcReaper.run(icRoot, "2.3.20", metrics)
 
-        assertTrue(Files.exists(legacy), "legacy state without breadcrumb must survive")
-        assertEquals(1, report.skippedMissingBreadcrumb)
-        assertEquals(0, report.removed)
+        assertFalse(Files.exists(orphan), "projectId without breadcrumb must be removed")
+        assertEquals(1, report.removed)
+    }
+
+    @Test
+    fun `Rule B removes projectId when breadcrumb content is empty`() {
+        val corrupt = icRoot.resolve("2.3.20").resolve("7777777777777777").createDirectories()
+        corrupt.resolve("project.path").writeText("")
+
+        val report = IcReaper.run(icRoot, "2.3.20", metrics)
+
+        assertFalse(Files.exists(corrupt), "projectId with empty breadcrumb must be removed")
+        assertEquals(1, report.removed)
     }
 
     @Test
@@ -153,8 +162,8 @@ class IcReaperTest {
         val drop = icRoot.resolve("2.3.20").resolve("3333333333333333").createDirectories()
         drop.resolve("project.path").writeText(otherTmp.resolve("gone").toString())
 
-        val legacy = icRoot.resolve("2.3.20").resolve("4444444444444444").createDirectories()
-        legacy.resolve("state.bin").writeText("legacy")
+        val noBreadcrumb = icRoot.resolve("2.3.20").resolve("4444444444444444").createDirectories()
+        noBreadcrumb.resolve("state.bin").writeText("orphan")
 
         val lockedDangling = icRoot.resolve("2.3.20").resolve("5555555555555555").createDirectories()
         lockedDangling.resolve("project.path").writeText(otherTmp.resolve("also-gone").toString())
@@ -165,20 +174,16 @@ class IcReaperTest {
         try {
             val report = IcReaper.run(icRoot, "2.3.20", metrics)
 
-            assertEquals(2, report.removed, "stale version + dangling breadcrumb")
+            assertEquals(3, report.removed, "stale version + dangling breadcrumb + missing breadcrumb")
             assertEquals(1, report.skippedLocked, "locked dangling projectId must stay")
-            assertEquals(1, report.skippedMissingBreadcrumb)
             assertTrue(Files.exists(keep))
-            assertTrue(Files.exists(legacy))
+            assertFalse(Files.exists(noBreadcrumb), "projectId without breadcrumb must be removed")
             assertTrue(Files.exists(lockedDangling), "locked projectId must not be removed even when breadcrumb is stale")
             assertFalse(Files.exists(stale.parent))
 
             assertTrue(metrics.records.any { it.name == "reaper.scanned" })
-            assertTrue(metrics.records.any { it.name == "reaper.removed" && it.value == 2L })
+            assertTrue(metrics.records.any { it.name == "reaper.removed" && it.value == 3L })
             assertTrue(metrics.records.any { it.name == "reaper.skipped_locked" && it.value == 1L })
-            assertTrue(metrics.records.any {
-                it.name == "reaper.skipped_missing_breadcrumb" && it.value == 1L
-            })
         } finally {
             heldLock.release()
             lockChannel.close()

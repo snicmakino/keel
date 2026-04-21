@@ -15,6 +15,7 @@ Reads `kolt.toml`, compiles with `kotlinc`, and runs with `java -jar`.
 
 - **Exception throwing is prohibited** — use kotlin-result `Result<V, E>` for all error handling
 - **Follow TDD** (Red -> Green -> Refactor)
+- **No backward compatibility until v1.0** — kolt is pre-v1. Do not add migration shims, legacy-layout probes, or deprecation warnings for older kolt versions. Cut breaking changes cleanly; document upgrade steps in the release note and expect users to run them (e.g. `rm -rf ~/.kolt/daemon/`). Cross-version-of-external-tools compat (Kotlin compiler family, Gradle metadata) is different and still required.
 - **Comments default to deletion** — keep only design invariants, "why-not" decisions, and anchored external-tool gotchas. See `/kolt-dev`.
 - **Write all code, comments, documentation, and commit messages in English**
 - Place test files in `src/nativeTest/kotlin/kolt/<package>/XxxTest.kt` mirroring main source structure
