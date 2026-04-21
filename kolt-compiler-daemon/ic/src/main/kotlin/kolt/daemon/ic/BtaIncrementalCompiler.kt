@@ -5,6 +5,7 @@ package kolt.daemon.ic
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.getOrElse
 import org.jetbrains.kotlin.buildtools.api.BuildOperation
 import org.jetbrains.kotlin.buildtools.api.CompilationResult
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
@@ -111,15 +112,11 @@ class BtaIncrementalCompiler private constructor(
         // exists, which is the common case for every non-initial request.
         Files.createDirectories(request.workingDir)
 
-        // #199: LOCK acquisition must be the first action on workingDir
-        // after `createDirectories(workingDir)` creates the dir itself.
-        // The IcReaper (documented in IcReaper.kt) treats LOCK as the
-        // invariant that proves a dir is alive — any write before LOCK
-        // leaves a window where a concurrent-daemon-boot reaper can
-        // wipe the dir. Order below: create workingDir → take LOCK →
-        // create BTA subdir → write breadcrumb.
-        runCatching { ensureLock(request.workingDir) }
-            .onFailure { metrics.record(METRIC_REAPER_LOCK_FAILED) }
+        // LOCK must be the first write on workingDir — IcReaper treats
+        // LOCK-existence as proof the dir is alive, so any earlier write
+        // opens a concurrent-boot wipe window. Contended LOCK continues:
+        // reaper keys off existence, not ownership.
+        ensureLock(request.workingDir).getOrElse { return Err(it) }
 
         val btaWorkingDir = request.workingDir.resolve(BTA_SUBDIR)
         val wasEmptyBeforeCompile = isEmptyDir(btaWorkingDir)
@@ -300,11 +297,14 @@ class BtaIncrementalCompiler private constructor(
         // already URL/FS-safe enough to serve as a kotlinc module name.
         "kolt-${request.projectId}"
 
-    private fun ensureLock(workingDir: Path) {
+    // Err = LOCK file could not be created; caller must abort before any
+    // non-LOCK write. Ok = either we hold it or another owner does
+    // (reaper's existence probe is load-bearing in both cases).
+    private fun ensureLock(workingDir: Path): Result<Unit, IcError.InternalError> {
         val lockPath = workingDir.resolve(LOCK_FILE)
         val cached = heldLocks[workingDir]
         if (cached != null && cached.lock.isValid && Files.isRegularFile(lockPath)) {
-            return
+            return Ok(Unit)
         }
         if (cached != null) {
             // Stale cache entry: either the lock was released or
@@ -314,12 +314,23 @@ class BtaIncrementalCompiler private constructor(
             runCatching { cached.channel.close() }
             heldLocks.remove(workingDir)
         }
-        val channel = FileChannel.open(
-            lockPath,
-            StandardOpenOption.CREATE,
-            StandardOpenOption.READ,
-            StandardOpenOption.WRITE,
-        )
+        val channel = try {
+            FileChannel.open(
+                lockPath,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.READ,
+                StandardOpenOption.WRITE,
+            )
+        } catch (vme: VirtualMachineError) {
+            throw vme
+        } catch (t: Throwable) {
+            // Disk full, EACCES, FS error, or LOCK path collides with a
+            // non-file entry (EISDIR → `FileSystemException`). Self-heal's
+            // wipe+retry does not help — the same failure recurs — so
+            // surface InternalError and let the caller abort.
+            metrics.record(METRIC_REAPER_LOCK_FAILED)
+            return Err(IcError.InternalError(t))
+        }
         val lock: FileLock? = try {
             channel.tryLock()
         } catch (_: OverlappingFileLockException) {
@@ -328,9 +339,10 @@ class BtaIncrementalCompiler private constructor(
         if (lock == null) {
             channel.close()
             metrics.record(METRIC_REAPER_LOCK_CONFLICT)
-            return
+            return Ok(Unit)
         }
         heldLocks[workingDir] = HeldLock(channel, lock)
+        return Ok(Unit)
     }
 
     private fun isEmptyDir(workingDir: Path): Boolean {
