@@ -64,6 +64,15 @@ fun resolveNative(
     val visited = mutableSetOf<String>()
     // processed[ga:version] = (redirect, artifact) populated during BFS
     val processed = mutableMapOf<String, NativeResolved>()
+    // Per-GA union of rejects declared by every contributor seen so far.
+    // Accumulated even when the contributor's own version proposal loses the
+    // conflict, mirroring Gradle's "rejects applies to the GA globally".
+    // A post-BFS recheck below verifies every resolved version against this
+    // final set, so an earlier-accepted version rejected by a later-seen
+    // contributor is caught as an error rather than silently kept.
+    val accumulatedRejects = mutableMapOf<String, MutableList<String>>()
+    // Per-GA strict pin. Any other proposal for the same GA is a hard error.
+    val strictPins = mutableMapOf<String, String>()
 
     // Seed direct deps (skipping stdlib)
     for ((groupArtifact, version) in config.dependencies) {
@@ -93,6 +102,29 @@ fun resolveNative(
             val depGA = "${dep.group}:${dep.module}"
             if (isKotlinStdlib(depGA)) continue
 
+            if (dep.rejects.isNotEmpty()) {
+                accumulatedRejects.getOrPut(depGA) { mutableListOf() }.addAll(dep.rejects)
+            }
+
+            val patterns = accumulatedRejects[depGA]
+            if (patterns != null && patterns.any { matchesRejectPattern(dep.version, it) }) continue
+
+            val pin = strictPins[depGA]
+            if (pin != null && pin != dep.version) {
+                return Err(
+                    ResolveError.StrictVersionConflict(depGA, pin, dep.version, otherIsStrict = dep.strict)
+                )
+            }
+            if (dep.strict) {
+                val alreadyResolved = resolvedVersions[depGA]
+                if (alreadyResolved != null && alreadyResolved.first != dep.version) {
+                    return Err(
+                        ResolveError.StrictVersionConflict(depGA, dep.version, alreadyResolved.first)
+                    )
+                }
+                strictPins[depGA] = dep.version
+            }
+
             val existing = resolvedVersions[depGA]
             if (existing != null) {
                 val (existingVersion, isDirect) = existing
@@ -102,6 +134,18 @@ fun resolveNative(
             resolvedVersions[depGA] = Pair(dep.version, false)
             queue.addLast(depGA to dep.version)
         }
+    }
+
+    // After BFS, re-check every resolved version against the fully-populated
+    // accumulatedRejects. Catches the case where a later-seen contributor's
+    // rejects would have blocked an earlier-accepted version (including direct
+    // deps): the BFS can't re-queue, so we error instead of silently keeping
+    // a rejected version.
+    for ((groupArtifact, versionAndDirect) in resolvedVersions) {
+        val patterns = accumulatedRejects[groupArtifact] ?: continue
+        val version = versionAndDirect.first
+        val matched = patterns.firstOrNull { matchesRejectPattern(version, it) } ?: continue
+        return Err(ResolveError.RejectedVersionResolved(groupArtifact, version, matched))
     }
 
     // Materialize: for each resolved (ga, version), download the .klib and

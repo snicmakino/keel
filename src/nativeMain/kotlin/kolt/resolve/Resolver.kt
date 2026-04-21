@@ -21,6 +21,17 @@ sealed class ResolveError {
     data class NoNativeVariant(val groupArtifact: String, val nativeTarget: String) : ResolveError()
     data class MetadataParseFailed(val groupArtifact: String) : ResolveError()
     data class MetadataFetchFailed(val groupArtifact: String) : ResolveError()
+    data class StrictVersionConflict(
+        val groupArtifact: String,
+        val strictVersion: String,
+        val otherVersion: String,
+        val otherIsStrict: Boolean = false
+    ) : ResolveError()
+    data class RejectedVersionResolved(
+        val groupArtifact: String,
+        val version: String,
+        val rejectPattern: String
+    ) : ResolveError()
 }
 
 fun formatResolveError(error: ResolveError): String = when (error) {
@@ -39,6 +50,15 @@ fun formatResolveError(error: ResolveError): String = when (error) {
         "error: failed to parse Gradle module metadata for ${error.groupArtifact}"
     is ResolveError.MetadataFetchFailed ->
         "error: failed to read Gradle module metadata for ${error.groupArtifact}"
+    is ResolveError.StrictVersionConflict ->
+        if (error.otherIsStrict)
+            "error: conflicting strict versions on ${error.groupArtifact}: " +
+                "${error.strictVersion} and ${error.otherVersion}"
+        else
+            "error: strict version conflict on ${error.groupArtifact}: " +
+                "${error.strictVersion} required strictly, but ${error.otherVersion} also requested"
+    is ResolveError.RejectedVersionResolved ->
+        "error: resolved ${error.groupArtifact}:${error.version} is rejected by constraint '${error.rejectPattern}'"
 }
 
 data class ResolvedDep(
