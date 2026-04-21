@@ -26,6 +26,11 @@ sealed class ResolveError {
         val strictVersion: String,
         val otherVersion: String
     ) : ResolveError()
+    data class RejectedVersionResolved(
+        val groupArtifact: String,
+        val version: String,
+        val rejectPattern: String
+    ) : ResolveError()
 }
 
 fun formatResolveError(error: ResolveError): String = when (error) {
@@ -47,6 +52,8 @@ fun formatResolveError(error: ResolveError): String = when (error) {
     is ResolveError.StrictVersionConflict ->
         "error: strict version conflict on ${error.groupArtifact}: " +
             "${error.strictVersion} required strictly, but ${error.otherVersion} also requested"
+    is ResolveError.RejectedVersionResolved ->
+        "error: resolved ${error.groupArtifact}:${error.version} is rejected by constraint '${error.rejectPattern}'"
 }
 
 data class ResolvedDep(

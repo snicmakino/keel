@@ -67,9 +67,9 @@ fun resolveNative(
     // Per-GA union of rejects declared by every contributor seen so far.
     // Accumulated even when the contributor's own version proposal loses the
     // conflict, mirroring Gradle's "rejects applies to the GA globally".
-    // Known approximation: rejects do NOT revoke an already-accepted version
-    // (the BFS doesn't re-queue); order can therefore affect outcome for
-    // contrived inputs. See NativeResolverTest.
+    // A post-BFS recheck below verifies every resolved version against this
+    // final set, so an earlier-accepted version rejected by a later-seen
+    // contributor is caught as an error rather than silently kept.
     val accumulatedRejects = mutableMapOf<String, MutableList<String>>()
     // Per-GA strict pin. Any other proposal for the same GA is a hard error.
     val strictPins = mutableMapOf<String, String>()
@@ -132,6 +132,18 @@ fun resolveNative(
             resolvedVersions[depGA] = Pair(dep.version, false)
             queue.addLast(depGA to dep.version)
         }
+    }
+
+    // After BFS, re-check every resolved version against the fully-populated
+    // accumulatedRejects. Catches the case where a later-seen contributor's
+    // rejects would have blocked an earlier-accepted version (including direct
+    // deps): the BFS can't re-queue, so we error instead of silently keeping
+    // a rejected version.
+    for ((groupArtifact, versionAndDirect) in resolvedVersions) {
+        val patterns = accumulatedRejects[groupArtifact] ?: continue
+        val version = versionAndDirect.first
+        val matched = patterns.firstOrNull { matchesRejectPattern(version, it) } ?: continue
+        return Err(ResolveError.RejectedVersionResolved(groupArtifact, version, matched))
     }
 
     // Materialize: for each resolved (ga, version), download the .klib and
