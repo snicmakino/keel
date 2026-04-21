@@ -18,6 +18,8 @@ import platform.posix.PATH_MAX
 import platform.posix.getcwd
 
 private const val SRC_DIR = "src"
+private const val GITIGNORE = ".gitignore"
+private const val GIT_DIR = ".git"
 
 @OptIn(ExperimentalForeignApi::class)
 internal fun doInit(args: List<String>): Result<Unit, Int> {
@@ -83,6 +85,23 @@ internal fun doInit(args: List<String>): Result<Unit, Int> {
             return Err(EXIT_BUILD_ERROR)
         }
         println("created $testKtPath")
+    }
+
+    if (!fileExists(GITIGNORE)) {
+        writeFileAsString(GITIGNORE, generateGitignore()).getOrElse { error ->
+            eprintln("error: could not write ${error.path}")
+            return Err(EXIT_BUILD_ERROR)
+        }
+        println("created $GITIGNORE")
+    }
+
+    if (!fileExists(GIT_DIR)) {
+        val err = executeCommand(listOf("git", "init", "-q")).getError()
+        if (err == null) {
+            println("initialized git repository")
+        } else {
+            eprintln("warning: could not run git init (${formatProcessError(err, "git init")})")
+        }
     }
 
     println("initialized project '$projectName'")
