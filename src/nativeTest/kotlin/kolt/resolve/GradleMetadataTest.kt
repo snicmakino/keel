@@ -771,6 +771,13 @@ class GradleMetadataTest {
     }
 
     @Test
+    fun parseNativeArtifactReturnsNullWhenDepHasNoVersionAtAll() {
+        val json = nativeArtifactJson("""{}""")
+
+        assertNull(parseNativeArtifact(json, "linux_x64"))
+    }
+
+    @Test
     fun parseNativeArtifactDefaultsStrictFalseAndRejectsEmptyForBareRequires() {
         val json = nativeArtifactJson(
             """{ "requires": "1.0.0" }"""

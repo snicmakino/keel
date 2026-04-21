@@ -90,10 +90,12 @@ fun parseNativeArtifact(moduleJson: String, nativeTarget: String): NativeArtifac
         if (!matchesNativeVariant(variant.attributes, nativeTarget)) continue
         val klibFile = variant.files.firstOrNull { it.url.endsWith(".klib") } ?: continue
         val deps = variant.dependencies.map { d ->
+            val version = d.version.selectedVersion()
+            if (version.isEmpty()) return null
             NativeDependency(
                 group = d.group,
                 module = d.module,
-                version = d.version.selectedVersion(),
+                version = version,
                 strict = d.version.strictly.isNotEmpty(),
                 rejects = d.version.rejects
             )
