@@ -354,8 +354,9 @@ class NativeDaemonBackendConnectAndSpawnTest {
         backend.compile(sampleArgs)
 
         val argv = assertNotNull(capturedArgv)
-        // ADR 0024 §3: -Xmx4G is load-bearing for stage 2 linking.
-        assertTrue("-Xmx4G" in argv, "missing -Xmx4G: $argv")
+        // Pin the literal so a typo in the constant is caught here.
+        assertEquals("-Xmx4G", NativeDaemonBackend.HEAP_CEILING_XMX)
+        assertTrue(NativeDaemonBackend.HEAP_CEILING_XMX in argv, "missing heap ceiling: $argv")
         // ADR 0024 §8: the three daemon-side CLI flags are non-negotiable.
         assertTrue("--socket" in argv)
         assertTrue("--konanc-jar" in argv)
