@@ -3,6 +3,7 @@ package kolt.cli
 import com.github.michaelbull.result.getOrElse
 import kolt.infra.deleteFile
 import kolt.infra.fileExists
+import kolt.infra.listFiles
 import kolt.infra.listSubdirectories
 import kolt.infra.net.UnixSocket
 import kolt.infra.removeDirectoryRecursive
@@ -57,15 +58,20 @@ internal fun reapStaleDaemons(daemonBaseDir: String): ReapResult {
         var versionsRemaining = 0
         for (versionDir in versionDirs) {
             val versionFullDir = "$projectFullDir/$versionDir"
-            val socketPath = "$versionFullDir/daemon.sock"
-            if (fileExists(socketPath)) {
-                val socket = UnixSocket.connect(socketPath)
-                if (socket.isOk) {
-                    socket.getOrElse { null }?.close()
-                    alive++
-                    versionsRemaining++
-                    continue
-                }
+            // #181: enumerate all JVM daemon sockets in the version dir
+            // (`daemon.sock`, `daemon-noplugins.sock`, `daemon-<8hex>.sock`),
+            // not just the bare `daemon.sock`. If any fingerprint is alive,
+            // the whole version dir stays — reaping would unlink the live
+            // socket file. Stale siblings ride along until they're the only
+            // ones left.
+            val jvmSockets = listFiles(versionFullDir).getOrElse { emptyList() }
+                .filter { isJvmDaemonSocket(it) }
+                .map { "$versionFullDir/$it" }
+            val aliveHere = jvmSockets.count { probeAlive(it) }
+            if (aliveHere > 0) {
+                alive += aliveHere
+                versionsRemaining++
+                continue
             }
             if (removeDirectoryRecursive(versionFullDir).isOk) {
                 reaped++
@@ -79,4 +85,11 @@ internal fun reapStaleDaemons(daemonBaseDir: String): ReapResult {
         }
     }
     return ReapResult(reaped, alive, failed)
+}
+
+private fun probeAlive(socketPath: String): Boolean {
+    val socket = UnixSocket.connect(socketPath)
+    if (socket.isErr) return false
+    socket.getOrElse { null }?.close()
+    return true
 }

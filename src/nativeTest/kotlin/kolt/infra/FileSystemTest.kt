@@ -504,6 +504,50 @@ class FileSystemTest {
     }
 
     @Test
+    fun listFilesReturnsSortedNames() {
+        val base = "/tmp/kolt_list_files_sorted"
+        platform.posix.mkdir(base, 0b111111101u)
+        writeTestFile("$base/beta.sock", "")
+        writeTestFile("$base/alpha.sock", "")
+        writeTestFile("$base/gamma.sock", "")
+        try {
+            val result = listFiles(base)
+
+            assertEquals(listOf("alpha.sock", "beta.sock", "gamma.sock"), result.get())
+        } finally {
+            remove("$base/alpha.sock")
+            remove("$base/beta.sock")
+            remove("$base/gamma.sock")
+            platform.posix.rmdir(base)
+        }
+    }
+
+    @Test
+    fun listFilesExcludesSubdirectories() {
+        val base = "/tmp/kolt_list_files_mixed"
+        platform.posix.mkdir(base, 0b111111101u)
+        platform.posix.mkdir("$base/subdir", 0b111111101u)
+        writeTestFile("$base/a.sock", "")
+        try {
+            val result = listFiles(base)
+
+            assertEquals(listOf("a.sock"), result.get())
+        } finally {
+            remove("$base/a.sock")
+            platform.posix.rmdir("$base/subdir")
+            platform.posix.rmdir(base)
+        }
+    }
+
+    @Test
+    fun listFilesReturnsErrForNonExistentDir() {
+        val result = listFiles("/tmp/kolt_list_files_nonexistent")
+
+        assertNull(result.get())
+        assertIs<ListFilesFailed>(result.getError())
+    }
+
+    @Test
     fun listSubdirectoriesExcludesFiles() {
         val base = "/tmp/kolt_list_subdirs_mixed"
         platform.posix.mkdir(base, 0b111111101u)
