@@ -72,7 +72,7 @@ convention, red/green/refactor do not need to be separate commits).
 
 ## 5. Test command — non-regression for libraries
 
-- [ ] 5.1 (P) Assert the test command works against a library configuration
+- [x] 5.1 (P) Assert the test command works against a library configuration
   - Using a library fixture config with no `[build] main` declared, drive the test command end-to-end against both JVM and native targets
   - Assert exit code 0 and that fixture tests compile and execute
   - Assert via a captured path-read that the test flow does not read the `main` field when the field is null (confirms R5.2 structurally, not just behaviorally)
