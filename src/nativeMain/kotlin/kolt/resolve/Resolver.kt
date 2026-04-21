@@ -24,7 +24,8 @@ sealed class ResolveError {
     data class StrictVersionConflict(
         val groupArtifact: String,
         val strictVersion: String,
-        val otherVersion: String
+        val otherVersion: String,
+        val otherIsStrict: Boolean = false
     ) : ResolveError()
     data class RejectedVersionResolved(
         val groupArtifact: String,
@@ -50,8 +51,12 @@ fun formatResolveError(error: ResolveError): String = when (error) {
     is ResolveError.MetadataFetchFailed ->
         "error: failed to read Gradle module metadata for ${error.groupArtifact}"
     is ResolveError.StrictVersionConflict ->
-        "error: strict version conflict on ${error.groupArtifact}: " +
-            "${error.strictVersion} required strictly, but ${error.otherVersion} also requested"
+        if (error.otherIsStrict)
+            "error: conflicting strict versions on ${error.groupArtifact}: " +
+                "${error.strictVersion} and ${error.otherVersion}"
+        else
+            "error: strict version conflict on ${error.groupArtifact}: " +
+                "${error.strictVersion} required strictly, but ${error.otherVersion} also requested"
     is ResolveError.RejectedVersionResolved ->
         "error: resolved ${error.groupArtifact}:${error.version} is rejected by constraint '${error.rejectPattern}'"
 }

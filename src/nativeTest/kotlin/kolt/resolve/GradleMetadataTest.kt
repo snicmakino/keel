@@ -778,6 +778,19 @@ class GradleMetadataTest {
     }
 
     @Test
+    fun parseNativeArtifactHandlesAllThreeVersionFieldsCoexisting() {
+        val json = nativeArtifactJson(
+            """{ "strictly": "1.5.0", "requires": "1.7.0", "rejects": ["1.6.0"] }"""
+        )
+
+        val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
+
+        assertEquals("1.5.0", dep?.version)
+        assertEquals(true, dep?.strict)
+        assertEquals(listOf("1.6.0"), dep?.rejects)
+    }
+
+    @Test
     fun parseNativeArtifactDefaultsStrictFalseAndRejectsEmptyForBareRequires() {
         val json = nativeArtifactJson(
             """{ "requires": "1.0.0" }"""

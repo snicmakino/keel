@@ -111,7 +111,9 @@ fun resolveNative(
 
             val pin = strictPins[depGA]
             if (pin != null && pin != dep.version) {
-                return Err(ResolveError.StrictVersionConflict(depGA, pin, dep.version))
+                return Err(
+                    ResolveError.StrictVersionConflict(depGA, pin, dep.version, otherIsStrict = dep.strict)
+                )
             }
             if (dep.strict) {
                 val alreadyResolved = resolvedVersions[depGA]
