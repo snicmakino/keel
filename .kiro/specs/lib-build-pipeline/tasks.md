@@ -60,7 +60,7 @@ convention, red/green/refactor do not need to be separate commits).
 
 ## 4. JVM library thin-jar invariants
 
-- [ ] 4.1 (P) Assert JVM library jars are thin and declare no Main-Class
+- [x] 4.1 (P) Assert JVM library jars are thin and declare no Main-Class
   - Using a library fixture config and the JVM target, drive the build end-to-end
   - Inspect `META-INF/MANIFEST.MF` in the produced jar and assert there is no `Main-Class` attribute
   - Assert the jar contains no Kotlin standard library entries and no resolved dependency classes
