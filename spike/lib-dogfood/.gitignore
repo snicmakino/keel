@@ -1,0 +1,5 @@
+# Build outputs — regenerated on every replay.
+build/
+kolt.lock
+kls-classpath
+workspace.json

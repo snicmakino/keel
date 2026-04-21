@@ -83,7 +83,7 @@ convention, red/green/refactor do not need to be separate commits).
 
 ## 6. Regression verification and dogfood
 
-- [ ] 6.1 Run full Gradle check and a throwaway library fixture build
+- [x] 6.1 Run full Gradle check and a throwaway library fixture build
   - Execute `./gradlew check` end-to-end (unit tests, daemon version verification, linuxX64 tests) and confirm no regressions in existing app paths
   - Build a throwaway `kind = "lib"` fixture against both the JVM and linuxX64 targets; confirm artifacts match the design invariants (`.klib` on native with no `.kexe`; thin `.jar` on JVM with no `Main-Class`)
   - Record the fixture contents and produced artifact listings in the PR description so reviewers can replay
@@ -96,3 +96,4 @@ convention, red/green/refactor do not need to be separate commits).
 - **Task 1.1/1.2 and 2.1/2.2 were executed as atomic RED/GREEN pairs** in single implementer dispatches. Splitting into separate reviewer cycles would have mechanically rejected the RED-only state (reviewer check #1 runs the test suite).
 - **Native library artifact path**: kolt's stage 1 emits with `-p library -nopack`, so the library artifact is a DIRECTORY at `build/<name>-klib`, not a packed `.klib` file. Design §6.1 wording was written with the packed form in mind; updated to reflect the actual convention.
 - **Follow-up refactor candidate**: `NativeStagePlan` (`BuildCommands.kt`) uses `linkMain: String?` + `artifactKind: String` to discriminate library vs application. Consider migrating to a sealed hierarchy (`object Library` / `data class Application(val main: String)`) post-v1 to match `steering/structure.md`'s preference for ADTs over primitive-obsession.
+- **Task 6.1 dogfood evidence** (2026-04-22): `./gradlew check` exits 0. Replay fixtures live under `spike/lib-dogfood/{jvm,native,app-native}` with a top-level `README.md` documenting the replay + canonical-error probes. Confirmed invariants: JVM lib jar contains only `dogfood/Util.class` + `META-INF/MANIFEST.MF` with no `Main-Class` attribute, no `kotlin/` entries, and no resolved dependency classes (R2.1, R2.2, R2.3); native lib produces `build/<name>-klib/` directory with `.kexe` absent (R3.1, R3.2, R3.3); `kolt run` on both JVM and native libs exits 2 with canonical `library projects cannot be run` (R4.1, R4.3); `kolt test` on both libs exits 0 with tests executing (R5.1); native app non-regression produces and runs `.kexe` (R3.4, R4.4). The `APP_WITHOUT_MAIN_ERROR` and `LIB_WITH_MAIN_ERROR` canonical rejections were both probed via temporary fixture mutation and reverted.

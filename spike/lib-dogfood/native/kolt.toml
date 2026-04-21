@@ -1,0 +1,11 @@
+name = "nativelibdog"
+version = "0.0.1"
+kind = "lib"
+
+[kotlin]
+version = "2.3.20"
+
+[build]
+target = "linuxX64"
+sources = ["src/main"]
+test_sources = ["test"]
