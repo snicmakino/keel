@@ -1,5 +1,6 @@
 package kolt.cli
 
+import kolt.build.daemon.KOTLIN_VERSION_FLOOR
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -56,11 +57,16 @@ class InfoCommandTest {
 
     @Test
     fun kotlinLineShowsFloorHintWhenSubprocess() {
+        // Anchor on the live KOTLIN_VERSION_FLOOR so this test follows the
+        // floor when the daemon family bumps, instead of going stale silently.
         val snap = withProject.copy(
-            kotlin = KotlinInfo("2.2.0", "subprocess [<2.3.0]", "~/.kolt/toolchains/kotlinc/2.2.0/bin/kotlinc")
+            kotlin = KotlinInfo("2.2.0", "subprocess [<$KOTLIN_VERSION_FLOOR]", "~/.kolt/toolchains/kotlinc/2.2.0/bin/kotlinc")
         )
         val kotlinLine = formatInfo(snap).lines().first { it.startsWith("kotlin") }
-        assertTrue(kotlinLine.contains("<2.3.0"), "subprocess mode must disclose the daemon floor: $kotlinLine")
+        assertTrue(
+            kotlinLine.contains("<$KOTLIN_VERSION_FLOOR"),
+            "subprocess mode must disclose the daemon floor: $kotlinLine"
+        )
     }
 
     @Test

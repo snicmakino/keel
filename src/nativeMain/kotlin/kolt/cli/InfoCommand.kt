@@ -69,7 +69,7 @@ internal fun formatInfo(snap: InfoSnapshot): String = buildString {
         append(labeled("target", snap.project.target))
     } else {
         appendLine()
-        append("(not in a kolt project — no kolt.toml in current directory)")
+        append("(not in a kolt project -- no kolt.toml in current directory)")
     }
 }.trimEnd('\n')
 
