@@ -20,12 +20,21 @@ data class BuildState(
 
 fun isBuildUpToDate(current: BuildState, cached: BuildState?): Boolean {
     if (cached == null) return false
-    return current.configMtime == cached.configMtime &&
+    val stateMatches = current.configMtime == cached.configMtime &&
         current.sourcesNewestMtime == cached.sourcesNewestMtime &&
         current.classesDirMtime == cached.classesDirMtime &&
         current.lockfileMtime == cached.lockfileMtime &&
         current.resourcesNewestMtime == cached.resourcesNewestMtime &&
         current.defNewestMtime == cached.defNewestMtime
+    if (!stateMatches) return false
+    // Input mtimes must not exceed artifact mtime, even when state
+    // matches. Guards against a stale artifact paired with equally
+    // stale state (#50).
+    val artifact = current.classesDirMtime ?: return false
+    if (current.sourcesNewestMtime > artifact) return false
+    if ((current.resourcesNewestMtime ?: 0L) > artifact) return false
+    if ((current.defNewestMtime ?: 0L) > artifact) return false
+    return true
 }
 
 private val json = Json { prettyPrint = true }

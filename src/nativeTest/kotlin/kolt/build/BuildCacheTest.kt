@@ -179,9 +179,9 @@ class BuildCacheTest {
         val state = BuildState(
             configMtime = 1000L,
             sourcesNewestMtime = 2000L,
-            classesDirMtime = 3000L,
+            classesDirMtime = 4000L,
             lockfileMtime = null,
-            resourcesNewestMtime = 4000L
+            resourcesNewestMtime = 3000L
         )
         assertTrue(isBuildUpToDate(current = state, cached = state))
     }
@@ -264,9 +264,9 @@ class BuildCacheTest {
         val state = BuildState(
             configMtime = 1000L,
             sourcesNewestMtime = 2000L,
-            classesDirMtime = 3000L,
+            classesDirMtime = 5000L,
             lockfileMtime = null,
-            defNewestMtime = 5000L
+            defNewestMtime = 3000L
         )
         assertTrue(isBuildUpToDate(current = state, cached = state))
     }
@@ -355,5 +355,67 @@ class BuildCacheTest {
         val parsed = parseBuildState(oldJson)
         assertNotNull(parsed)
         assertNull(parsed.defNewestMtime)
+    }
+
+    // #50: defence against stale state file + stale artifact combo.
+    // If any input mtime exceeds the artifact mtime, the artifact cannot
+    // reflect current inputs regardless of state equality.
+    @Test
+    fun notUpToDateWhenSourcesNewerThanClassesDir() {
+        val state = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 5000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null
+        )
+        assertFalse(isBuildUpToDate(current = state, cached = state))
+    }
+
+    @Test
+    fun notUpToDateWhenResourcesNewerThanClassesDir() {
+        val state = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null,
+            resourcesNewestMtime = 4000L
+        )
+        assertFalse(isBuildUpToDate(current = state, cached = state))
+    }
+
+    @Test
+    fun notUpToDateWhenDefNewerThanClassesDir() {
+        val state = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null,
+            defNewestMtime = 4000L
+        )
+        assertFalse(isBuildUpToDate(current = state, cached = state))
+    }
+
+    @Test
+    fun notUpToDateWhenClassesDirMtimeNullEvenIfStateMatches() {
+        val state = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = null,
+            lockfileMtime = null
+        )
+        assertFalse(isBuildUpToDate(current = state, cached = state))
+    }
+
+    @Test
+    fun upToDateWhenInputsNotNewerThanArtifact() {
+        val state = BuildState(
+            configMtime = 1000L,
+            sourcesNewestMtime = 2000L,
+            classesDirMtime = 3000L,
+            lockfileMtime = null,
+            resourcesNewestMtime = 2500L,
+            defNewestMtime = 2700L
+        )
+        assertTrue(isBuildUpToDate(current = state, cached = state))
     }
 }

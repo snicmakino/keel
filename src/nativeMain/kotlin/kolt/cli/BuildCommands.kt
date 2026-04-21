@@ -138,6 +138,9 @@ internal fun doBuild(useDaemon: Boolean = true): Result<BuildResult, Int> {
         // cached builds don't hard-exit on a failed fetch.
         return Ok(BuildResult(config, cachedState!!.classpath, managedJavaBin))
     }
+    // Out of date → rebuild. Drop the state file first so any failure
+    // below leaves cached=null for the next run (#50).
+    if (fileExists(BUILD_STATE_FILE)) deleteFile(BUILD_STATE_FILE)
     val managedKotlincBin = ensureKotlincBin(config.kotlin.effectiveCompiler, paths).getOrElse { eprintln("error: ${it.message}"); return Err(EXIT_BUILD_ERROR) }
     val classpath = resolveDependencies(config).getOrElse { return Err(it) }
     val pluginJarPathsByAlias = resolveEnabledPluginJarPaths(config, paths, EXIT_BUILD_ERROR).getOrElse { eprintln("error: ${it.message}"); return Err(it.exitCode) }
@@ -228,8 +231,6 @@ private fun doNativeBuild(config: KoltConfig, useDaemon: Boolean): Result<BuildR
     val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_BUILD_ERROR) }
     val managedKonancBin = ensureKonancBin(config.kotlin.effectiveCompiler, paths).getOrElse { eprintln("error: ${it.message}"); return Err(EXIT_BUILD_ERROR) }
 
-    val depKlibs = resolveNativeDependencies(config, paths).getOrElse { return Err(it) }
-
     val kexePath = outputKexePath(config)
     val defNewestMtime = newestDefMtime(config)
     val currentState = BuildState(
@@ -248,6 +249,13 @@ private fun doNativeBuild(config: KoltConfig, useDaemon: Boolean): Result<BuildR
         println("${config.name} is up to date (${formatDuration(elapsed)})")
         return Ok(BuildResult(config, classpath = null, javaPath = null))
     }
+    // Out of date → rebuild. Drop the state file first so any failure
+    // below leaves cached=null for the next run (#50).
+    if (fileExists(BUILD_STATE_FILE)) deleteFile(BUILD_STATE_FILE)
+
+    // Resolve after the up-to-date check (#57) so cache hits don't walk
+    // the dependency graph and re-hash every cached klib.
+    val depKlibs = resolveNativeDependencies(config, paths).getOrElse { return Err(it) }
 
     val nativePluginArgs = resolvePluginArgs(config, paths, EXIT_BUILD_ERROR).getOrElse { eprintln("error: ${it.message}"); return Err(it.exitCode) }
 
