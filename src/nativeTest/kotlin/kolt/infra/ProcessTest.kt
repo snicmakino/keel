@@ -10,50 +10,50 @@ import kotlin.test.assertNull
 
 class ProcessTest {
 
-    @Test
-    fun executeCommandReturnsOkOnSuccess() {
-        val result = executeCommand(listOf("true"))
+  @Test
+  fun executeCommandReturnsOkOnSuccess() {
+    val result = executeCommand(listOf("true"))
 
-        assertEquals(0, assertNotNull(result.get()))
-    }
+    assertEquals(0, assertNotNull(result.get()))
+  }
 
-    @Test
-    fun executeCommandReturnsExitCodeOnNonZero() {
-        val result = executeCommand(listOf("false"))
+  @Test
+  fun executeCommandReturnsExitCodeOnNonZero() {
+    val result = executeCommand(listOf("false"))
 
-        val error = assertNotNull(result.getError())
-        assertIs<ProcessError.NonZeroExit>(error)
-        assertEquals(1, error.exitCode)
-    }
+    val error = assertNotNull(result.getError())
+    assertIs<ProcessError.NonZeroExit>(error)
+    assertEquals(1, error.exitCode)
+  }
 
-    @Test
-    fun executeCommandPassesArgsWithoutShellExpansion() {
-        val result = executeCommand(listOf("echo", "\$HOME"))
-        assertEquals(0, assertNotNull(result.get()))
-    }
+  @Test
+  fun executeCommandPassesArgsWithoutShellExpansion() {
+    val result = executeCommand(listOf("echo", "\$HOME"))
+    assertEquals(0, assertNotNull(result.get()))
+  }
 
-    @Test
-    fun executeCommandEmptyArgsReturnsError() {
-        val result = executeCommand(emptyList())
+  @Test
+  fun executeCommandEmptyArgsReturnsError() {
+    val result = executeCommand(emptyList())
 
-        assertNull(result.get())
-        assertIs<ProcessError.EmptyArgs>(result.getError())
-    }
+    assertNull(result.get())
+    assertIs<ProcessError.EmptyArgs>(result.getError())
+  }
 
-    @Test
-    fun executeAndCaptureReturnsOutput() {
-        val result = executeAndCapture("echo hello 2>&1")
+  @Test
+  fun executeAndCaptureReturnsOutput() {
+    val result = executeAndCapture("echo hello 2>&1")
 
-        val output = assertNotNull(result.get())
-        assertEquals("hello\n", output)
-    }
+    val output = assertNotNull(result.get())
+    assertEquals("hello\n", output)
+  }
 
-    @Test
-    fun executeAndCaptureReturnsErrOnFailure() {
-        val result = executeAndCapture("false")
+  @Test
+  fun executeAndCaptureReturnsErrOnFailure() {
+    val result = executeAndCapture("false")
 
-        val error = assertNotNull(result.getError())
-        assertIs<ProcessError.NonZeroExit>(error)
-        assertEquals(1, error.exitCode)
-    }
+    val error = assertNotNull(result.getError())
+    assertIs<ProcessError.NonZeroExit>(error)
+    assertEquals(1, error.exitCode)
+  }
 }

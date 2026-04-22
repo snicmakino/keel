@@ -14,31 +14,20 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed interface Message {
 
-    @Serializable
-    @SerialName("NativeCompile")
-    data class NativeCompile(
-        val args: List<String>,
-    ) : Message
+  @Serializable
+  @SerialName("NativeCompile")
+  data class NativeCompile(val args: List<String>) : Message
 
-    // ADR 0024 §4: stderr is a blob, same shape as the subprocess fallback path.
-    // Structured diagnostic parsing is out of scope (see `kolt.daemon.protocol.Diagnostic`
-    // on the JVM side — not mirrored here).
-    @Serializable
-    @SerialName("NativeCompileResult")
-    data class NativeCompileResult(
-        val exitCode: Int,
-        val stderr: String,
-    ) : Message
+  // ADR 0024 §4: stderr is a blob, same shape as the subprocess fallback path.
+  // Structured diagnostic parsing is out of scope (see `kolt.daemon.protocol.Diagnostic`
+  // on the JVM side — not mirrored here).
+  @Serializable
+  @SerialName("NativeCompileResult")
+  data class NativeCompileResult(val exitCode: Int, val stderr: String) : Message
 
-    @Serializable
-    @SerialName("Ping")
-    data object Ping : Message
+  @Serializable @SerialName("Ping") data object Ping : Message
 
-    @Serializable
-    @SerialName("Pong")
-    data object Pong : Message
+  @Serializable @SerialName("Pong") data object Pong : Message
 
-    @Serializable
-    @SerialName("Shutdown")
-    data object Shutdown : Message
+  @Serializable @SerialName("Shutdown") data object Shutdown : Message
 }

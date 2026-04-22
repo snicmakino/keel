@@ -10,9 +10,10 @@ import kotlin.test.assertNotNull
 
 class MetadataTest {
 
-    @Test
-    fun parseReleaseVersionFromMetadataXml() {
-        val xml = """
+  @Test
+  fun parseReleaseVersionFromMetadataXml() {
+    val xml =
+      """
             <metadata>
               <groupId>org.jetbrains.kotlinx</groupId>
               <artifactId>kotlinx-coroutines-core</artifactId>
@@ -25,15 +26,17 @@ class MetadataTest {
                 </versions>
               </versioning>
             </metadata>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseMetadataXml(xml)
-        assertEquals("1.10.2", assertNotNull(result.get()))
-    }
+    val result = parseMetadataXml(xml)
+    assertEquals("1.10.2", assertNotNull(result.get()))
+  }
 
-    @Test
-    fun parseMetadataWithoutReleaseUsesLatest() {
-        val xml = """
+  @Test
+  fun parseMetadataWithoutReleaseUsesLatest() {
+    val xml =
+      """
             <metadata>
               <groupId>com.example</groupId>
               <artifactId>lib</artifactId>
@@ -45,48 +48,54 @@ class MetadataTest {
                 </versions>
               </versioning>
             </metadata>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseMetadataXml(xml)
-        assertEquals("2.0.0", assertNotNull(result.get()))
-    }
+    val result = parseMetadataXml(xml)
+    assertEquals("2.0.0", assertNotNull(result.get()))
+  }
 
-    @Test
-    fun parseMetadataWithNoVersioningReturnsErr() {
-        val xml = """
+  @Test
+  fun parseMetadataWithNoVersioningReturnsErr() {
+    val xml =
+      """
             <metadata>
               <groupId>com.example</groupId>
               <artifactId>lib</artifactId>
             </metadata>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseMetadataXml(xml)
-        assertIs<MetadataParseError>(result.getError())
-    }
+    val result = parseMetadataXml(xml)
+    assertIs<MetadataParseError>(result.getError())
+  }
 
-    @Test
-    fun parseEmptyXmlReturnsErr() {
-        val result = parseMetadataXml("")
-        assertIs<MetadataParseError>(result.getError())
-    }
+  @Test
+  fun parseEmptyXmlReturnsErr() {
+    val result = parseMetadataXml("")
+    assertIs<MetadataParseError>(result.getError())
+  }
 
-    @Test
-    fun parsePreReleaseVersion() {
-        val xml = """
+  @Test
+  fun parsePreReleaseVersion() {
+    val xml =
+      """
             <metadata>
               <versioning>
                 <release>2.0.0-beta.1</release>
               </versioning>
             </metadata>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseMetadataXml(xml)
-        assertEquals("2.0.0-beta.1", assertNotNull(result.get()))
-    }
+    val result = parseMetadataXml(xml)
+    assertEquals("2.0.0-beta.1", assertNotNull(result.get()))
+  }
 
-    @Test
-    fun parseVersionWithWhitespaceInTag() {
-        val xml = """
+  @Test
+  fun parseVersionWithWhitespaceInTag() {
+    val xml =
+      """
             <metadata>
               <versioning>
                 <release>
@@ -94,31 +103,38 @@ class MetadataTest {
                 </release>
               </versioning>
             </metadata>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseMetadataXml(xml)
-        assertEquals("1.5.0", assertNotNull(result.get()))
-    }
+    val result = parseMetadataXml(xml)
+    assertEquals("1.5.0", assertNotNull(result.get()))
+  }
 
-    @Test
-    fun buildMetadataUrl() {
-        val url = buildMetadataDownloadUrl("org.jetbrains.kotlinx", "kotlinx-coroutines-core", MAVEN_CENTRAL_BASE)
-        assertEquals(
-            "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/maven-metadata.xml",
-            url
-        )
-    }
+  @Test
+  fun buildMetadataUrl() {
+    val url =
+      buildMetadataDownloadUrl(
+        "org.jetbrains.kotlinx",
+        "kotlinx-coroutines-core",
+        MAVEN_CENTRAL_BASE,
+      )
+    assertEquals(
+      "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core/maven-metadata.xml",
+      url,
+    )
+  }
 
-    @Test
-    fun buildMetadataUrlWithCustomBaseUrl() {
-        val url = buildMetadataDownloadUrl(
-            "com.example",
-            "lib",
-            "https://nexus.example.com/repository/maven-public"
-        )
-        assertEquals(
-            "https://nexus.example.com/repository/maven-public/com/example/lib/maven-metadata.xml",
-            url
-        )
-    }
+  @Test
+  fun buildMetadataUrlWithCustomBaseUrl() {
+    val url =
+      buildMetadataDownloadUrl(
+        "com.example",
+        "lib",
+        "https://nexus.example.com/repository/maven-public",
+      )
+    assertEquals(
+      "https://nexus.example.com/repository/maven-public/com/example/lib/maven-metadata.xml",
+      url,
+    )
+  }
 }

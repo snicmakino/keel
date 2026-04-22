@@ -23,20 +23,17 @@ data class SelfExeError(val errno: Int, val message: String)
 // or BSD/Windows. Revisit when adding non-linux targets.
 @OptIn(ExperimentalForeignApi::class)
 fun readSelfExe(): Result<String, SelfExeError> {
-    return memScoped {
-        val bufSize = PATH_MAX
-        val buf = allocArray<ByteVar>(bufSize)
-        val n = readlink("/proc/self/exe", buf, (bufSize - 1).convert())
-        if (n < 0) {
-            val e = errno
-            return@memScoped Err(
-                SelfExeError(
-                    errno = e,
-                    message = strerror(e)?.toKString() ?: "errno=$e",
-                ),
-            )
-        }
-        buf[n] = 0
-        Ok(buf.toKString())
+  return memScoped {
+    val bufSize = PATH_MAX
+    val buf = allocArray<ByteVar>(bufSize)
+    val n = readlink("/proc/self/exe", buf, (bufSize - 1).convert())
+    if (n < 0) {
+      val e = errno
+      return@memScoped Err(
+        SelfExeError(errno = e, message = strerror(e)?.toKString() ?: "errno=$e")
+      )
     }
+    buf[n] = 0
+    Ok(buf.toKString())
+  }
 }

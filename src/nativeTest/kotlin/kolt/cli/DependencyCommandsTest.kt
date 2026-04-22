@@ -6,38 +6,38 @@ import kotlin.test.assertTrue
 
 class ValidateDepsSubcommandTest {
 
-    @Test
-    fun validTreeSubcommand() {
-        assertTrue(validateDepsSubcommand(listOf("tree")))
-    }
+  @Test
+  fun validTreeSubcommand() {
+    assertTrue(validateDepsSubcommand(listOf("tree")))
+  }
 
-    @Test
-    fun validAddSubcommand() {
-        assertTrue(validateDepsSubcommand(listOf("add", "com.example:lib:1.0")))
-    }
+  @Test
+  fun validAddSubcommand() {
+    assertTrue(validateDepsSubcommand(listOf("add", "com.example:lib:1.0")))
+  }
 
-    @Test
-    fun validInstallSubcommand() {
-        assertTrue(validateDepsSubcommand(listOf("install")))
-    }
+  @Test
+  fun validInstallSubcommand() {
+    assertTrue(validateDepsSubcommand(listOf("install")))
+  }
 
-    @Test
-    fun validUpdateSubcommand() {
-        assertTrue(validateDepsSubcommand(listOf("update")))
-    }
+  @Test
+  fun validUpdateSubcommand() {
+    assertTrue(validateDepsSubcommand(listOf("update")))
+  }
 
-    @Test
-    fun emptyArgsReturnsInvalid() {
-        assertFalse(validateDepsSubcommand(emptyList()))
-    }
+  @Test
+  fun emptyArgsReturnsInvalid() {
+    assertFalse(validateDepsSubcommand(emptyList()))
+  }
 
-    @Test
-    fun unknownSubcommandReturnsInvalid() {
-        assertFalse(validateDepsSubcommand(listOf("list")))
-    }
+  @Test
+  fun unknownSubcommandReturnsInvalid() {
+    assertFalse(validateDepsSubcommand(listOf("list")))
+  }
 
-    @Test
-    fun treeWithExtraArgsIsValid() {
-        assertTrue(validateDepsSubcommand(listOf("tree", "--verbose")))
-    }
+  @Test
+  fun treeWithExtraArgsIsValid() {
+    assertTrue(validateDepsSubcommand(listOf("tree", "--verbose")))
+  }
 }

@@ -17,16 +17,16 @@ import com.github.michaelbull.result.getError
 // SIGKILL'd konanc would incorrectly trigger a daemon retry. The fallback
 // path is the last resort, not a peer.
 class FallbackNativeCompilerBackend(
-    internal val primary: NativeCompilerBackend,
-    internal val fallback: NativeCompilerBackend,
-    private val onFallback: (NativeCompileError) -> Unit = {},
+  internal val primary: NativeCompilerBackend,
+  internal val fallback: NativeCompilerBackend,
+  private val onFallback: (NativeCompileError) -> Unit = {},
 ) : NativeCompilerBackend {
 
-    override fun compile(args: List<String>): Result<NativeCompileOutcome, NativeCompileError> {
-        val primaryResult = primary.compile(args)
-        val primaryError = primaryResult.getError() ?: return primaryResult
-        if (!isNativeFallbackEligible(primaryError)) return Err(primaryError)
-        onFallback(primaryError)
-        return fallback.compile(args)
-    }
+  override fun compile(args: List<String>): Result<NativeCompileOutcome, NativeCompileError> {
+    val primaryResult = primary.compile(args)
+    val primaryError = primaryResult.getError() ?: return primaryResult
+    if (!isNativeFallbackEligible(primaryError)) return Err(primaryError)
+    onFallback(primaryError)
+    return fallback.compile(args)
+  }
 }

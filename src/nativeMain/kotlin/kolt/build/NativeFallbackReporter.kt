@@ -10,16 +10,21 @@ import kolt.infra.eprintln
 // §7 + `isNativeFallbackEligible`), so they stay silent here: the caller
 // has already printed the konanc diagnostics.
 fun reportNativeFallback(err: NativeCompileError, sink: (String) -> Unit = ::eprintln) {
-    when (err) {
-        is NativeCompileError.BackendUnavailable.ForkFailed,
-        is NativeCompileError.BackendUnavailable.WaitFailed,
-        is NativeCompileError.BackendUnavailable.SignalKilled,
-        is NativeCompileError.BackendUnavailable.PopenFailed,
-        -> sink("warning: native compiler daemon unavailable, falling back to subprocess compile")
-        is NativeCompileError.BackendUnavailable.Other ->
-            sink("warning: native compiler daemon unavailable (${err.detail}), falling back to subprocess compile")
-        is NativeCompileError.InternalMisuse ->
-            sink("error: native compiler daemon hit an internal kolt bug (${err.detail}); falling back to subprocess compile — please report this")
-        is NativeCompileError.CompilationFailed, NativeCompileError.NoCommand -> {}
-    }
+  when (err) {
+    is NativeCompileError.BackendUnavailable.ForkFailed,
+    is NativeCompileError.BackendUnavailable.WaitFailed,
+    is NativeCompileError.BackendUnavailable.SignalKilled,
+    is NativeCompileError.BackendUnavailable.PopenFailed ->
+      sink("warning: native compiler daemon unavailable, falling back to subprocess compile")
+    is NativeCompileError.BackendUnavailable.Other ->
+      sink(
+        "warning: native compiler daemon unavailable (${err.detail}), falling back to subprocess compile"
+      )
+    is NativeCompileError.InternalMisuse ->
+      sink(
+        "error: native compiler daemon hit an internal kolt bug (${err.detail}); falling back to subprocess compile — please report this"
+      )
+    is NativeCompileError.CompilationFailed,
+    NativeCompileError.NoCommand -> {}
+  }
 }

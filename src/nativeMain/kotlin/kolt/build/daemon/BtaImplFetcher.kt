@@ -22,41 +22,40 @@ import kolt.resolve.resolveTransitive
 // resulting cache paths.
 
 sealed interface BtaImplFetchError {
-    data class ResolveFailed(val version: String, val cause: ResolveError) : BtaImplFetchError
-    // Defensive: malformed coords or a 404 the resolver swallows could leave
-    // us with an empty list. Catching here lets the precondition layer route
-    // it through the daemon-fail warning rail instead of letting an empty
-    // classpath reach BtaIncrementalCompiler.create's require check.
-    data class ResolvedEmpty(val version: String) : BtaImplFetchError
+  data class ResolveFailed(val version: String, val cause: ResolveError) : BtaImplFetchError
+
+  // Defensive: malformed coords or a 404 the resolver swallows could leave
+  // us with an empty list. Catching here lets the precondition layer route
+  // it through the daemon-fail warning rail instead of letting an empty
+  // classpath reach BtaIncrementalCompiler.create's require check.
+  data class ResolvedEmpty(val version: String) : BtaImplFetchError
 }
 
 private const val BTA_IMPL_GROUP_ARTIFACT = "org.jetbrains.kotlin:kotlin-build-tools-impl"
 
 internal fun ensureBtaImplJars(
-    version: String,
-    cacheBase: String,
-    deps: ResolverDeps,
-    resolver: (KoltConfig, Lockfile?, String, ResolverDeps) -> Result<ResolveResult, ResolveError> =
-        ::resolveTransitive,
+  version: String,
+  cacheBase: String,
+  deps: ResolverDeps,
+  resolver: (KoltConfig, Lockfile?, String, ResolverDeps) -> Result<ResolveResult, ResolveError> =
+    ::resolveTransitive,
 ): Result<List<String>, BtaImplFetchError> {
-    // KoltConfig has many irrelevant fields here (name, main, sources). We
-    // pin them to safe sentinels: nothing in the resolver path inspects
-    // them, and `target = "jvm"` keeps us on the JVM resolution branch.
-    val syntheticConfig = KoltConfig(
-        name = "kolt-bta-impl-fetch",
-        version = version,
-        kotlin = KotlinSection(version = version),
-        build = BuildSection(
-            target = "jvm",
-            main = "unused.Main",
-            sources = emptyList(),
-        ),
-        dependencies = mapOf(BTA_IMPL_GROUP_ARTIFACT to version),
-        repositories = mapOf("central" to MAVEN_CENTRAL_BASE),
+  // KoltConfig has many irrelevant fields here (name, main, sources). We
+  // pin them to safe sentinels: nothing in the resolver path inspects
+  // them, and `target = "jvm"` keeps us on the JVM resolution branch.
+  val syntheticConfig =
+    KoltConfig(
+      name = "kolt-bta-impl-fetch",
+      version = version,
+      kotlin = KotlinSection(version = version),
+      build = BuildSection(target = "jvm", main = "unused.Main", sources = emptyList()),
+      dependencies = mapOf(BTA_IMPL_GROUP_ARTIFACT to version),
+      repositories = mapOf("central" to MAVEN_CENTRAL_BASE),
     )
-    val result = resolver(syntheticConfig, null, cacheBase, deps).getOrElse {
-        return Err(BtaImplFetchError.ResolveFailed(version, it))
+  val result =
+    resolver(syntheticConfig, null, cacheBase, deps).getOrElse {
+      return Err(BtaImplFetchError.ResolveFailed(version, it))
     }
-    if (result.deps.isEmpty()) return Err(BtaImplFetchError.ResolvedEmpty(version))
-    return Ok(result.deps.map { it.cachePath })
+  if (result.deps.isEmpty()) return Err(BtaImplFetchError.ResolvedEmpty(version))
+  return Ok(result.deps.map { it.cachePath })
 }

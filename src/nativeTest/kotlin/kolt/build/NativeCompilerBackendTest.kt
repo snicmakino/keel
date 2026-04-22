@@ -9,38 +9,40 @@ import kotlin.test.assertTrue
 // subprocess path. Mirrors `isFallbackEligible` on the JVM side.
 class NativeCompilerBackendTest {
 
-    @Test
-    fun backendUnavailableVariantsAreFallbackEligible() {
-        assertTrue(isNativeFallbackEligible(NativeCompileError.BackendUnavailable.ForkFailed))
-        assertTrue(isNativeFallbackEligible(NativeCompileError.BackendUnavailable.WaitFailed))
-        assertTrue(isNativeFallbackEligible(NativeCompileError.BackendUnavailable.SignalKilled))
-        assertTrue(isNativeFallbackEligible(NativeCompileError.BackendUnavailable.PopenFailed))
-        assertTrue(isNativeFallbackEligible(NativeCompileError.BackendUnavailable.Other("connect refused")))
-    }
+  @Test
+  fun backendUnavailableVariantsAreFallbackEligible() {
+    assertTrue(isNativeFallbackEligible(NativeCompileError.BackendUnavailable.ForkFailed))
+    assertTrue(isNativeFallbackEligible(NativeCompileError.BackendUnavailable.WaitFailed))
+    assertTrue(isNativeFallbackEligible(NativeCompileError.BackendUnavailable.SignalKilled))
+    assertTrue(isNativeFallbackEligible(NativeCompileError.BackendUnavailable.PopenFailed))
+    assertTrue(
+      isNativeFallbackEligible(NativeCompileError.BackendUnavailable.Other("connect refused"))
+    )
+  }
 
-    @Test
-    fun internalMisuseIsFallbackEligible() {
-        assertTrue(isNativeFallbackEligible(NativeCompileError.InternalMisuse("socket path too long")))
-    }
+  @Test
+  fun internalMisuseIsFallbackEligible() {
+    assertTrue(isNativeFallbackEligible(NativeCompileError.InternalMisuse("socket path too long")))
+  }
 
-    @Test
-    fun compilationFailedIsNotFallbackEligible() {
-        // Real konanc compilation errors pass through untouched — the
-        // subprocess path would fail the same way, and retrying adds a
-        // cold-JVM tax.
-        assertFalse(
-            isNativeFallbackEligible(
-                NativeCompileError.CompilationFailed(
-                    exitCode = 1,
-                    stderr = "error: unresolved reference: foo",
-                ),
-            ),
+  @Test
+  fun compilationFailedIsNotFallbackEligible() {
+    // Real konanc compilation errors pass through untouched — the
+    // subprocess path would fail the same way, and retrying adds a
+    // cold-JVM tax.
+    assertFalse(
+      isNativeFallbackEligible(
+        NativeCompileError.CompilationFailed(
+          exitCode = 1,
+          stderr = "error: unresolved reference: foo",
         )
-    }
+      )
+    )
+  }
 
-    @Test
-    fun noCommandIsNotFallbackEligible() {
-        // If there's no konanc binary to fall back to, retrying is pointless.
-        assertFalse(isNativeFallbackEligible(NativeCompileError.NoCommand))
-    }
+  @Test
+  fun noCommandIsNotFallbackEligible() {
+    // If there's no konanc binary to fall back to, retrying is pointless.
+    assertFalse(isNativeFallbackEligible(NativeCompileError.NoCommand))
+  }
 }

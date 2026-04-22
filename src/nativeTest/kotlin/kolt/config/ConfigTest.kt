@@ -12,7 +12,8 @@ import kotlin.test.assertTrue
 
 class ConfigTest {
 
-    private val minimalToml = """
+  private val minimalToml =
+    """
         name = "my-app"
         version = "0.1.0"
 
@@ -23,26 +24,28 @@ class ConfigTest {
         target = "jvm"
         main = "com.example.main"
         sources = ["src"]
-    """.trimIndent()
+    """
+      .trimIndent()
 
-    @Test
-    fun parseMinimalConfig() {
-        val result = parseConfig(minimalToml)
+  @Test
+  fun parseMinimalConfig() {
+    val result = parseConfig(minimalToml)
 
-        val config = assertNotNull(result.get())
-        assertEquals("my-app", config.name)
-        assertEquals("0.1.0", config.version)
-        assertEquals("2.1.0", config.kotlin.version)
-        assertEquals("jvm", config.build.target)
-        assertEquals("com.example.main", config.build.main)
-        assertEquals(listOf("src"), config.build.sources)
-        assertEquals("17", config.build.jvmTarget)
-        assertEquals(emptyMap(), config.dependencies)
-    }
+    val config = assertNotNull(result.get())
+    assertEquals("my-app", config.name)
+    assertEquals("0.1.0", config.version)
+    assertEquals("2.1.0", config.kotlin.version)
+    assertEquals("jvm", config.build.target)
+    assertEquals("com.example.main", config.build.main)
+    assertEquals(listOf("src"), config.build.sources)
+    assertEquals("17", config.build.jvmTarget)
+    assertEquals(emptyMap(), config.dependencies)
+  }
 
-    @Test
-    fun parseConfigWithExplicitJvmTarget() {
-        val toml = """
+  @Test
+  fun parseConfigWithExplicitJvmTarget() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -54,15 +57,17 @@ class ConfigTest {
             jvm_target = "21"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("21", config.build.jvmTarget)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("21", config.build.jvmTarget)
+  }
 
-    @Test
-    fun parseConfigWithDependencies() {
-        val toml = """
+  @Test
+  fun parseConfigWithDependencies() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -77,17 +82,19 @@ class ConfigTest {
             [dependencies]
             "org.jetbrains.kotlinx:kotlinx-coroutines-core" = "1.9.0"
             "com.squareup.okhttp3:okhttp" = "4.12.0"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(2, config.dependencies.size)
-        assertEquals("1.9.0", config.dependencies["org.jetbrains.kotlinx:kotlinx-coroutines-core"])
-        assertEquals("4.12.0", config.dependencies["com.squareup.okhttp3:okhttp"])
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(2, config.dependencies.size)
+    assertEquals("1.9.0", config.dependencies["org.jetbrains.kotlinx:kotlinx-coroutines-core"])
+    assertEquals("4.12.0", config.dependencies["com.squareup.okhttp3:okhttp"])
+  }
 
-    @Test
-    fun parseConfigWithMultipleSources() {
-        val toml = """
+  @Test
+  fun parseConfigWithMultipleSources() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -98,15 +105,17 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src", "generated"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(listOf("src", "generated"), config.build.sources)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(listOf("src", "generated"), config.build.sources)
+  }
 
-    @Test
-    fun missingRequiredFieldReturnsErr() {
-        val toml = """
+  @Test
+  fun missingRequiredFieldReturnsErr() {
+    val toml =
+      """
             version = "0.1.0"
 
             [kotlin]
@@ -116,25 +125,27 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        assertIs<ConfigError.ParseFailed>(result.getError())
-    }
+    assertNull(result.get())
+    assertIs<ConfigError.ParseFailed>(result.getError())
+  }
 
-    @Test
-    fun invalidTomlReturnsErr() {
-        val result = parseConfig("not valid toml [[[")
+  @Test
+  fun invalidTomlReturnsErr() {
+    val result = parseConfig("not valid toml [[[")
 
-        assertNull(result.get())
-        assertIs<ConfigError.ParseFailed>(result.getError())
-    }
+    assertNull(result.get())
+    assertIs<ConfigError.ParseFailed>(result.getError())
+  }
 
-    @Test
-    fun emptySourcesArray() {
-        val toml = """
+  @Test
+  fun emptySourcesArray() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -145,15 +156,17 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = []
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(emptyList(), config.build.sources)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(emptyList(), config.build.sources)
+  }
 
-    @Test
-    fun wrongFieldTypeReturnsErr() {
-        val toml = """
+  @Test
+  fun wrongFieldTypeReturnsErr() {
+    val toml =
+      """
             name = 123
             version = "0.1.0"
 
@@ -164,17 +177,19 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        assertIs<ConfigError.ParseFailed>(result.getError())
-    }
+    assertNull(result.get())
+    assertIs<ConfigError.ParseFailed>(result.getError())
+  }
 
-    @Test
-    fun wrongDependencyValueTypeReturnsErr() {
-        val toml = """
+  @Test
+  fun wrongDependencyValueTypeReturnsErr() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -188,17 +203,19 @@ class ConfigTest {
 
             [dependencies]
             "org.example:lib" = 123
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        assertIs<ConfigError.ParseFailed>(result.getError())
-    }
+    assertNull(result.get())
+    assertIs<ConfigError.ParseFailed>(result.getError())
+  }
 
-    @Test
-    fun parseConfigWithLinuxX64Target() {
-        val toml = """
+  @Test
+  fun parseConfigWithLinuxX64Target() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -209,16 +226,18 @@ class ConfigTest {
             target = "linuxX64"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("linuxX64", config.build.target)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("linuxX64", config.build.target)
+  }
 
-    @Test
-    fun parseConfigAcceptsAllKonanTargets() {
-        for (target in listOf("linuxX64", "linuxArm64", "macosX64", "macosArm64", "mingwX64")) {
-            val toml = """
+  @Test
+  fun parseConfigAcceptsAllKonanTargets() {
+    for (target in listOf("linuxX64", "linuxArm64", "macosX64", "macosArm64", "mingwX64")) {
+      val toml =
+        """
                 name = "my-app"
                 version = "0.1.0"
 
@@ -229,15 +248,17 @@ class ConfigTest {
                 target = "$target"
                 main = "com.example.main"
                 sources = ["src"]
-            """.trimIndent()
-            val config = assertNotNull(parseConfig(toml).get(), "expected $target to parse")
-            assertEquals(target, config.build.target)
-        }
+            """
+          .trimIndent()
+      val config = assertNotNull(parseConfig(toml).get(), "expected $target to parse")
+      assertEquals(target, config.build.target)
     }
+  }
 
-    @Test
-    fun nativeTargetIsRejectedAsInvalid() {
-        val toml = """
+  @Test
+  fun nativeTargetIsRejectedAsInvalid() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -248,18 +269,20 @@ class ConfigTest {
             target = "native"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        val error = assertIs<ConfigError.ParseFailed>(result.getError())
-        assertTrue(error.message.contains("native"), "missing 'native' in: ${error.message}")
-    }
+    assertNull(result.get())
+    val error = assertIs<ConfigError.ParseFailed>(result.getError())
+    assertTrue(error.message.contains("native"), "missing 'native' in: ${error.message}")
+  }
 
-    @Test
-    fun unknownTargetReturnsErr() {
-        val toml = """
+  @Test
+  fun unknownTargetReturnsErr() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -270,26 +293,28 @@ class ConfigTest {
             target = "wasm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        val error = assertIs<ConfigError.ParseFailed>(result.getError())
-        assertTrue(error.message.contains("target"))
-        assertTrue(error.message.contains("jvm"))
-        assertTrue(error.message.contains("linuxX64"))
-    }
+    assertNull(result.get())
+    val error = assertIs<ConfigError.ParseFailed>(result.getError())
+    assertTrue(error.message.contains("target"))
+    assertTrue(error.message.contains("jvm"))
+    assertTrue(error.message.contains("linuxX64"))
+  }
 
-    @Test
-    fun parseConfigDefaultsKindToApp() {
-        val config = assertNotNull(parseConfig(minimalToml).get())
-        assertEquals("app", config.kind)
-    }
+  @Test
+  fun parseConfigDefaultsKindToApp() {
+    val config = assertNotNull(parseConfig(minimalToml).get())
+    assertEquals("app", config.kind)
+  }
 
-    @Test
-    fun parseConfigAcceptsExplicitKindApp() {
-        val toml = """
+  @Test
+  fun parseConfigAcceptsExplicitKindApp() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
             kind = "app"
@@ -301,15 +326,17 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("app", config.kind)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("app", config.kind)
+  }
 
-    @Test
-    fun unknownKindReturnsErr() {
-        val toml = """
+  @Test
+  fun unknownKindReturnsErr() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
             kind = "service"
@@ -321,18 +348,20 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        val error = assertIs<ConfigError.ParseFailed>(result.getError())
-        assertTrue(error.message.contains("kind"), "missing 'kind' in: ${error.message}")
-    }
+    assertNull(result.get())
+    val error = assertIs<ConfigError.ParseFailed>(result.getError())
+    assertTrue(error.message.contains("kind"), "missing 'kind' in: ${error.message}")
+  }
 
-    @Test
-    fun parseConfigWithSingleTargetTableDesugars() {
-        val toml = """
+  @Test
+  fun parseConfigWithSingleTargetTableDesugars() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -344,15 +373,17 @@ class ConfigTest {
             sources = ["src"]
 
             [build.targets.linuxX64]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("linuxX64", config.build.target)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("linuxX64", config.build.target)
+  }
 
-    @Test
-    fun parseConfigWithSingleJvmTargetTableDesugars() {
-        val toml = """
+  @Test
+  fun parseConfigWithSingleJvmTargetTableDesugars() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -364,15 +395,17 @@ class ConfigTest {
             sources = ["src"]
 
             [build.targets.jvm]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("jvm", config.build.target)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("jvm", config.build.target)
+  }
 
-    @Test
-    fun multipleTargetTablesRejectedAsMultiTargetNotYetImplemented() {
-        val toml = """
+  @Test
+  fun multipleTargetTablesRejectedAsMultiTargetNotYetImplemented() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -385,21 +418,23 @@ class ConfigTest {
 
             [build.targets.jvm]
             [build.targets.linuxX64]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        val error = assertIs<ConfigError.ParseFailed>(result.getError())
-        assertTrue(
-            error.message.contains("multi-target") && error.message.contains("not yet implemented"),
-            "expected multi-target rejection, got: ${error.message}"
-        )
-    }
+    assertNull(result.get())
+    val error = assertIs<ConfigError.ParseFailed>(result.getError())
+    assertTrue(
+      error.message.contains("multi-target") && error.message.contains("not yet implemented"),
+      "expected multi-target rejection, got: ${error.message}",
+    )
+  }
 
-    @Test
-    fun scalarTargetAndTargetTableTogetherIsSchemaError() {
-        val toml = """
+  @Test
+  fun scalarTargetAndTargetTableTogetherIsSchemaError() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -412,21 +447,23 @@ class ConfigTest {
             sources = ["src"]
 
             [build.targets.linuxX64]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        val error = assertIs<ConfigError.ParseFailed>(result.getError())
-        assertTrue(
-            error.message.contains("[build] target") && error.message.contains("[build.targets"),
-            "expected mutual-exclusion error, got: ${error.message}"
-        )
-    }
+    assertNull(result.get())
+    val error = assertIs<ConfigError.ParseFailed>(result.getError())
+    assertTrue(
+      error.message.contains("[build] target") && error.message.contains("[build.targets"),
+      "expected mutual-exclusion error, got: ${error.message}",
+    )
+  }
 
-    @Test
-    fun emptyBuildTargetsTableWithoutScalarReportsTargetRequired() {
-        val toml = """
+  @Test
+  fun emptyBuildTargetsTableWithoutScalarReportsTargetRequired() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -438,22 +475,24 @@ class ConfigTest {
             sources = ["src"]
 
             [build.targets]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        val error = assertIs<ConfigError.ParseFailed>(result.getError())
-        assertTrue(error.message.contains("target"), "missing 'target' in: ${error.message}")
-        assertFalse(
-            error.message.contains("multi-target"),
-            "should not report multi-target for empty table, got: ${error.message}"
-        )
-    }
+    assertNull(result.get())
+    val error = assertIs<ConfigError.ParseFailed>(result.getError())
+    assertTrue(error.message.contains("target"), "missing 'target' in: ${error.message}")
+    assertFalse(
+      error.message.contains("multi-target"),
+      "should not report multi-target for empty table, got: ${error.message}",
+    )
+  }
 
-    @Test
-    fun parseConfigWithQuotedTargetTableKeyDesugars() {
-        val toml = """
+  @Test
+  fun parseConfigWithQuotedTargetTableKeyDesugars() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -465,15 +504,17 @@ class ConfigTest {
             sources = ["src"]
 
             [build.targets."linuxX64"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("linuxX64", config.build.target)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("linuxX64", config.build.target)
+  }
 
-    @Test
-    fun bogusTargetTableKeyFallsThroughToTargetValidation() {
-        val toml = """
+  @Test
+  fun bogusTargetTableKeyFallsThroughToTargetValidation() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -485,18 +526,20 @@ class ConfigTest {
             sources = ["src"]
 
             [build.targets.wasm]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        val error = assertIs<ConfigError.ParseFailed>(result.getError())
-        assertTrue(error.message.contains("wasm"), "missing 'wasm' in: ${error.message}")
-    }
+    assertNull(result.get())
+    val error = assertIs<ConfigError.ParseFailed>(result.getError())
+    assertTrue(error.message.contains("wasm"), "missing 'wasm' in: ${error.message}")
+  }
 
-    @Test
-    fun nativeInTargetTableIsRejectedAsInvalid() {
-        val toml = """
+  @Test
+  fun nativeInTargetTableIsRejectedAsInvalid() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -508,18 +551,20 @@ class ConfigTest {
             sources = ["src"]
 
             [build.targets.native]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val result = parseConfig(toml)
+    val result = parseConfig(toml)
 
-        assertNull(result.get())
-        val error = assertIs<ConfigError.ParseFailed>(result.getError())
-        assertTrue(error.message.contains("native"), "missing 'native' in: ${error.message}")
-    }
+    assertNull(result.get())
+    val error = assertIs<ConfigError.ParseFailed>(result.getError())
+    assertTrue(error.message.contains("native"), "missing 'native' in: ${error.message}")
+  }
 
-    @Test
-    fun unknownFieldsAreIgnored() {
-        val toml = """
+  @Test
+  fun unknownFieldsAreIgnored() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
             unknown_field = "value"
@@ -531,22 +576,24 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("my-app", config.name)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("my-app", config.name)
+  }
 
-    @Test
-    fun parseMinimalConfigHasDefaultTestSources() {
-        val config = assertNotNull(parseConfig(minimalToml).get())
-        assertEquals(listOf("test"), config.build.testSources)
-        assertEquals(emptyMap(), config.testDependencies)
-    }
+  @Test
+  fun parseMinimalConfigHasDefaultTestSources() {
+    val config = assertNotNull(parseConfig(minimalToml).get())
+    assertEquals(listOf("test"), config.build.testSources)
+    assertEquals(emptyMap(), config.testDependencies)
+  }
 
-    @Test
-    fun parseConfigWithTestSources() {
-        val toml = """
+  @Test
+  fun parseConfigWithTestSources() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -558,15 +605,17 @@ class ConfigTest {
             main = "com.example.main"
             sources = ["src"]
             test_sources = ["test", "integration-test"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(listOf("test", "integration-test"), config.build.testSources)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(listOf("test", "integration-test"), config.build.testSources)
+  }
 
-    @Test
-    fun parseConfigWithTestDependencies() {
-        val toml = """
+  @Test
+  fun parseConfigWithTestDependencies() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -580,16 +629,18 @@ class ConfigTest {
 
             [test-dependencies]
             "org.jetbrains.kotlin:kotlin-test-junit5" = "2.1.0"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(1, config.testDependencies.size)
-        assertEquals("2.1.0", config.testDependencies["org.jetbrains.kotlin:kotlin-test-junit5"])
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(1, config.testDependencies.size)
+    assertEquals("2.1.0", config.testDependencies["org.jetbrains.kotlin:kotlin-test-junit5"])
+  }
 
-    @Test
-    fun parseConfigWithBothDependenciesAndTestDependencies() {
-        val toml = """
+  @Test
+  fun parseConfigWithBothDependenciesAndTestDependencies() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -606,22 +657,24 @@ class ConfigTest {
 
             [test-dependencies]
             "org.jetbrains.kotlin:kotlin-test-junit5" = "2.1.0"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(1, config.dependencies.size)
-        assertEquals(1, config.testDependencies.size)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(1, config.dependencies.size)
+    assertEquals(1, config.testDependencies.size)
+  }
 
-    @Test
-    fun parseMinimalConfigHasDefaultFmtStyle() {
-        val config = assertNotNull(parseConfig(minimalToml).get())
-        assertEquals("google", config.fmt.style)
-    }
+  @Test
+  fun parseMinimalConfigHasDefaultFmtStyle() {
+    val config = assertNotNull(parseConfig(minimalToml).get())
+    assertEquals("google", config.fmt.style)
+  }
 
-    @Test
-    fun parseConfigWithFmtStyle() {
-        val toml = """
+  @Test
+  fun parseConfigWithFmtStyle() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -635,21 +688,23 @@ class ConfigTest {
 
             [fmt]
             style = "kotlinlang"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("kotlinlang", config.fmt.style)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("kotlinlang", config.fmt.style)
+  }
 
-    @Test
-    fun parseMinimalConfigHasNoPlugins() {
-        val config = assertNotNull(parseConfig(minimalToml).get())
-        assertEquals(emptyMap(), config.kotlin.plugins)
-    }
+  @Test
+  fun parseMinimalConfigHasNoPlugins() {
+    val config = assertNotNull(parseConfig(minimalToml).get())
+    assertEquals(emptyMap(), config.kotlin.plugins)
+  }
 
-    @Test
-    fun parseConfigWithPlugins() {
-        val toml = """
+  @Test
+  fun parseConfigWithPlugins() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -663,16 +718,18 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(1, config.kotlin.plugins.size)
-        assertEquals(true, config.kotlin.plugins["serialization"])
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(1, config.kotlin.plugins.size)
+    assertEquals(true, config.kotlin.plugins["serialization"])
+  }
 
-    @Test
-    fun parseConfigWithMultiplePlugins() {
-        val toml = """
+  @Test
+  fun parseConfigWithMultiplePlugins() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -688,18 +745,20 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(3, config.kotlin.plugins.size)
-        assertEquals(true, config.kotlin.plugins["serialization"])
-        assertEquals(true, config.kotlin.plugins["allopen"])
-        assertEquals(false, config.kotlin.plugins["noarg"])
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(3, config.kotlin.plugins.size)
+    assertEquals(true, config.kotlin.plugins["serialization"])
+    assertEquals(true, config.kotlin.plugins["allopen"])
+    assertEquals(false, config.kotlin.plugins["noarg"])
+  }
 
-    @Test
-    fun parseConfigWithPluginsAndDependencies() {
-        val toml = """
+  @Test
+  fun parseConfigWithPluginsAndDependencies() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -716,24 +775,26 @@ class ConfigTest {
 
             [dependencies]
             "org.jetbrains.kotlinx:kotlinx-serialization-json" = "1.7.0"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(1, config.kotlin.plugins.size)
-        assertEquals(1, config.dependencies.size)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(1, config.kotlin.plugins.size)
+    assertEquals(1, config.dependencies.size)
+  }
 
-    @Test
-    fun parseMinimalConfigHasDefaultRepositories() {
-        val config = assertNotNull(parseConfig(minimalToml).get())
+  @Test
+  fun parseMinimalConfigHasDefaultRepositories() {
+    val config = assertNotNull(parseConfig(minimalToml).get())
 
-        assertEquals(1, config.repositories.size)
-        assertEquals(MAVEN_CENTRAL_BASE, config.repositories["central"])
-    }
+    assertEquals(1, config.repositories.size)
+    assertEquals(MAVEN_CENTRAL_BASE, config.repositories["central"])
+  }
 
-    @Test
-    fun parseConfigWithRepositories() {
-        val toml = """
+  @Test
+  fun parseConfigWithRepositories() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -747,16 +808,18 @@ class ConfigTest {
 
             [repositories]
             myrepo = "https://nexus.example.com/repository/maven-public"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(1, config.repositories.size)
-        assertEquals("https://nexus.example.com/repository/maven-public", config.repositories["myrepo"])
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(1, config.repositories.size)
+    assertEquals("https://nexus.example.com/repository/maven-public", config.repositories["myrepo"])
+  }
 
-    @Test
-    fun parseConfigWithMultipleRepositoriesPreservesOrder() {
-        val toml = """
+  @Test
+  fun parseConfigWithMultipleRepositoriesPreservesOrder() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -771,20 +834,22 @@ class ConfigTest {
             [repositories]
             internal = "https://nexus.example.com/repository/internal"
             central = "https://repo1.maven.org/maven2"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(2, config.repositories.size)
-        val entries = config.repositories.entries.toList()
-        assertEquals("internal", entries[0].key)
-        assertEquals("https://nexus.example.com/repository/internal", entries[0].value)
-        assertEquals("central", entries[1].key)
-        assertEquals("https://repo1.maven.org/maven2", entries[1].value)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(2, config.repositories.size)
+    val entries = config.repositories.entries.toList()
+    assertEquals("internal", entries[0].key)
+    assertEquals("https://nexus.example.com/repository/internal", entries[0].value)
+    assertEquals("central", entries[1].key)
+    assertEquals("https://repo1.maven.org/maven2", entries[1].value)
+  }
 
-    @Test
-    fun parseConfigWithRepositoriesAndDependencies() {
-        val toml = """
+  @Test
+  fun parseConfigWithRepositoriesAndDependencies() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -802,16 +867,18 @@ class ConfigTest {
             [repositories]
             central = "https://repo1.maven.org/maven2"
             internal = "https://nexus.example.com/repository/maven-public"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(1, config.dependencies.size)
-        assertEquals(2, config.repositories.size)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(1, config.dependencies.size)
+    assertEquals(2, config.repositories.size)
+  }
 
-    @Test
-    fun repositoryTrailingSlashIsNormalized() {
-        val toml = """
+  @Test
+  fun repositoryTrailingSlashIsNormalized() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -826,24 +893,26 @@ class ConfigTest {
             [repositories]
             jitpack = "https://jitpack.io/"
             central = "https://repo1.maven.org/maven2/"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("https://jitpack.io", config.repositories["jitpack"])
-        assertEquals(MAVEN_CENTRAL_BASE, config.repositories["central"])
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("https://jitpack.io", config.repositories["jitpack"])
+    assertEquals(MAVEN_CENTRAL_BASE, config.repositories["central"])
+  }
 
-    @Test
-    fun parseMinimalConfigHasDefaultResources() {
-        val config = assertNotNull(parseConfig(minimalToml).get())
+  @Test
+  fun parseMinimalConfigHasDefaultResources() {
+    val config = assertNotNull(parseConfig(minimalToml).get())
 
-        assertEquals(emptyList(), config.build.resources)
-        assertEquals(emptyList(), config.build.testResources)
-    }
+    assertEquals(emptyList(), config.build.resources)
+    assertEquals(emptyList(), config.build.testResources)
+  }
 
-    @Test
-    fun parseConfigWithResources() {
-        val toml = """
+  @Test
+  fun parseConfigWithResources() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -855,15 +924,17 @@ class ConfigTest {
             main = "com.example.main"
             sources = ["src"]
             resources = ["resources"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(listOf("resources"), config.build.resources)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(listOf("resources"), config.build.resources)
+  }
 
-    @Test
-    fun parseConfigWithMultipleResources() {
-        val toml = """
+  @Test
+  fun parseConfigWithMultipleResources() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -875,15 +946,17 @@ class ConfigTest {
             main = "com.example.main"
             sources = ["src"]
             resources = ["resources", "assets"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(listOf("resources", "assets"), config.build.resources)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(listOf("resources", "assets"), config.build.resources)
+  }
 
-    @Test
-    fun parseConfigWithTestResources() {
-        val toml = """
+  @Test
+  fun parseConfigWithTestResources() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -895,15 +968,17 @@ class ConfigTest {
             main = "com.example.main"
             sources = ["src"]
             test_resources = ["test-resources"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(listOf("test-resources"), config.build.testResources)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(listOf("test-resources"), config.build.testResources)
+  }
 
-    @Test
-    fun parseConfigWithBothResourceFields() {
-        val toml = """
+  @Test
+  fun parseConfigWithBothResourceFields() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -916,16 +991,18 @@ class ConfigTest {
             sources = ["src"]
             resources = ["resources"]
             test_resources = ["test-resources"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(listOf("resources"), config.build.resources)
-        assertEquals(listOf("test-resources"), config.build.testResources)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(listOf("resources"), config.build.resources)
+    assertEquals(listOf("test-resources"), config.build.testResources)
+  }
 
-    @Test
-    fun parseConfigWithEmptyResources() {
-        val toml = """
+  @Test
+  fun parseConfigWithEmptyResources() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -937,15 +1014,17 @@ class ConfigTest {
             main = "com.example.main"
             sources = ["src"]
             resources = []
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals(emptyList(), config.build.resources)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals(emptyList(), config.build.resources)
+  }
 
-    @Test
-    fun commentsAreIgnored() {
-        val toml = """
+  @Test
+  fun commentsAreIgnored() {
+    val toml =
+      """
             # Project configuration
             name = "my-app"
             version = "0.1.0"
@@ -957,29 +1036,31 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"] # main source directory
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("my-app", config.name)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("my-app", config.name)
+  }
 
-    @Test
-    fun mavenCentralBaseDefinedInConfigPackage() {
-        assertEquals("https://repo1.maven.org/maven2", MAVEN_CENTRAL_BASE)
-        val config = assertNotNull(parseConfig(minimalToml).get())
-        assertEquals(MAVEN_CENTRAL_BASE, config.repositories["central"])
-    }
+  @Test
+  fun mavenCentralBaseDefinedInConfigPackage() {
+    assertEquals("https://repo1.maven.org/maven2", MAVEN_CENTRAL_BASE)
+    val config = assertNotNull(parseConfig(minimalToml).get())
+    assertEquals(MAVEN_CENTRAL_BASE, config.repositories["central"])
+  }
 
-    @Test
-    fun parseMinimalConfigHasNullJdk() {
-        val config = assertNotNull(parseConfig(minimalToml).get())
+  @Test
+  fun parseMinimalConfigHasNullJdk() {
+    val config = assertNotNull(parseConfig(minimalToml).get())
 
-        assertNull(config.build.jdk)
-    }
+    assertNull(config.build.jdk)
+  }
 
-    @Test
-    fun parseConfigWithJdkVersion() {
-        val toml = """
+  @Test
+  fun parseConfigWithJdkVersion() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -991,15 +1072,17 @@ class ConfigTest {
             jdk = "21"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("21", config.build.jdk)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("21", config.build.jdk)
+  }
 
-    @Test
-    fun parseConfigWithJdkAndJvmTargetAreIndependent() {
-        val toml = """
+  @Test
+  fun parseConfigWithJdkAndJvmTargetAreIndependent() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -1012,23 +1095,25 @@ class ConfigTest {
             jvm_target = "17"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
-        assertEquals("21", config.build.jdk)
-        assertEquals("17", config.build.jvmTarget)
-    }
+    val config = assertNotNull(parseConfig(toml).get())
+    assertEquals("21", config.build.jdk)
+    assertEquals("17", config.build.jvmTarget)
+  }
 
-    @Test
-    fun parseMinimalConfigHasEmptyCinteropList() {
-        val config = assertNotNull(parseConfig(minimalToml).get())
+  @Test
+  fun parseMinimalConfigHasEmptyCinteropList() {
+    val config = assertNotNull(parseConfig(minimalToml).get())
 
-        assertEquals(emptyList(), config.cinterop)
-    }
+    assertEquals(emptyList(), config.cinterop)
+  }
 
-    @Test
-    fun parseConfigWithSingleCinteropEntry() {
-        val toml = """
+  @Test
+  fun parseConfigWithSingleCinteropEntry() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -1043,20 +1128,22 @@ class ConfigTest {
             [[cinterop]]
             name = "libcurl"
             def = "src/nativeInterop/cinterop/libcurl.def"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
+    val config = assertNotNull(parseConfig(toml).get())
 
-        assertEquals(1, config.cinterop.size)
-        val entry = config.cinterop[0]
-        assertEquals("libcurl", entry.name)
-        assertEquals("src/nativeInterop/cinterop/libcurl.def", entry.def)
-        assertNull(entry.packageName)
-    }
+    assertEquals(1, config.cinterop.size)
+    val entry = config.cinterop[0]
+    assertEquals("libcurl", entry.name)
+    assertEquals("src/nativeInterop/cinterop/libcurl.def", entry.def)
+    assertNull(entry.packageName)
+  }
 
-    @Test
-    fun parseConfigWithCinteropEntryAllFields() {
-        val toml = """
+  @Test
+  fun parseConfigWithCinteropEntryAllFields() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -1072,20 +1159,22 @@ class ConfigTest {
             name = "libcurl"
             def = "src/nativeInterop/cinterop/libcurl.def"
             package = "libcurl"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
+    val config = assertNotNull(parseConfig(toml).get())
 
-        assertEquals(1, config.cinterop.size)
-        val entry = config.cinterop[0]
-        assertEquals("libcurl", entry.name)
-        assertEquals("src/nativeInterop/cinterop/libcurl.def", entry.def)
-        assertEquals("libcurl", entry.packageName)
-    }
+    assertEquals(1, config.cinterop.size)
+    val entry = config.cinterop[0]
+    assertEquals("libcurl", entry.name)
+    assertEquals("src/nativeInterop/cinterop/libcurl.def", entry.def)
+    assertEquals("libcurl", entry.packageName)
+  }
 
-    @Test
-    fun parseConfigWithMultipleCinteropEntries() {
-        val toml = """
+  @Test
+  fun parseConfigWithMultipleCinteropEntries() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -1105,20 +1194,22 @@ class ConfigTest {
             name = "openssl"
             def = "src/nativeInterop/cinterop/openssl.def"
             package = "openssl"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
+    val config = assertNotNull(parseConfig(toml).get())
 
-        assertEquals(2, config.cinterop.size)
-        assertEquals("libcurl", config.cinterop[0].name)
-        assertEquals("openssl", config.cinterop[1].name)
-        assertNull(config.cinterop[0].packageName)
-        assertEquals("openssl", config.cinterop[1].packageName)
-    }
+    assertEquals(2, config.cinterop.size)
+    assertEquals("libcurl", config.cinterop[0].name)
+    assertEquals("openssl", config.cinterop[1].name)
+    assertNull(config.cinterop[0].packageName)
+    assertEquals("openssl", config.cinterop[1].packageName)
+  }
 
-    @Test
-    fun parseConfigCinteropWithDependencies() {
-        val toml = """
+  @Test
+  fun parseConfigCinteropWithDependencies() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -1136,25 +1227,27 @@ class ConfigTest {
             [[cinterop]]
             name = "libcurl"
             def = "libcurl.def"
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
+    val config = assertNotNull(parseConfig(toml).get())
 
-        assertEquals(1, config.dependencies.size)
-        assertEquals(1, config.cinterop.size)
-    }
+    assertEquals(1, config.dependencies.size)
+    assertEquals(1, config.cinterop.size)
+  }
 
-    @Test
-    fun parseConfigCompilerUnsetDefaultsToVersion() {
-        val config = assertNotNull(parseConfig(minimalToml).get())
+  @Test
+  fun parseConfigCompilerUnsetDefaultsToVersion() {
+    val config = assertNotNull(parseConfig(minimalToml).get())
 
-        assertNull(config.kotlin.compiler)
-        assertEquals("2.1.0", config.kotlin.effectiveCompiler)
-    }
+    assertNull(config.kotlin.compiler)
+    assertEquals("2.1.0", config.kotlin.effectiveCompiler)
+  }
 
-    @Test
-    fun parseConfigCompilerEqualToVersion() {
-        val toml = """
+  @Test
+  fun parseConfigCompilerEqualToVersion() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -1166,17 +1259,19 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
+    val config = assertNotNull(parseConfig(toml).get())
 
-        assertEquals("2.3.20", config.kotlin.compiler)
-        assertEquals("2.3.20", config.kotlin.effectiveCompiler)
-    }
+    assertEquals("2.3.20", config.kotlin.compiler)
+    assertEquals("2.3.20", config.kotlin.effectiveCompiler)
+  }
 
-    @Test
-    fun parseConfigCompilerHigherThanVersion() {
-        val toml = """
+  @Test
+  fun parseConfigCompilerHigherThanVersion() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -1188,18 +1283,20 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val config = assertNotNull(parseConfig(toml).get())
+    val config = assertNotNull(parseConfig(toml).get())
 
-        assertEquals("2.1.0", config.kotlin.version)
-        assertEquals("2.3.20", config.kotlin.compiler)
-        assertEquals("2.3.20", config.kotlin.effectiveCompiler)
-    }
+    assertEquals("2.1.0", config.kotlin.version)
+    assertEquals("2.3.20", config.kotlin.compiler)
+    assertEquals("2.3.20", config.kotlin.effectiveCompiler)
+  }
 
-    @Test
-    fun parseConfigCompilerLowerThanVersionRejected() {
-        val toml = """
+  @Test
+  fun parseConfigCompilerLowerThanVersionRejected() {
+    val toml =
+      """
             name = "my-app"
             version = "0.1.0"
 
@@ -1211,22 +1308,25 @@ class ConfigTest {
             target = "jvm"
             main = "com.example.main"
             sources = ["src"]
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val err = assertNotNull(parseConfig(toml).getError())
-        val parseFailed = assertIs<ConfigError.ParseFailed>(err)
-        assertTrue(
-            parseFailed.message.contains("compiler") && parseFailed.message.contains("2.1.0") && parseFailed.message.contains("2.3.20"),
-            "expected message to name both versions, got: ${parseFailed.message}",
-        )
-    }
+    val err = assertNotNull(parseConfig(toml).getError())
+    val parseFailed = assertIs<ConfigError.ParseFailed>(err)
+    assertTrue(
+      parseFailed.message.contains("compiler") &&
+        parseFailed.message.contains("2.1.0") &&
+        parseFailed.message.contains("2.3.20"),
+      "expected message to name both versions, got: ${parseFailed.message}",
+    )
+  }
 
-    @Test
-    fun konanTargetGradleNameMapsAllKonanTargets() {
-        assertEquals("linux_x64", konanTargetGradleName("linuxX64"))
-        assertEquals("linux_arm64", konanTargetGradleName("linuxArm64"))
-        assertEquals("macos_x64", konanTargetGradleName("macosX64"))
-        assertEquals("macos_arm64", konanTargetGradleName("macosArm64"))
-        assertEquals("mingw_x64", konanTargetGradleName("mingwX64"))
-    }
+  @Test
+  fun konanTargetGradleNameMapsAllKonanTargets() {
+    assertEquals("linux_x64", konanTargetGradleName("linuxX64"))
+    assertEquals("linux_arm64", konanTargetGradleName("linuxArm64"))
+    assertEquals("macos_x64", konanTargetGradleName("macosX64"))
+    assertEquals("macos_arm64", konanTargetGradleName("macosArm64"))
+    assertEquals("mingw_x64", konanTargetGradleName("mingwX64"))
+  }
 }

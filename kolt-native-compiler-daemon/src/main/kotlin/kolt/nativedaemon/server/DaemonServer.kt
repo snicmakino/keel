@@ -5,12 +5,6 @@ import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.mapBoth
-import kolt.nativedaemon.compiler.NativeCompileError
-import kolt.nativedaemon.compiler.NativeCompileOutcome
-import kolt.nativedaemon.compiler.NativeCompiler
-import kolt.nativedaemon.protocol.FrameCodec
-import kolt.nativedaemon.protocol.FrameError
-import kolt.nativedaemon.protocol.Message
 import java.io.IOException
 import java.io.OutputStream
 import java.lang.management.ManagementFactory
@@ -25,16 +19,25 @@ import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+import kolt.nativedaemon.compiler.NativeCompileError
+import kolt.nativedaemon.compiler.NativeCompileOutcome
+import kolt.nativedaemon.compiler.NativeCompiler
+import kolt.nativedaemon.protocol.FrameCodec
+import kolt.nativedaemon.protocol.FrameError
+import kolt.nativedaemon.protocol.Message
 
 sealed interface ExitReason {
-    data object Shutdown : ExitReason
-    data object MaxCompilesReached : ExitReason
-    data object IdleTimeout : ExitReason
-    data object HeapWatermarkReached : ExitReason
+  data object Shutdown : ExitReason
+
+  data object MaxCompilesReached : ExitReason
+
+  data object IdleTimeout : ExitReason
+
+  data object HeapWatermarkReached : ExitReason
 }
 
 sealed interface DaemonError {
-    data class BindFailed(val reason: String) : DaemonError
+  data class BindFailed(val reason: String) : DaemonError
 }
 
 // Native compiler daemon server. Structurally parallels
@@ -50,169 +53,179 @@ sealed interface DaemonError {
 // - NativeCompileResult returns { exitCode, stderr } only — no stdout or
 //   structured diagnostics (§4, "stderr blob").
 class DaemonServer(
-    private val socketPath: Path,
-    private val compiler: NativeCompiler,
-    private val config: DaemonConfig = DaemonConfig(),
+  private val socketPath: Path,
+  private val compiler: NativeCompiler,
+  private val config: DaemonConfig = DaemonConfig(),
 ) {
-    private val stopRequested = AtomicBoolean(false)
-    private val compilesServed = AtomicInteger(0)
-    private val lastActivityNanos = AtomicLong(System.nanoTime())
-    @Volatile private var serverChannel: ServerSocketChannel? = null
-    @Volatile private var exitReason: ExitReason? = null
+  private val stopRequested = AtomicBoolean(false)
+  private val compilesServed = AtomicInteger(0)
+  private val lastActivityNanos = AtomicLong(System.nanoTime())
+  @Volatile private var serverChannel: ServerSocketChannel? = null
+  @Volatile private var exitReason: ExitReason? = null
 
-    fun serve(): Result<ExitReason, DaemonError> {
-        val parent = socketPath.parent
-        if (parent != null) {
-            try {
-                Files.createDirectories(parent)
-            } catch (e: IOException) {
-                return Err(DaemonError.BindFailed("createDirectories($parent) failed: ${e.message}"))
-            }
-        }
-        try {
-            Files.deleteIfExists(socketPath)
-        } catch (e: IOException) {
-            return Err(DaemonError.BindFailed("deleteIfExists($socketPath) failed: ${e.message}"))
-        }
-
-        val server = try {
-            ServerSocketChannel.open(StandardProtocolFamily.UNIX).also {
-                it.bind(UnixDomainSocketAddress.of(socketPath))
-            }
-        } catch (e: IOException) {
-            return Err(DaemonError.BindFailed("bind($socketPath) failed: ${e.message}"))
-        }
-
-        serverChannel = server
-        val watchdog = startWatchdog()
-        try {
-            server.use {
-                while (!stopRequested.get()) {
-                    val client = try {
-                        server.accept()
-                    } catch (_: ClosedChannelException) {
-                        break
-                    }
-                    lastActivityNanos.set(System.nanoTime())
-                    client.use { handleConnection(it) }
-                    lastActivityNanos.set(System.nanoTime())
-                }
-            }
-        } finally {
-            watchdog.interrupt()
-            runCatching { Files.deleteIfExists(socketPath) }
-        }
-        return Ok(exitReason ?: ExitReason.Shutdown)
+  fun serve(): Result<ExitReason, DaemonError> {
+    val parent = socketPath.parent
+    if (parent != null) {
+      try {
+        Files.createDirectories(parent)
+      } catch (e: IOException) {
+        return Err(DaemonError.BindFailed("createDirectories($parent) failed: ${e.message}"))
+      }
+    }
+    try {
+      Files.deleteIfExists(socketPath)
+    } catch (e: IOException) {
+      return Err(DaemonError.BindFailed("deleteIfExists($socketPath) failed: ${e.message}"))
     }
 
-    fun stop() {
-        requestExit(ExitReason.Shutdown)
-    }
-
-    private fun requestExit(reason: ExitReason) {
-        if (stopRequested.compareAndSet(false, true)) {
-            exitReason = reason
+    val server =
+      try {
+        ServerSocketChannel.open(StandardProtocolFamily.UNIX).also {
+          it.bind(UnixDomainSocketAddress.of(socketPath))
         }
-        runCatching { serverChannel?.close() }
-    }
+      } catch (e: IOException) {
+        return Err(DaemonError.BindFailed("bind($socketPath) failed: ${e.message}"))
+      }
 
-    private fun startWatchdog(): Thread =
-        Thread({
-            while (!stopRequested.get()) {
-                val idleMs = (System.nanoTime() - lastActivityNanos.get()) / 1_000_000
-                if (idleMs >= config.idleTimeoutMillis) {
-                    requestExit(ExitReason.IdleTimeout)
-                    return@Thread
-                }
-                val sleepMs = (config.idleTimeoutMillis - idleMs).coerceAtLeast(10).coerceAtMost(500)
-                try {
-                    Thread.sleep(sleepMs)
-                } catch (_: InterruptedException) {
-                    return@Thread
-                }
-            }
-        }, "native-daemon-watchdog").apply {
-            isDaemon = true
-            start()
-        }
-
-    private fun handleConnection(client: SocketChannel) {
-        val input = Channels.newInputStream(client)
-        val output = Channels.newOutputStream(client)
+    serverChannel = server
+    val watchdog = startWatchdog()
+    try {
+      server.use {
         while (!stopRequested.get()) {
-            val message = FrameCodec.readFrame(input).getOrElse { err ->
-                if (err !is FrameError.Eof) {
-                    writeProtocolError(output, "protocol error: $err")
-                }
-                return
+          val client =
+            try {
+              server.accept()
+            } catch (_: ClosedChannelException) {
+              break
             }
-            when (message) {
-                is Message.Ping -> {
-                    if (FrameCodec.writeFrame(output, Message.Pong).isErr) return
-                }
-                is Message.Shutdown -> {
-                    requestExit(ExitReason.Shutdown)
-                    return
-                }
-                is Message.NativeCompile -> {
-                    if (handleNativeCompile(message, output).isErr) return
-                    val served = compilesServed.incrementAndGet()
-                    if (served >= config.maxCompiles) {
-                        requestExit(ExitReason.MaxCompilesReached)
-                        return
-                    }
-                    if (heapUsedBytes() >= config.heapWatermarkBytes) {
-                        requestExit(ExitReason.HeapWatermarkReached)
-                        return
-                    }
-                }
-                is Message.Pong, is Message.NativeCompileResult -> {
-                    writeProtocolError(
-                        output,
-                        "protocol error: client sent server-only message ${message::class.simpleName}",
-                    )
-                    return
-                }
-            }
+          lastActivityNanos.set(System.nanoTime())
+          client.use { handleConnection(it) }
+          lastActivityNanos.set(System.nanoTime())
         }
+      }
+    } finally {
+      watchdog.interrupt()
+      runCatching { Files.deleteIfExists(socketPath) }
     }
+    return Ok(exitReason ?: ExitReason.Shutdown)
+  }
 
-    private fun writeProtocolError(output: OutputStream, stderr: String) {
-        FrameCodec.writeFrame(
+  fun stop() {
+    requestExit(ExitReason.Shutdown)
+  }
+
+  private fun requestExit(reason: ExitReason) {
+    if (stopRequested.compareAndSet(false, true)) {
+      exitReason = reason
+    }
+    runCatching { serverChannel?.close() }
+  }
+
+  private fun startWatchdog(): Thread =
+    Thread(
+        {
+          while (!stopRequested.get()) {
+            val idleMs = (System.nanoTime() - lastActivityNanos.get()) / 1_000_000
+            if (idleMs >= config.idleTimeoutMillis) {
+              requestExit(ExitReason.IdleTimeout)
+              return@Thread
+            }
+            val sleepMs = (config.idleTimeoutMillis - idleMs).coerceAtLeast(10).coerceAtMost(500)
+            try {
+              Thread.sleep(sleepMs)
+            } catch (_: InterruptedException) {
+              return@Thread
+            }
+          }
+        },
+        "native-daemon-watchdog",
+      )
+      .apply {
+        isDaemon = true
+        start()
+      }
+
+  private fun handleConnection(client: SocketChannel) {
+    val input = Channels.newInputStream(client)
+    val output = Channels.newOutputStream(client)
+    while (!stopRequested.get()) {
+      val message =
+        FrameCodec.readFrame(input).getOrElse { err ->
+          if (err !is FrameError.Eof) {
+            writeProtocolError(output, "protocol error: $err")
+          }
+          return
+        }
+      when (message) {
+        is Message.Ping -> {
+          if (FrameCodec.writeFrame(output, Message.Pong).isErr) return
+        }
+        is Message.Shutdown -> {
+          requestExit(ExitReason.Shutdown)
+          return
+        }
+        is Message.NativeCompile -> {
+          if (handleNativeCompile(message, output).isErr) return
+          val served = compilesServed.incrementAndGet()
+          if (served >= config.maxCompiles) {
+            requestExit(ExitReason.MaxCompilesReached)
+            return
+          }
+          if (heapUsedBytes() >= config.heapWatermarkBytes) {
+            requestExit(ExitReason.HeapWatermarkReached)
+            return
+          }
+        }
+        is Message.Pong,
+        is Message.NativeCompileResult -> {
+          writeProtocolError(
             output,
-            Message.NativeCompileResult(exitCode = 2, stderr = stderr),
+            "protocol error: client sent server-only message ${message::class.simpleName}",
+          )
+          return
+        }
+      }
+    }
+  }
+
+  private fun writeProtocolError(output: OutputStream, stderr: String) {
+    FrameCodec.writeFrame(output, Message.NativeCompileResult(exitCode = 2, stderr = stderr))
+  }
+
+  private fun handleNativeCompile(
+    request: Message.NativeCompile,
+    output: OutputStream,
+  ): Result<Unit, FrameError> {
+    val reply: Message =
+      compiler
+        .compile(request.args)
+        .mapBoth(
+          success = { outcome -> outcomeToReply(outcome) },
+          failure = { error -> errorToReply(error) },
+        )
+    return FrameCodec.writeFrame(output, reply)
+  }
+
+  private fun outcomeToReply(outcome: NativeCompileOutcome): Message.NativeCompileResult =
+    Message.NativeCompileResult(exitCode = outcome.exitCode, stderr = outcome.stderr)
+
+  // ADR 0024 §7: reflective failures ride the same fallback path as
+  // connect/spawn/disconnect errors. Wire contract stays uniform (every
+  // request → NativeCompileResult); the client escapes via
+  // `NativeDaemonBackend.isDaemonSideFailure`, which pattern-matches on
+  // the `native compiler invocation failed: ` stderr prefix below.
+  // Prefix drift is pinned by DaemonServerTest `InvocationFailed...` and
+  // `rejects server-only messages...`; change them together or fallback
+  // silently routes daemon failures through as konanc errors.
+  private fun errorToReply(error: NativeCompileError): Message.NativeCompileResult =
+    when (error) {
+      is NativeCompileError.InvocationFailed ->
+        Message.NativeCompileResult(
+          exitCode = 2,
+          stderr =
+            "native compiler invocation failed: ${error.cause.message ?: error.cause.javaClass.name}",
         )
     }
 
-    private fun handleNativeCompile(
-        request: Message.NativeCompile,
-        output: OutputStream,
-    ): Result<Unit, FrameError> {
-        val reply: Message = compiler.compile(request.args).mapBoth(
-            success = { outcome -> outcomeToReply(outcome) },
-            failure = { error -> errorToReply(error) },
-        )
-        return FrameCodec.writeFrame(output, reply)
-    }
-
-    private fun outcomeToReply(outcome: NativeCompileOutcome): Message.NativeCompileResult =
-        Message.NativeCompileResult(exitCode = outcome.exitCode, stderr = outcome.stderr)
-
-    // ADR 0024 §7: reflective failures ride the same fallback path as
-    // connect/spawn/disconnect errors. Wire contract stays uniform (every
-    // request → NativeCompileResult); the client escapes via
-    // `NativeDaemonBackend.isDaemonSideFailure`, which pattern-matches on
-    // the `native compiler invocation failed: ` stderr prefix below.
-    // Prefix drift is pinned by DaemonServerTest `InvocationFailed...` and
-    // `rejects server-only messages...`; change them together or fallback
-    // silently routes daemon failures through as konanc errors.
-    private fun errorToReply(error: NativeCompileError): Message.NativeCompileResult = when (error) {
-        is NativeCompileError.InvocationFailed -> Message.NativeCompileResult(
-            exitCode = 2,
-            stderr = "native compiler invocation failed: ${error.cause.message ?: error.cause.javaClass.name}",
-        )
-    }
-
-    private fun heapUsedBytes(): Long =
-        ManagementFactory.getMemoryMXBean().heapMemoryUsage.used
+  private fun heapUsedBytes(): Long = ManagementFactory.getMemoryMXBean().heapMemoryUsage.used
 }

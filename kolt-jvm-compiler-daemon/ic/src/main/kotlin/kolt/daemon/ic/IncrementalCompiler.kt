@@ -15,22 +15,22 @@ import java.nio.file.Path
 // (ADR 0019 §9). Keeping the translation inside the adapter preserves the
 // "daemon core carries no BTA-shaped fields" invariant.
 interface IncrementalCompiler {
-    fun compile(request: IcRequest): Result<IcResponse, IcError>
+  fun compile(request: IcRequest): Result<IcResponse, IcError>
 }
 
 data class IcRequest(
-    val projectId: String,
-    // The project root directory (containing `kolt.toml`). The adapter reads the
-    // TOML file directly to translate plugin settings per ADR 0019 §9; this is
-    // the only way the @ExperimentalBuildToolsApi shape of plugin arguments
-    // stays out of daemon core. ADR §3's original data class did not list
-    // projectRoot, but §9 implicitly requires it — this is a minor inter-
-    // section fix, not a scope widening.
-    val projectRoot: Path,
-    val sources: List<Path>,
-    val classpath: List<Path>,
-    val outputDir: Path,
-    val workingDir: Path,
+  val projectId: String,
+  // The project root directory (containing `kolt.toml`). The adapter reads the
+  // TOML file directly to translate plugin settings per ADR 0019 §9; this is
+  // the only way the @ExperimentalBuildToolsApi shape of plugin arguments
+  // stays out of daemon core. ADR §3's original data class did not list
+  // projectRoot, but §9 implicitly requires it — this is a minor inter-
+  // section fix, not a scope widening.
+  val projectRoot: Path,
+  val sources: List<Path>,
+  val classpath: List<Path>,
+  val outputDir: Path,
+  val workingDir: Path,
 )
 
 // Success-only payload. Before B-2b the type carried a `status: Status`
@@ -40,12 +40,10 @@ data class IcRequest(
 // ERROR)`. Collapsing to an `Ok(IcResponse)` / `Err(IcError)` split at the
 // Result level retires B-2a review carryover #3 and removes the "dead
 // `if (status == SUCCESS) 0 else 1`" branch from daemon core.
-data class IcResponse(
-    val wallMillis: Long,
-    val compiledFileCount: Int?,
-)
+data class IcResponse(val wallMillis: Long, val compiledFileCount: Int?)
 
 sealed interface IcError {
-    data class CompilationFailed(val messages: List<String>) : IcError
-    data class InternalError(val cause: Throwable) : IcError
+  data class CompilationFailed(val messages: List<String>) : IcError
+
+  data class InternalError(val cause: Throwable) : IcError
 }

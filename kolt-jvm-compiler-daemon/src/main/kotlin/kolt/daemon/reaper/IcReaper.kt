@@ -1,7 +1,5 @@
 package kolt.daemon.reaper
 
-import kolt.daemon.ic.IcMetricsSink
-import kolt.daemon.ic.IcStateLayout
 import java.io.IOException
 import java.io.UncheckedIOException
 import java.nio.channels.FileChannel
@@ -10,6 +8,8 @@ import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import kolt.daemon.ic.IcMetricsSink
+import kolt.daemon.ic.IcStateLayout
 
 // ADR 0019 §5 / §Negative follow-up: prune stale state under
 // `~/.kolt/daemon/ic/`. The layout written by IcStateLayout is
@@ -39,165 +39,163 @@ import java.nio.file.StandardOpenOption
 // mid-setup either sees the LOCK or the dir not yet created.
 object IcReaper {
 
-    data class Report(
-        val scanned: Int,
-        val removed: Int,
-        val skippedLocked: Int,
-        val errors: List<String>,
-    )
+  data class Report(
+    val scanned: Int,
+    val removed: Int,
+    val skippedLocked: Int,
+    val errors: List<String>,
+  )
 
-    fun run(icRoot: Path, currentKotlinVersion: String, metrics: IcMetricsSink): Report {
-        if (!Files.isDirectory(icRoot)) return EMPTY_REPORT
+  fun run(icRoot: Path, currentKotlinVersion: String, metrics: IcMetricsSink): Report {
+    if (!Files.isDirectory(icRoot)) return EMPTY_REPORT
 
-        var scanned = 0
-        var removed = 0
-        var skippedLocked = 0
-        val errors = mutableListOf<String>()
+    var scanned = 0
+    var removed = 0
+    var skippedLocked = 0
+    val errors = mutableListOf<String>()
 
-        directoryChildren(icRoot).forEach { versionDir ->
-            try {
-                if (versionDir.fileName.toString() != currentKotlinVersion) {
-                    directoryChildren(versionDir).forEach { projectIdDir ->
-                        scanned++
-                        when (val outcome = tryDelete(projectIdDir)) {
-                            DeleteOutcome.Removed -> removed++
-                            DeleteOutcome.Locked -> skippedLocked++
-                            is DeleteOutcome.Failed -> errors += outcome.message
-                        }
-                    }
-                    // Best-effort removal of the now-empty version segment.
-                    runCatching { Files.deleteIfExists(versionDir) }
-                } else {
-                    directoryChildren(versionDir).forEach { projectIdDir ->
-                        scanned++
-                        if (breadcrumbPointsToExistingPath(projectIdDir)) return@forEach
-                        when (val outcome = tryDelete(projectIdDir)) {
-                            DeleteOutcome.Removed -> removed++
-                            DeleteOutcome.Locked -> skippedLocked++
-                            is DeleteOutcome.Failed -> errors += outcome.message
-                        }
-                    }
-                }
-            } catch (e: IOException) {
-                errors += "scan $versionDir: ${e.message}"
-            } catch (e: UncheckedIOException) {
-                errors += "scan $versionDir: ${e.message}"
+    directoryChildren(icRoot).forEach { versionDir ->
+      try {
+        if (versionDir.fileName.toString() != currentKotlinVersion) {
+          directoryChildren(versionDir).forEach { projectIdDir ->
+            scanned++
+            when (val outcome = tryDelete(projectIdDir)) {
+              DeleteOutcome.Removed -> removed++
+              DeleteOutcome.Locked -> skippedLocked++
+              is DeleteOutcome.Failed -> errors += outcome.message
             }
-        }
-
-        metrics.record("reaper.scanned", scanned.toLong())
-        metrics.record("reaper.removed", removed.toLong())
-        metrics.record("reaper.skipped_locked", skippedLocked.toLong())
-        if (errors.isNotEmpty()) metrics.record("reaper.error", errors.size.toLong())
-
-        return Report(scanned, removed, skippedLocked, errors.toList())
-    }
-
-    // Breadcrumb is live only when it resolves to an on-disk path that still
-    // exists. Anything else — missing file, empty content, unparseable path —
-    // falls through to `tryDelete`, where the LOCK probe is the last line of
-    // defence against clobbering an in-flight compile.
-    private fun breadcrumbPointsToExistingPath(projectIdDir: Path): Boolean {
-        val breadcrumb = projectIdDir.resolve(BREADCRUMB)
-        val projectRoot = runCatching { Files.readString(breadcrumb).trim() }.getOrNull()
-        if (projectRoot.isNullOrEmpty()) return false
-        val resolvedProjectRoot = try {
-            Path.of(projectRoot)
-        } catch (_: InvalidPathException) {
-            return false
-        }
-        return Files.exists(resolvedProjectRoot)
-    }
-
-    fun runDetached(
-        icRoot: Path,
-        currentKotlinVersion: String,
-        metrics: IcMetricsSink,
-    ): Thread =
-        Thread({
-            runCatching { run(icRoot, currentKotlinVersion, metrics) }
-                .onFailure { metrics.record("reaper.error") }
-        }, "ic-reaper").apply {
-            isDaemon = true
-            start()
-        }
-
-    private fun tryDelete(dir: Path): DeleteOutcome {
-        val lockPath = dir.resolve(LOCK_FILE)
-        if (Files.isRegularFile(lockPath)) {
-            val probe = runCatching {
-                FileChannel.open(
-                    lockPath,
-                    StandardOpenOption.READ,
-                    StandardOpenOption.WRITE,
-                )
-            }.getOrElse { return DeleteOutcome.Failed("open LOCK for ${dir}: ${it.message}") }
-            probe.use { channel ->
-                // `tryLock` returns `null` when another JVM holds the lock
-                // and throws `OverlappingFileLockException` when the same
-                // JVM already holds an overlapping lock through a
-                // different `FileChannel`. Both outcomes mean "someone
-                // else is using this dir" as far as the reaper is
-                // concerned.
-                val lock = try {
-                    channel.tryLock()
-                } catch (_: OverlappingFileLockException) {
-                    return DeleteOutcome.Locked
-                } catch (e: IOException) {
-                    return DeleteOutcome.Failed("tryLock LOCK for ${dir}: ${e.message}")
-                }
-                if (lock == null) return DeleteOutcome.Locked
-                lock.release()
+          }
+          // Best-effort removal of the now-empty version segment.
+          runCatching { Files.deleteIfExists(versionDir) }
+        } else {
+          directoryChildren(versionDir).forEach { projectIdDir ->
+            scanned++
+            if (breadcrumbPointsToExistingPath(projectIdDir)) return@forEach
+            when (val outcome = tryDelete(projectIdDir)) {
+              DeleteOutcome.Removed -> removed++
+              DeleteOutcome.Locked -> skippedLocked++
+              is DeleteOutcome.Failed -> errors += outcome.message
             }
+          }
         }
-        return try {
-            deletePostOrder(dir)
-            DeleteOutcome.Removed
-        } catch (e: IOException) {
-            DeleteOutcome.Failed("delete $dir: ${e.message}")
-        } catch (e: UncheckedIOException) {
-            // `Files.walk(...).forEach { ... }` wraps IO failures from
-            // inside the stream pipeline. Catch both shapes so a
-            // directory mutated mid-walk by another actor cannot crash
-            // the reaper.
-            DeleteOutcome.Failed("delete $dir: ${e.message}")
-        }
+      } catch (e: IOException) {
+        errors += "scan $versionDir: ${e.message}"
+      } catch (e: UncheckedIOException) {
+        errors += "scan $versionDir: ${e.message}"
+      }
     }
 
-    // Post-order walk: children before parents. Mirrors the shape used
-    // by `SelfHealingIncrementalCompiler.defaultWipe` — reverse-sorted
-    // `Files.walk` works because lexicographic order over paths places
-    // every descendant after its parent string, so reversing visits
-    // deepest entries first.
-    private fun deletePostOrder(root: Path) {
-        if (!Files.exists(root)) return
-        Files.walk(root).use { stream ->
-            stream.sorted(Comparator.reverseOrder()).forEach { path ->
-                Files.deleteIfExists(path)
-            }
-        }
+    metrics.record("reaper.scanned", scanned.toLong())
+    metrics.record("reaper.removed", removed.toLong())
+    metrics.record("reaper.skipped_locked", skippedLocked.toLong())
+    if (errors.isNotEmpty()) metrics.record("reaper.error", errors.size.toLong())
+
+    return Report(scanned, removed, skippedLocked, errors.toList())
+  }
+
+  // Breadcrumb is live only when it resolves to an on-disk path that still
+  // exists. Anything else — missing file, empty content, unparseable path —
+  // falls through to `tryDelete`, where the LOCK probe is the last line of
+  // defence against clobbering an in-flight compile.
+  private fun breadcrumbPointsToExistingPath(projectIdDir: Path): Boolean {
+    val breadcrumb = projectIdDir.resolve(BREADCRUMB)
+    val projectRoot = runCatching { Files.readString(breadcrumb).trim() }.getOrNull()
+    if (projectRoot.isNullOrEmpty()) return false
+    val resolvedProjectRoot =
+      try {
+        Path.of(projectRoot)
+      } catch (_: InvalidPathException) {
+        return false
+      }
+    return Files.exists(resolvedProjectRoot)
+  }
+
+  fun runDetached(icRoot: Path, currentKotlinVersion: String, metrics: IcMetricsSink): Thread =
+    Thread(
+        {
+          runCatching { run(icRoot, currentKotlinVersion, metrics) }
+            .onFailure { metrics.record("reaper.error") }
+        },
+        "ic-reaper",
+      )
+      .apply {
+        isDaemon = true
+        start()
+      }
+
+  private fun tryDelete(dir: Path): DeleteOutcome {
+    val lockPath = dir.resolve(LOCK_FILE)
+    if (Files.isRegularFile(lockPath)) {
+      val probe =
+        runCatching {
+            FileChannel.open(lockPath, StandardOpenOption.READ, StandardOpenOption.WRITE)
+          }
+          .getOrElse {
+            return DeleteOutcome.Failed("open LOCK for ${dir}: ${it.message}")
+          }
+      probe.use { channel ->
+        // `tryLock` returns `null` when another JVM holds the lock
+        // and throws `OverlappingFileLockException` when the same
+        // JVM already holds an overlapping lock through a
+        // different `FileChannel`. Both outcomes mean "someone
+        // else is using this dir" as far as the reaper is
+        // concerned.
+        val lock =
+          try {
+            channel.tryLock()
+          } catch (_: OverlappingFileLockException) {
+            return DeleteOutcome.Locked
+          } catch (e: IOException) {
+            return DeleteOutcome.Failed("tryLock LOCK for ${dir}: ${e.message}")
+          }
+        if (lock == null) return DeleteOutcome.Locked
+        lock.release()
+      }
     }
-
-    private fun directoryChildren(dir: Path): List<Path> {
-        if (!Files.isDirectory(dir)) return emptyList()
-        return Files.newDirectoryStream(dir).use { stream ->
-            stream.filter { Files.isDirectory(it) }.sortedBy { it.fileName.toString() }
-        }
+    return try {
+      deletePostOrder(dir)
+      DeleteOutcome.Removed
+    } catch (e: IOException) {
+      DeleteOutcome.Failed("delete $dir: ${e.message}")
+    } catch (e: UncheckedIOException) {
+      // `Files.walk(...).forEach { ... }` wraps IO failures from
+      // inside the stream pipeline. Catch both shapes so a
+      // directory mutated mid-walk by another actor cannot crash
+      // the reaper.
+      DeleteOutcome.Failed("delete $dir: ${e.message}")
     }
+  }
 
-    private sealed interface DeleteOutcome {
-        data object Removed : DeleteOutcome
-        data object Locked : DeleteOutcome
-        data class Failed(val message: String) : DeleteOutcome
+  // Post-order walk: children before parents. Mirrors the shape used
+  // by `SelfHealingIncrementalCompiler.defaultWipe` — reverse-sorted
+  // `Files.walk` works because lexicographic order over paths places
+  // every descendant after its parent string, so reversing visits
+  // deepest entries first.
+  private fun deletePostOrder(root: Path) {
+    if (!Files.exists(root)) return
+    Files.walk(root).use { stream ->
+      stream.sorted(Comparator.reverseOrder()).forEach { path -> Files.deleteIfExists(path) }
     }
+  }
 
-    private val EMPTY_REPORT = Report(
-        scanned = 0,
-        removed = 0,
-        skippedLocked = 0,
-        errors = emptyList(),
-    )
+  private fun directoryChildren(dir: Path): List<Path> {
+    if (!Files.isDirectory(dir)) return emptyList()
+    return Files.newDirectoryStream(dir).use { stream ->
+      stream.filter { Files.isDirectory(it) }.sortedBy { it.fileName.toString() }
+    }
+  }
 
-    private const val BREADCRUMB: String = IcStateLayout.BREADCRUMB_FILE
-    private const val LOCK_FILE: String = IcStateLayout.LOCK_FILE
+  private sealed interface DeleteOutcome {
+    data object Removed : DeleteOutcome
+
+    data object Locked : DeleteOutcome
+
+    data class Failed(val message: String) : DeleteOutcome
+  }
+
+  private val EMPTY_REPORT =
+    Report(scanned = 0, removed = 0, skippedLocked = 0, errors = emptyList())
+
+  private const val BREADCRUMB: String = IcStateLayout.BREADCRUMB_FILE
+  private const val LOCK_FILE: String = IcStateLayout.LOCK_FILE
 }

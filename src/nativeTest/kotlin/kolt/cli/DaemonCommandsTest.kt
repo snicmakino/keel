@@ -6,28 +6,28 @@ import kotlin.test.assertTrue
 
 class ValidateDaemonSubcommandTest {
 
-    @Test
-    fun stopIsValid() {
-        assertTrue(validateDaemonSubcommand(listOf("stop")))
-    }
+  @Test
+  fun stopIsValid() {
+    assertTrue(validateDaemonSubcommand(listOf("stop")))
+  }
 
-    @Test
-    fun stopWithAllFlagIsValid() {
-        assertTrue(validateDaemonSubcommand(listOf("stop", "--all")))
-    }
+  @Test
+  fun stopWithAllFlagIsValid() {
+    assertTrue(validateDaemonSubcommand(listOf("stop", "--all")))
+  }
 
-    @Test
-    fun emptyArgsIsInvalid() {
-        assertFalse(validateDaemonSubcommand(emptyList()))
-    }
+  @Test
+  fun emptyArgsIsInvalid() {
+    assertFalse(validateDaemonSubcommand(emptyList()))
+  }
 
-    @Test
-    fun reapIsValid() {
-        assertTrue(validateDaemonSubcommand(listOf("reap")))
-    }
+  @Test
+  fun reapIsValid() {
+    assertTrue(validateDaemonSubcommand(listOf("reap")))
+  }
 
-    @Test
-    fun unknownSubcommandIsInvalid() {
-        assertFalse(validateDaemonSubcommand(listOf("restart")))
-    }
+  @Test
+  fun unknownSubcommandIsInvalid() {
+    assertFalse(validateDaemonSubcommand(listOf("restart")))
+  }
 }

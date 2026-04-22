@@ -24,300 +24,317 @@ import kotlin.test.assertTrue
 
 class ResolveCompilerBackendTest {
 
-    private val paths = KoltPaths(home = "/fake/home")
-    private val config = minimalConfig(kotlincVersion = "2.1.0")
-    private val subprocess = SentinelBackend("subprocess")
-    private val daemonSentinel = SentinelBackend("daemon")
+  private val paths = KoltPaths(home = "/fake/home")
+  private val config = minimalConfig(kotlincVersion = "2.1.0")
+  private val subprocess = SentinelBackend("subprocess")
+  private val daemonSentinel = SentinelBackend("daemon")
 
-    private val okSetup = DaemonSetup(
-        javaBin = "/fake/java",
-        daemonJarPath = "/fake/daemon.jar",
-        compilerJars = listOf("/fake/kotlinc/lib/a.jar"),
-        btaImplJars = listOf("/fake/libexec/kolt-bta-impl/kotlin-build-tools-impl.jar"),
-        daemonDir = "/fake/daemon/dir",
-        socketPath = "/fake/daemon/dir/jvm-compiler-daemon.sock",
-        logPath = "/fake/daemon/dir/jvm-compiler-daemon.log",
+  private val okSetup =
+    DaemonSetup(
+      javaBin = "/fake/java",
+      daemonJarPath = "/fake/daemon.jar",
+      compilerJars = listOf("/fake/kotlinc/lib/a.jar"),
+      btaImplJars = listOf("/fake/libexec/kolt-bta-impl/kotlin-build-tools-impl.jar"),
+      daemonDir = "/fake/daemon/dir",
+      socketPath = "/fake/daemon/dir/jvm-compiler-daemon.sock",
+      logPath = "/fake/daemon/dir/jvm-compiler-daemon.log",
     )
 
-    private val absProject = "/fake/project"
+  private val absProject = "/fake/project"
 
-    @Test
-    fun useDaemonFalseReturnsSubprocessWithoutProbingAnything() {
-        val warnings = mutableListOf<String>()
-        val backend = resolveCompilerBackend(
-            config = config,
-            paths = paths,
-            subprocessBackend = subprocess,
-            useDaemon = false,
-            absProjectPath = absProject,
-            preconditionResolver = { _, _, _, _ -> error("must not resolve preconditions when useDaemon=false") },
-            daemonDirCreator = { error("must not create daemon dir when useDaemon=false") },
-            daemonBackendFactory = { _, _ -> error("must not construct daemon backend when useDaemon=false") },
-            warningSink = { warnings.add(it) },
-        )
+  @Test
+  fun useDaemonFalseReturnsSubprocessWithoutProbingAnything() {
+    val warnings = mutableListOf<String>()
+    val backend =
+      resolveCompilerBackend(
+        config = config,
+        paths = paths,
+        subprocessBackend = subprocess,
+        useDaemon = false,
+        absProjectPath = absProject,
+        preconditionResolver = { _, _, _, _ ->
+          error("must not resolve preconditions when useDaemon=false")
+        },
+        daemonDirCreator = { error("must not create daemon dir when useDaemon=false") },
+        daemonBackendFactory = { _, _ ->
+          error("must not construct daemon backend when useDaemon=false")
+        },
+        warningSink = { warnings.add(it) },
+      )
 
-        assertSame(subprocess, backend)
-        assertEquals(emptyList(), warnings)
-    }
+    assertSame(subprocess, backend)
+    assertEquals(emptyList(), warnings)
+  }
 
-    // ADR 0022 floor (#138): a Kotlin version below 2.3.0 enters the same
-    // "precondition error" warning rail as every other daemon-probe
-    // failure (ADR 0016 §5). DaemonPreconditionsTest covers that the real
-    // resolver surfaces this error without any probing; this test pins
-    // that resolveCompilerBackend routes the variant into the warning sink.
-    @Test
-    fun kotlinVersionBelowFloorFallsBackWithVersionsInWarning() {
-        val warnings = mutableListOf<String>()
-        val backend = resolveCompilerBackend(
-            config = minimalConfig(kotlincVersion = "2.1.0"),
-            paths = paths,
-            subprocessBackend = subprocess,
-            useDaemon = true,
-            absProjectPath = absProject,
-            bundledKotlinVersion = "2.3.20",
-            preconditionResolver = { _, requested, _, _ ->
-                Err(
-                    DaemonPreconditionError.KotlinVersionBelowFloor(
-                        requested = requested,
-                        floor = KOTLIN_VERSION_FLOOR,
-                    ),
-                )
-            },
-            daemonDirCreator = { error("must not create daemon dir after precondition failure") },
-            daemonBackendFactory = { _, _ -> error("must not construct daemon backend after precondition failure") },
-            warningSink = { warnings.add(it) },
-        )
+  // ADR 0022 floor (#138): a Kotlin version below 2.3.0 enters the same
+  // "precondition error" warning rail as every other daemon-probe
+  // failure (ADR 0016 §5). DaemonPreconditionsTest covers that the real
+  // resolver surfaces this error without any probing; this test pins
+  // that resolveCompilerBackend routes the variant into the warning sink.
+  @Test
+  fun kotlinVersionBelowFloorFallsBackWithVersionsInWarning() {
+    val warnings = mutableListOf<String>()
+    val backend =
+      resolveCompilerBackend(
+        config = minimalConfig(kotlincVersion = "2.1.0"),
+        paths = paths,
+        subprocessBackend = subprocess,
+        useDaemon = true,
+        absProjectPath = absProject,
+        bundledKotlinVersion = "2.3.20",
+        preconditionResolver = { _, requested, _, _ ->
+          Err(
+            DaemonPreconditionError.KotlinVersionBelowFloor(
+              requested = requested,
+              floor = KOTLIN_VERSION_FLOOR,
+            )
+          )
+        },
+        daemonDirCreator = { error("must not create daemon dir after precondition failure") },
+        daemonBackendFactory = { _, _ ->
+          error("must not construct daemon backend after precondition failure")
+        },
+        warningSink = { warnings.add(it) },
+      )
 
-        assertSame(subprocess, backend)
-        val warning = warnings.single()
-        assertTrue(warning.contains("2.1.0"), "warning should cite the requested version: $warning")
-        assertTrue(warning.contains(KOTLIN_VERSION_FLOOR), "warning should cite the floor: $warning")
-        assertTrue(
-            warning.contains("falling back to subprocess compile"),
-            "warning should say the build is falling back: $warning",
-        )
-        assertTrue(warning.contains("--no-daemon"), "warning should point at --no-daemon: $warning")
-    }
+    assertSame(subprocess, backend)
+    val warning = warnings.single()
+    assertTrue(warning.contains("2.1.0"), "warning should cite the requested version: $warning")
+    assertTrue(warning.contains(KOTLIN_VERSION_FLOOR), "warning should cite the floor: $warning")
+    assertTrue(
+      warning.contains("falling back to subprocess compile"),
+      "warning should say the build is falling back: $warning",
+    )
+    assertTrue(warning.contains("--no-daemon"), "warning should point at --no-daemon: $warning")
+  }
 
-    @Test
-    fun bundledKotlinVersionIsPassedThroughToPreconditionResolver() {
-        var seenBundled: String? = null
-        val backend = resolveCompilerBackend(
-            config = minimalConfig(kotlincVersion = "2.3.20"),
-            paths = paths,
-            subprocessBackend = subprocess,
-            useDaemon = true,
-            absProjectPath = absProject,
-            bundledKotlinVersion = "2.3.20",
-            preconditionResolver = { _, _, _, bundled ->
-                seenBundled = bundled
-                Ok(okSetup)
-            },
-            daemonDirCreator = { Ok(Unit) },
-            daemonBackendFactory = { _, _ -> daemonSentinel },
-            warningSink = { error("happy path must not warn") },
-        )
+  @Test
+  fun bundledKotlinVersionIsPassedThroughToPreconditionResolver() {
+    var seenBundled: String? = null
+    val backend =
+      resolveCompilerBackend(
+        config = minimalConfig(kotlincVersion = "2.3.20"),
+        paths = paths,
+        subprocessBackend = subprocess,
+        useDaemon = true,
+        absProjectPath = absProject,
+        bundledKotlinVersion = "2.3.20",
+        preconditionResolver = { _, _, _, bundled ->
+          seenBundled = bundled
+          Ok(okSetup)
+        },
+        daemonDirCreator = { Ok(Unit) },
+        daemonBackendFactory = { _, _ -> daemonSentinel },
+        warningSink = { error("happy path must not warn") },
+      )
 
-        assertEquals("2.3.20", seenBundled)
-        assertNotNull(backend as? FallbackCompilerBackend)
-    }
+    assertEquals("2.3.20", seenBundled)
+    assertNotNull(backend as? FallbackCompilerBackend)
+  }
 
-    @Test
-    fun preconditionFailureWarnsWithFormattedWordingAndFallsBack() {
-        val warnings = mutableListOf<String>()
-        val backend = resolveCompilerBackend(
-            config = config,
-            paths = paths,
-            subprocessBackend = subprocess,
-            useDaemon = true,
-            absProjectPath = absProject,
-            preconditionResolver = { _, _, _, _ ->
-                Err(DaemonPreconditionError.DaemonJarMissing)
-            },
-            daemonDirCreator = { error("must not create daemon dir after precondition failure") },
-            daemonBackendFactory = { _, _ -> error("must not construct daemon backend after precondition failure") },
-            warningSink = { warnings.add(it) },
-        )
+  @Test
+  fun preconditionFailureWarnsWithFormattedWordingAndFallsBack() {
+    val warnings = mutableListOf<String>()
+    val backend =
+      resolveCompilerBackend(
+        config = config,
+        paths = paths,
+        subprocessBackend = subprocess,
+        useDaemon = true,
+        absProjectPath = absProject,
+        preconditionResolver = { _, _, _, _ -> Err(DaemonPreconditionError.DaemonJarMissing) },
+        daemonDirCreator = { error("must not create daemon dir after precondition failure") },
+        daemonBackendFactory = { _, _ ->
+          error("must not construct daemon backend after precondition failure")
+        },
+        warningSink = { warnings.add(it) },
+      )
 
-        assertSame(subprocess, backend)
-        assertEquals(1, warnings.size)
-        assertTrue(
-            warnings.single().contains("kolt-jvm-compiler-daemon jar not found"),
-            "unexpected warning: ${warnings.single()}",
-        )
-    }
+    assertSame(subprocess, backend)
+    assertEquals(1, warnings.size)
+    assertTrue(
+      warnings.single().contains("kolt-jvm-compiler-daemon jar not found"),
+      "unexpected warning: ${warnings.single()}",
+    )
+  }
 
-    // ADR 0016 §5: daemon is never load-bearing for correctness.
-    @Test
-    fun bootstrapJdkInstallFailureFallsBackWithCauseInWarning() {
-        val warnings = mutableListOf<String>()
-        val backend = resolveCompilerBackend(
-            config = config,
-            paths = paths,
-            subprocessBackend = subprocess,
-            useDaemon = true,
-            absProjectPath = absProject,
-            preconditionResolver = { _, _, _, _ ->
-                Err(
-                    DaemonPreconditionError.BootstrapJdkInstallFailed(
-                        jdkInstallDir = "/fake/home/.kolt/toolchains/jdk/21",
-                        cause = "network error downloading jdk 21: connection refused",
-                    ),
-                )
-            },
-            daemonDirCreator = { error("must not create daemon dir after precondition failure") },
-            daemonBackendFactory = { _, _ -> error("must not construct daemon backend after precondition failure") },
-            warningSink = { warnings.add(it) },
-        )
+  // ADR 0016 §5: daemon is never load-bearing for correctness.
+  @Test
+  fun bootstrapJdkInstallFailureFallsBackWithCauseInWarning() {
+    val warnings = mutableListOf<String>()
+    val backend =
+      resolveCompilerBackend(
+        config = config,
+        paths = paths,
+        subprocessBackend = subprocess,
+        useDaemon = true,
+        absProjectPath = absProject,
+        preconditionResolver = { _, _, _, _ ->
+          Err(
+            DaemonPreconditionError.BootstrapJdkInstallFailed(
+              jdkInstallDir = "/fake/home/.kolt/toolchains/jdk/21",
+              cause = "network error downloading jdk 21: connection refused",
+            )
+          )
+        },
+        daemonDirCreator = { error("must not create daemon dir after precondition failure") },
+        daemonBackendFactory = { _, _ ->
+          error("must not construct daemon backend after precondition failure")
+        },
+        warningSink = { warnings.add(it) },
+      )
 
-        assertSame(subprocess, backend)
-        assertEquals(1, warnings.size)
-        val warning = warnings.single()
-        assertTrue(
-            warning.contains("could not install bootstrap JDK at /fake/home/.kolt/toolchains/jdk/21"),
-            "warning should name the probed install dir: $warning",
-        )
-        assertTrue(
-            warning.contains("network error downloading jdk 21: connection refused"),
-            "warning should carry the underlying cause: $warning",
-        )
-        assertTrue(
-            warning.contains("falling back to subprocess compile"),
-            "warning should say the build is falling back: $warning",
-        )
-    }
+    assertSame(subprocess, backend)
+    assertEquals(1, warnings.size)
+    val warning = warnings.single()
+    assertTrue(
+      warning.contains("could not install bootstrap JDK at /fake/home/.kolt/toolchains/jdk/21"),
+      "warning should name the probed install dir: $warning",
+    )
+    assertTrue(
+      warning.contains("network error downloading jdk 21: connection refused"),
+      "warning should carry the underlying cause: $warning",
+    )
+    assertTrue(
+      warning.contains("falling back to subprocess compile"),
+      "warning should say the build is falling back: $warning",
+    )
+  }
 
-    @Test
-    fun daemonDirCreationFailureWarnsAndFallsBack() {
-        val warnings = mutableListOf<String>()
-        val backend = resolveCompilerBackend(
-            config = config,
-            paths = paths,
-            subprocessBackend = subprocess,
-            useDaemon = true,
-            absProjectPath = absProject,
-            preconditionResolver = { _, _, _, _ -> Ok(okSetup) },
-            daemonDirCreator = { Err(MkdirFailed(okSetup.daemonDir)) },
-            daemonBackendFactory = { _, _ -> error("must not construct daemon backend after mkdir failure") },
-            warningSink = { warnings.add(it) },
-        )
+  @Test
+  fun daemonDirCreationFailureWarnsAndFallsBack() {
+    val warnings = mutableListOf<String>()
+    val backend =
+      resolveCompilerBackend(
+        config = config,
+        paths = paths,
+        subprocessBackend = subprocess,
+        useDaemon = true,
+        absProjectPath = absProject,
+        preconditionResolver = { _, _, _, _ -> Ok(okSetup) },
+        daemonDirCreator = { Err(MkdirFailed(okSetup.daemonDir)) },
+        daemonBackendFactory = { _, _ ->
+          error("must not construct daemon backend after mkdir failure")
+        },
+        warningSink = { warnings.add(it) },
+      )
 
-        assertSame(subprocess, backend)
-        assertEquals(listOf(WARNING_DAEMON_DIR_UNWRITABLE), warnings)
-    }
+    assertSame(subprocess, backend)
+    assertEquals(listOf(WARNING_DAEMON_DIR_UNWRITABLE), warnings)
+  }
 
-    @Test
-    fun pluginJarsArgumentIsForwardedToDaemonBackendFactory() {
-        val warnings = mutableListOf<String>()
-        var capturedPluginJars: Map<String, List<String>>? = null
-        val pluginJars = mapOf(
-            "serialization" to listOf("/fake/kotlinc/lib/kotlinx-serialization-compiler-plugin.jar"),
-        )
-        val backend = resolveCompilerBackend(
-            config = config,
-            paths = paths,
-            subprocessBackend = subprocess,
-            useDaemon = true,
-            absProjectPath = absProject,
-            pluginJars = pluginJars,
-            preconditionResolver = { _, _, _, _ -> Ok(okSetup) },
-            daemonDirCreator = { Ok(Unit) },
-            daemonBackendFactory = { _, jars ->
-                capturedPluginJars = jars
-                daemonSentinel
-            },
-            warningSink = { warnings.add(it) },
-        )
+  @Test
+  fun pluginJarsArgumentIsForwardedToDaemonBackendFactory() {
+    val warnings = mutableListOf<String>()
+    var capturedPluginJars: Map<String, List<String>>? = null
+    val pluginJars =
+      mapOf(
+        "serialization" to listOf("/fake/kotlinc/lib/kotlinx-serialization-compiler-plugin.jar")
+      )
+    val backend =
+      resolveCompilerBackend(
+        config = config,
+        paths = paths,
+        subprocessBackend = subprocess,
+        useDaemon = true,
+        absProjectPath = absProject,
+        pluginJars = pluginJars,
+        preconditionResolver = { _, _, _, _ -> Ok(okSetup) },
+        daemonDirCreator = { Ok(Unit) },
+        daemonBackendFactory = { _, jars ->
+          capturedPluginJars = jars
+          daemonSentinel
+        },
+        warningSink = { warnings.add(it) },
+      )
 
-        assertEquals(emptyList(), warnings)
-        assertNotNull(backend as? FallbackCompilerBackend)
-        assertEquals(pluginJars, capturedPluginJars)
-    }
+    assertEquals(emptyList(), warnings)
+    assertNotNull(backend as? FallbackCompilerBackend)
+    assertEquals(pluginJars, capturedPluginJars)
+  }
 
-    @Test
-    fun happyPathWrapsDaemonPrimaryAndSubprocessFallback() {
-        val warnings = mutableListOf<String>()
-        var createdFrom: DaemonSetup? = null
-        val backend = resolveCompilerBackend(
-            config = config,
-            paths = paths,
-            subprocessBackend = subprocess,
-            useDaemon = true,
-            absProjectPath = absProject,
-            preconditionResolver = { _, kotlincVersion, cwd, _ ->
-                assertEquals("2.1.0", kotlincVersion)
-                assertEquals(absProject, cwd)
-                Ok(okSetup)
-            },
-            daemonDirCreator = { dir ->
-                assertEquals(okSetup.daemonDir, dir)
-                Ok(Unit)
-            },
-            daemonBackendFactory = { setup, _ ->
-                createdFrom = setup
-                daemonSentinel
-            },
-            warningSink = { warnings.add(it) },
-        )
+  @Test
+  fun happyPathWrapsDaemonPrimaryAndSubprocessFallback() {
+    val warnings = mutableListOf<String>()
+    var createdFrom: DaemonSetup? = null
+    val backend =
+      resolveCompilerBackend(
+        config = config,
+        paths = paths,
+        subprocessBackend = subprocess,
+        useDaemon = true,
+        absProjectPath = absProject,
+        preconditionResolver = { _, kotlincVersion, cwd, _ ->
+          assertEquals("2.1.0", kotlincVersion)
+          assertEquals(absProject, cwd)
+          Ok(okSetup)
+        },
+        daemonDirCreator = { dir ->
+          assertEquals(okSetup.daemonDir, dir)
+          Ok(Unit)
+        },
+        daemonBackendFactory = { setup, _ ->
+          createdFrom = setup
+          daemonSentinel
+        },
+        warningSink = { warnings.add(it) },
+      )
 
-        assertEquals(emptyList(), warnings)
-        val fallback = assertNotNull(backend as? FallbackCompilerBackend)
-        assertSame(daemonSentinel, fallback.primary)
-        assertSame(subprocess, fallback.fallback)
-        assertEquals(okSetup, createdFrom)
-    }
+    assertEquals(emptyList(), warnings)
+    val fallback = assertNotNull(backend as? FallbackCompilerBackend)
+    assertSame(daemonSentinel, fallback.primary)
+    assertSame(subprocess, fallback.fallback)
+    assertEquals(okSetup, createdFrom)
+  }
 
-    @Test
-    fun pluginsFingerprintIsStableForSamePluginMap() {
-        val a = pluginsFingerprint(mapOf("serialization" to listOf("/k/lib/ser.jar")))
-        val b = pluginsFingerprint(mapOf("serialization" to listOf("/k/lib/ser.jar")))
-        assertEquals(a, b)
-    }
+  @Test
+  fun pluginsFingerprintIsStableForSamePluginMap() {
+    val a = pluginsFingerprint(mapOf("serialization" to listOf("/k/lib/ser.jar")))
+    val b = pluginsFingerprint(mapOf("serialization" to listOf("/k/lib/ser.jar")))
+    assertEquals(a, b)
+  }
 
-    @Test
-    fun pluginsFingerprintIsOrderInsensitiveOnAliases() {
-        val a = pluginsFingerprint(linkedMapOf("a" to listOf("/x"), "b" to listOf("/y")))
-        val b = pluginsFingerprint(linkedMapOf("b" to listOf("/y"), "a" to listOf("/x")))
-        assertEquals(a, b)
-    }
+  @Test
+  fun pluginsFingerprintIsOrderInsensitiveOnAliases() {
+    val a = pluginsFingerprint(linkedMapOf("a" to listOf("/x"), "b" to listOf("/y")))
+    val b = pluginsFingerprint(linkedMapOf("b" to listOf("/y"), "a" to listOf("/x")))
+    assertEquals(a, b)
+  }
 
-    @Test
-    fun pluginsFingerprintChangesWhenAClasspathChanges() {
-        val a = pluginsFingerprint(mapOf("serialization" to listOf("/k/lib/ser-2.0.jar")))
-        val b = pluginsFingerprint(mapOf("serialization" to listOf("/k/lib/ser-2.1.jar")))
-        assertTrue(a != b, "version bump should change fingerprint, both=$a")
-    }
+  @Test
+  fun pluginsFingerprintChangesWhenAClasspathChanges() {
+    val a = pluginsFingerprint(mapOf("serialization" to listOf("/k/lib/ser-2.0.jar")))
+    val b = pluginsFingerprint(mapOf("serialization" to listOf("/k/lib/ser-2.1.jar")))
+    assertTrue(a != b, "version bump should change fingerprint, both=$a")
+  }
 
-    @Test
-    fun pluginsFingerprintEmptyMapHasFixedMarker() {
-        assertEquals("noplugins", pluginsFingerprint(emptyMap()))
-    }
+  @Test
+  fun pluginsFingerprintEmptyMapHasFixedMarker() {
+    assertEquals("noplugins", pluginsFingerprint(emptyMap()))
+  }
 
-    @Test
-    fun applyPluginsFingerprintInsertsBeforeExtension() {
-        assertEquals(
-            "/fake/daemon/dir/jvm-compiler-daemon-abcd1234.sock",
-            applyPluginsFingerprintToFile("/fake/daemon/dir/jvm-compiler-daemon.sock", "abcd1234"),
-        )
-        assertEquals(
-            "/fake/daemon/dir/jvm-compiler-daemon-abcd1234.log",
-            applyPluginsFingerprintToFile("/fake/daemon/dir/jvm-compiler-daemon.log", "abcd1234"),
-        )
-    }
+  @Test
+  fun applyPluginsFingerprintInsertsBeforeExtension() {
+    assertEquals(
+      "/fake/daemon/dir/jvm-compiler-daemon-abcd1234.sock",
+      applyPluginsFingerprintToFile("/fake/daemon/dir/jvm-compiler-daemon.sock", "abcd1234"),
+    )
+    assertEquals(
+      "/fake/daemon/dir/jvm-compiler-daemon-abcd1234.log",
+      applyPluginsFingerprintToFile("/fake/daemon/dir/jvm-compiler-daemon.log", "abcd1234"),
+    )
+  }
 
-    private class SentinelBackend(val tag: String) : CompilerBackend {
-        override fun compile(request: CompileRequest): Result<CompileOutcome, CompileError> =
-            Err(CompileError.InternalMisuse("sentinel:$tag"))
-    }
+  private class SentinelBackend(val tag: String) : CompilerBackend {
+    override fun compile(request: CompileRequest): Result<CompileOutcome, CompileError> =
+      Err(CompileError.InternalMisuse("sentinel:$tag"))
+  }
 
-    private fun minimalConfig(kotlincVersion: String) = KoltConfig(
-        name = "it",
-        version = "0.0.0",
-        kotlin = KotlinSection(version = kotlincVersion),
-        build = BuildSection(
-            target = "jvm",
-            main = "itMainKt",
-            sources = emptyList(),
-        ),
+  private fun minimalConfig(kotlincVersion: String) =
+    KoltConfig(
+      name = "it",
+      version = "0.0.0",
+      kotlin = KotlinSection(version = kotlincVersion),
+      build = BuildSection(target = "jvm", main = "itMainKt", sources = emptyList()),
     )
 }

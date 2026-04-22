@@ -1,19 +1,18 @@
 package kolt.resolve
 
 import com.github.michaelbull.result.get
-import com.github.michaelbull.result.getError
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PomParserTest {
 
-    @Test
-    fun parseMinimalPomWithSingleDependency() {
-        val xml = """
+  @Test
+  fun parseMinimalPomWithSingleDependency() {
+    val xml =
+      """
             <?xml version="1.0" encoding="UTF-8"?>
             <project>
                 <modelVersion>4.0.0</modelVersion>
@@ -28,26 +27,28 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertEquals("com.example", pom.groupId)
-        assertEquals("mylib", pom.artifactId)
-        assertEquals("1.0.0", pom.version)
-        assertNull(pom.parent)
-        assertEquals(1, pom.dependencies.size)
+    val pom = assertNotNull(parsePom(xml).get())
+    assertEquals("com.example", pom.groupId)
+    assertEquals("mylib", pom.artifactId)
+    assertEquals("1.0.0", pom.version)
+    assertNull(pom.parent)
+    assertEquals(1, pom.dependencies.size)
 
-        val dep = pom.dependencies[0]
-        assertEquals("org.jetbrains.kotlin", dep.groupId)
-        assertEquals("kotlin-stdlib", dep.artifactId)
-        assertEquals("2.1.0", dep.version)
-        assertEquals(null, dep.scope)
-        assertEquals(false, dep.optional)
-    }
+    val dep = pom.dependencies[0]
+    assertEquals("org.jetbrains.kotlin", dep.groupId)
+    assertEquals("kotlin-stdlib", dep.artifactId)
+    assertEquals("2.1.0", dep.version)
+    assertEquals(null, dep.scope)
+    assertEquals(false, dep.optional)
+  }
 
-    @Test
-    fun parseMultipleDependenciesWithScopeAndOptional() {
-        val xml = """
+  @Test
+  fun parseMultipleDependenciesWithScopeAndOptional() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>mylib</artifactId>
@@ -72,18 +73,20 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertEquals(3, pom.dependencies.size)
+    val pom = assertNotNull(parsePom(xml).get())
+    assertEquals(3, pom.dependencies.size)
 
-        assertEquals("test", pom.dependencies[1].scope)
-        assertEquals(true, pom.dependencies[2].optional)
-    }
+    assertEquals("test", pom.dependencies[1].scope)
+    assertEquals(true, pom.dependencies[2].optional)
+  }
 
-    @Test
-    fun parsePomWithProperties() {
-        val xml = """
+  @Test
+  fun parsePomWithProperties() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>mylib</artifactId>
@@ -100,18 +103,20 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertEquals(2, pom.properties.size)
-        assertEquals("2.1.0", pom.properties["kotlin.version"])
-        assertEquals("2.0.9", pom.properties["slf4j.version"])
-        assertEquals("2.1.0", pom.dependencies[0].version)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    assertEquals(2, pom.properties.size)
+    assertEquals("2.1.0", pom.properties["kotlin.version"])
+    assertEquals("2.0.9", pom.properties["slf4j.version"])
+    assertEquals("2.1.0", pom.dependencies[0].version)
+  }
 
-    @Test
-    fun parsePomWithDependencyManagement() {
-        val xml = """
+  @Test
+  fun parsePomWithDependencyManagement() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>parent</artifactId>
@@ -132,17 +137,19 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertEquals(1, pom.dependencyManagement.size)
-        assertEquals("2.0.9", pom.dependencyManagement[0].version)
-        assertNull(pom.dependencies[0].version)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    assertEquals(1, pom.dependencyManagement.size)
+    assertEquals("2.0.9", pom.dependencyManagement[0].version)
+    assertNull(pom.dependencies[0].version)
+  }
 
-    @Test
-    fun parsePomWithParent() {
-        val xml = """
+  @Test
+  fun parsePomWithParent() {
+    val xml =
+      """
             <project>
                 <parent>
                     <groupId>com.example</groupId>
@@ -151,21 +158,23 @@ class PomParserTest {
                 </parent>
                 <artifactId>child</artifactId>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        val parent = assertNotNull(pom.parent)
-        assertEquals("com.example", parent.groupId)
-        assertEquals("parent-pom", parent.artifactId)
-        assertEquals("2.0.0", parent.version)
-        assertNull(pom.groupId)
-        assertEquals("child", pom.artifactId)
-        assertNull(pom.version)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    val parent = assertNotNull(pom.parent)
+    assertEquals("com.example", parent.groupId)
+    assertEquals("parent-pom", parent.artifactId)
+    assertEquals("2.0.0", parent.version)
+    assertNull(pom.groupId)
+    assertEquals("child", pom.artifactId)
+    assertNull(pom.version)
+  }
 
-    @Test
-    fun parsePomWithXmlComments() {
-        val xml = """
+  @Test
+  fun parsePomWithXmlComments() {
+    val xml =
+      """
             <project>
                 <!-- This is a comment -->
                 <groupId>com.example</groupId>
@@ -181,15 +190,17 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertEquals(1, pom.dependencies.size)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    assertEquals(1, pom.dependencies.size)
+  }
 
-    @Test
-    fun parsePomWithProjectVersionProperty() {
-        val xml = """
+  @Test
+  fun parsePomWithProjectVersionProperty() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>mylib</artifactId>
@@ -202,45 +213,51 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertEquals("3.0.0", pom.dependencies[0].version)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    assertEquals("3.0.0", pom.dependencies[0].version)
+  }
 
-    @Test
-    fun parsePomWithNoDependencies() {
-        val xml = """
+  @Test
+  fun parsePomWithNoDependencies() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>mylib</artifactId>
                 <version>1.0.0</version>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertEquals(0, pom.dependencies.size)
-        assertEquals(0, pom.dependencyManagement.size)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    assertEquals(0, pom.dependencies.size)
+    assertEquals(0, pom.dependencyManagement.size)
+  }
 
-    @Test
-    fun parsePomWithSelfClosingTags() {
-        val xml = """
+  @Test
+  fun parsePomWithSelfClosingTags() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>mylib</artifactId>
                 <version>1.0.0</version>
                 <dependencies/>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertEquals(0, pom.dependencies.size)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    assertEquals(0, pom.dependencies.size)
+  }
 
-    @Test
-    fun parsePomWithGroupIdVersionProperty() {
-        val xml = """
+  @Test
+  fun parsePomWithGroupIdVersionProperty() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>mylib</artifactId>
@@ -253,16 +270,18 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertEquals("com.example", pom.dependencies[0].groupId)
-        assertEquals("1.0.0", pom.dependencies[0].version)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    assertEquals("com.example", pom.dependencies[0].groupId)
+    assertEquals("1.0.0", pom.dependencies[0].version)
+  }
 
-    @Test
-    fun parsePomWithExclusions() {
-        val xml = """
+  @Test
+  fun parsePomWithExclusions() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>mylib</artifactId>
@@ -285,20 +304,22 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        val dep = pom.dependencies[0]
-        assertEquals(2, dep.exclusions.size)
-        assertEquals("org.unwanted", dep.exclusions[0].groupId)
-        assertEquals("bad-lib", dep.exclusions[0].artifactId)
-        assertEquals("org.also-unwanted", dep.exclusions[1].groupId)
-        assertEquals("another", dep.exclusions[1].artifactId)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    val dep = pom.dependencies[0]
+    assertEquals(2, dep.exclusions.size)
+    assertEquals("org.unwanted", dep.exclusions[0].groupId)
+    assertEquals("bad-lib", dep.exclusions[0].artifactId)
+    assertEquals("org.also-unwanted", dep.exclusions[1].groupId)
+    assertEquals("another", dep.exclusions[1].artifactId)
+  }
 
-    @Test
-    fun parsePomWithWildcardExclusion() {
-        val xml = """
+  @Test
+  fun parsePomWithWildcardExclusion() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>mylib</artifactId>
@@ -317,18 +338,20 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        val dep = pom.dependencies[0]
-        assertEquals(1, dep.exclusions.size)
-        assertEquals("*", dep.exclusions[0].groupId)
-        assertEquals("*", dep.exclusions[0].artifactId)
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    val dep = pom.dependencies[0]
+    assertEquals(1, dep.exclusions.size)
+    assertEquals("*", dep.exclusions[0].groupId)
+    assertEquals("*", dep.exclusions[0].artifactId)
+  }
 
-    @Test
-    fun parsePomWithNoExclusionsDefaultsToEmpty() {
-        val xml = """
+  @Test
+  fun parsePomWithNoExclusionsDefaultsToEmpty() {
+    val xml =
+      """
             <project>
                 <groupId>com.example</groupId>
                 <artifactId>mylib</artifactId>
@@ -341,9 +364,10 @@ class PomParserTest {
                     </dependency>
                 </dependencies>
             </project>
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val pom = assertNotNull(parsePom(xml).get())
-        assertTrue(pom.dependencies[0].exclusions.isEmpty())
-    }
+    val pom = assertNotNull(parsePom(xml).get())
+    assertTrue(pom.dependencies[0].exclusions.isEmpty())
+  }
 }

@@ -21,92 +21,97 @@ internal data class CacheCleanArgs(val includeTools: Boolean)
 // successfully cleared up to that point so the caller can tell the
 // user how much was reclaimed before the failure.
 internal data class CacheCleanResult(
-    val removedPaths: List<String>,
-    val freedBytes: Long,
-    val error: RemoveFailed? = null,
+  val removedPaths: List<String>,
+  val freedBytes: Long,
+  val error: RemoveFailed? = null,
 )
 
 internal fun parseCacheCleanArgs(args: List<String>): Result<CacheCleanArgs, String> {
-    var includeTools = false
-    for (arg in args) {
-        when (arg) {
-            "--tools" -> includeTools = true
-            else -> return Err("error: unknown flag '$arg'")
-        }
+  var includeTools = false
+  for (arg in args) {
+    when (arg) {
+      "--tools" -> includeTools = true
+      else -> return Err("error: unknown flag '$arg'")
     }
-    return Ok(CacheCleanArgs(includeTools))
+  }
+  return Ok(CacheCleanArgs(includeTools))
 }
 
 internal fun doCache(args: List<String>): Result<Unit, Int> {
-    if (args.isEmpty()) {
-        printCacheUsage()
-        return Err(EXIT_CONFIG_ERROR)
+  if (args.isEmpty()) {
+    printCacheUsage()
+    return Err(EXIT_CONFIG_ERROR)
+  }
+  return when (args[0]) {
+    "clean" -> doCacheClean(args.drop(1))
+    else -> {
+      printCacheUsage()
+      Err(EXIT_CONFIG_ERROR)
     }
-    return when (args[0]) {
-        "clean" -> doCacheClean(args.drop(1))
-        else -> {
-            printCacheUsage()
-            Err(EXIT_CONFIG_ERROR)
-        }
-    }
+  }
 }
 
 internal fun cleanCacheDirs(paths: KoltPaths, includeTools: Boolean): CacheCleanResult {
-    val targets = mutableListOf(paths.cacheBase)
-    if (includeTools) targets.add(paths.toolsDir)
+  val targets = mutableListOf(paths.cacheBase)
+  if (includeTools) targets.add(paths.toolsDir)
 
-    val removed = mutableListOf<String>()
-    var freed = 0L
-    for (target in targets) {
-        if (!fileExists(target)) continue
-        // Size is computed before removal but only credited *after* a
-        // successful remove, so a partial failure doesn't claim freed
-        // bytes for a target that's still on disk.
-        val targetSize = directorySize(target)
-        val err = removeDirectoryRecursive(target).getError()
-        if (err != null) {
-            return CacheCleanResult(removed, freed, err)
-        }
-        freed += targetSize
-        removed.add(target)
+  val removed = mutableListOf<String>()
+  var freed = 0L
+  for (target in targets) {
+    if (!fileExists(target)) continue
+    // Size is computed before removal but only credited *after* a
+    // successful remove, so a partial failure doesn't claim freed
+    // bytes for a target that's still on disk.
+    val targetSize = directorySize(target)
+    val err = removeDirectoryRecursive(target).getError()
+    if (err != null) {
+      return CacheCleanResult(removed, freed, err)
     }
-    return CacheCleanResult(removed, freed)
+    freed += targetSize
+    removed.add(target)
+  }
+  return CacheCleanResult(removed, freed)
 }
 
 private fun doCacheClean(args: List<String>): Result<Unit, Int> {
-    val parsed = parseCacheCleanArgs(args).getOrElse { error ->
-        eprintln(error)
-        printCacheUsage()
-        return Err(EXIT_CONFIG_ERROR)
+  val parsed =
+    parseCacheCleanArgs(args).getOrElse { error ->
+      eprintln(error)
+      printCacheUsage()
+      return Err(EXIT_CONFIG_ERROR)
     }
 
-    val paths = resolveKoltPaths().getOrElse { eprintln("error: $it"); return Err(EXIT_CONFIG_ERROR) }
-
-    val result = cleanCacheDirs(paths, parsed.includeTools)
-    for (path in result.removedPaths) println("removed $path")
-
-    if (result.error != null) {
-        eprintln("error: could not remove ${result.error.path}")
-        if (result.freedBytes > 0) {
-            println("partially freed ${formatBytes(result.freedBytes)} before failure")
-        }
-        return Err(EXIT_BUILD_ERROR)
+  val paths =
+    resolveKoltPaths().getOrElse {
+      eprintln("error: $it")
+      return Err(EXIT_CONFIG_ERROR)
     }
 
-    if (result.freedBytes == 0L) {
-        println("nothing to clean")
-    } else {
-        println("freed ${formatBytes(result.freedBytes)}")
+  val result = cleanCacheDirs(paths, parsed.includeTools)
+  for (path in result.removedPaths) println("removed $path")
+
+  if (result.error != null) {
+    eprintln("error: could not remove ${result.error.path}")
+    if (result.freedBytes > 0) {
+      println("partially freed ${formatBytes(result.freedBytes)} before failure")
     }
-    return Ok(Unit)
+    return Err(EXIT_BUILD_ERROR)
+  }
+
+  if (result.freedBytes == 0L) {
+    println("nothing to clean")
+  } else {
+    println("freed ${formatBytes(result.freedBytes)}")
+  }
+  return Ok(Unit)
 }
 
 private fun printCacheUsage() {
-    eprintln("usage: kolt cache <subcommand>")
-    eprintln("")
-    eprintln("subcommands:")
-    eprintln("  clean         Remove the global dependency cache")
-    eprintln("")
-    eprintln("flags:")
-    eprintln("  --tools       Also remove cached tools (ktfmt, junit-console)")
+  eprintln("usage: kolt cache <subcommand>")
+  eprintln("")
+  eprintln("subcommands:")
+  eprintln("  clean         Remove the global dependency cache")
+  eprintln("")
+  eprintln("flags:")
+  eprintln("  --tools       Also remove cached tools (ktfmt, junit-console)")
 }

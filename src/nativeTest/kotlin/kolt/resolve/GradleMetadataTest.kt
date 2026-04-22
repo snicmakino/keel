@@ -6,9 +6,10 @@ import kotlin.test.assertNull
 
 class GradleMetadataTest {
 
-    @Test
-    fun parseJvmRedirectFromOkhttpModule() {
-        val json = """
+  @Test
+  fun parseJvmRedirectFromOkhttpModule() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "component": {
@@ -37,18 +38,20 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseJvmRedirect(json)
+    val redirect = parseJvmRedirect(json)
 
-        assertEquals("com.squareup.okhttp3", redirect?.group)
-        assertEquals("okhttp-jvm", redirect?.module)
-        assertEquals("5.3.2", redirect?.version)
-    }
+    assertEquals("com.squareup.okhttp3", redirect?.group)
+    assertEquals("okhttp-jvm", redirect?.module)
+    assertEquals("5.3.2", redirect?.version)
+  }
 
-    @Test
-    fun parseJvmRedirectReturnsNullForNonKmpLibrary() {
-        val json = """
+  @Test
+  fun parseJvmRedirectReturnsNullForNonKmpLibrary() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "component": {
@@ -72,36 +75,40 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseJvmRedirect(json)
+    val redirect = parseJvmRedirect(json)
 
-        assertNull(redirect)
-    }
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseJvmRedirectReturnsNullForInvalidJson() {
-        val redirect = parseJvmRedirect("not json")
-        assertNull(redirect)
-    }
+  @Test
+  fun parseJvmRedirectReturnsNullForInvalidJson() {
+    val redirect = parseJvmRedirect("not json")
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseJvmRedirectReturnsNullForEmptyVariants() {
-        val json = """
+  @Test
+  fun parseJvmRedirectReturnsNullForEmptyVariants() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": []
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseJvmRedirect(json)
+    val redirect = parseJvmRedirect(json)
 
-        assertNull(redirect)
-    }
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseJvmRedirectSkipsJvmVariantWithoutAvailableAt() {
-        val json = """
+  @Test
+  fun parseJvmRedirectSkipsJvmVariantWithoutAvailableAt() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -120,16 +127,18 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseJvmRedirect(json)
+    val redirect = parseJvmRedirect(json)
 
-        assertNull(redirect)
-    }
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseJvmRedirectReturnsNullWhenJvmVariantWithoutAvailableAtComesFirst() {
-        val json = """
+  @Test
+  fun parseJvmRedirectReturnsNullWhenJvmVariantWithoutAvailableAtComesFirst() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -160,16 +169,18 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseJvmRedirect(json)
+    val redirect = parseJvmRedirect(json)
 
-        assertNull(redirect)
-    }
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseJvmRedirectReturnsNullWhenJvmVariantWithoutAvailableAtComesAfter() {
-        val json = """
+  @Test
+  fun parseJvmRedirectReturnsNullWhenJvmVariantWithoutAvailableAtComesAfter() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -200,16 +211,18 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseJvmRedirect(json)
+    val redirect = parseJvmRedirect(json)
 
-        assertNull(redirect)
-    }
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseNativeRedirectExtractsLinuxX64AvailableAt() {
-        val json = """
+  @Test
+  fun parseNativeRedirectExtractsLinuxX64AvailableAt() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -253,18 +266,20 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseNativeRedirect(json, "linux_x64")
+    val redirect = parseNativeRedirect(json, "linux_x64")
 
-        assertEquals("org.jetbrains.kotlinx", redirect?.group)
-        assertEquals("kotlinx-coroutines-core-linuxx64", redirect?.module)
-        assertEquals("1.9.0", redirect?.version)
-    }
+    assertEquals("org.jetbrains.kotlinx", redirect?.group)
+    assertEquals("kotlinx-coroutines-core-linuxx64", redirect?.module)
+    assertEquals("1.9.0", redirect?.version)
+  }
 
-    @Test
-    fun parseNativeRedirectReturnsNullForDifferentTarget() {
-        val json = """
+  @Test
+  fun parseNativeRedirectReturnsNullForDifferentTarget() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -285,16 +300,18 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseNativeRedirect(json, "macos_arm64")
+    val redirect = parseNativeRedirect(json, "macos_arm64")
 
-        assertNull(redirect)
-    }
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseNativeRedirectSkipsNonNativePlatformTypes() {
-        val json = """
+  @Test
+  fun parseNativeRedirectSkipsNonNativePlatformTypes() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -312,16 +329,18 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseNativeRedirect(json, "linux_x64")
+    val redirect = parseNativeRedirect(json, "linux_x64")
 
-        assertNull(redirect)
-    }
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseNativeRedirectRequiresLibraryCategory() {
-        val json = """
+  @Test
+  fun parseNativeRedirectRequiresLibraryCategory() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -342,16 +361,18 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseNativeRedirect(json, "linux_x64")
+    val redirect = parseNativeRedirect(json, "linux_x64")
 
-        assertNull(redirect)
-    }
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseNativeRedirectRequiresKotlinApiUsage() {
-        val json = """
+  @Test
+  fun parseNativeRedirectRequiresKotlinApiUsage() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -372,28 +393,30 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseNativeRedirect(json, "linux_x64")
+    val redirect = parseNativeRedirect(json, "linux_x64")
 
-        assertNull(redirect)
-    }
+    assertNull(redirect)
+  }
 
-    @Test
-    fun parseNativeRedirectReturnsNullForInvalidJson() {
-        assertNull(parseNativeRedirect("not json", "linux_x64"))
-    }
+  @Test
+  fun parseNativeRedirectReturnsNullForInvalidJson() {
+    assertNull(parseNativeRedirect("not json", "linux_x64"))
+  }
 
-    @Test
-    fun parseNativeRedirectReturnsNullForEmptyVariants() {
-        val json = """{"formatVersion": "1.1", "variants": []}"""
+  @Test
+  fun parseNativeRedirectReturnsNullForEmptyVariants() {
+    val json = """{"formatVersion": "1.1", "variants": []}"""
 
-        assertNull(parseNativeRedirect(json, "linux_x64"))
-    }
+    assertNull(parseNativeRedirect(json, "linux_x64"))
+  }
 
-    @Test
-    fun parseNativeArtifactExtractsKlibFileAndDependencies() {
-        val json = """
+  @Test
+  fun parseNativeArtifactExtractsKlibFileAndDependencies() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "component": {
@@ -435,24 +458,29 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val artifact = parseNativeArtifact(json, "linux_x64")
+    val artifact = parseNativeArtifact(json, "linux_x64")
 
-        assertEquals("kotlinx-coroutines-core-linuxx64-1.9.0.klib", artifact?.klibFileUrl)
-        assertEquals("651d39f4ebfdd8218c30cc4c9239194dc23483a2ed8feae161749226f02f76fe", artifact?.klibSha256)
-        val deps = artifact?.dependencies.orEmpty()
-        assertEquals(2, deps.size)
-        assertEquals("org.jetbrains.kotlinx", deps[0].group)
-        assertEquals("atomicfu", deps[0].module)
-        assertEquals("0.25.0", deps[0].version)
-        assertEquals("kotlin-stdlib", deps[1].module)
-        assertEquals("2.0.0", deps[1].version)
-    }
+    assertEquals("kotlinx-coroutines-core-linuxx64-1.9.0.klib", artifact?.klibFileUrl)
+    assertEquals(
+      "651d39f4ebfdd8218c30cc4c9239194dc23483a2ed8feae161749226f02f76fe",
+      artifact?.klibSha256,
+    )
+    val deps = artifact?.dependencies.orEmpty()
+    assertEquals(2, deps.size)
+    assertEquals("org.jetbrains.kotlinx", deps[0].group)
+    assertEquals("atomicfu", deps[0].module)
+    assertEquals("0.25.0", deps[0].version)
+    assertEquals("kotlin-stdlib", deps[1].module)
+    assertEquals("2.0.0", deps[1].version)
+  }
 
-    @Test
-    fun parseNativeArtifactReturnsNullForDifferentTarget() {
-        val json = """
+  @Test
+  fun parseNativeArtifactReturnsNullForDifferentTarget() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -474,14 +502,16 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        assertNull(parseNativeArtifact(json, "macos_arm64"))
-    }
+    assertNull(parseNativeArtifact(json, "macos_arm64"))
+  }
 
-    @Test
-    fun parseNativeArtifactHandlesEmptyDependencies() {
-        val json = """
+  @Test
+  fun parseNativeArtifactHandlesEmptyDependencies() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -503,18 +533,20 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val artifact = parseNativeArtifact(json, "linux_x64")
+    val artifact = parseNativeArtifact(json, "linux_x64")
 
-        assertEquals("lib-linuxx64-1.0.klib", artifact?.klibFileUrl)
-        assertEquals("def", artifact?.klibSha256)
-        assertEquals(0, artifact?.dependencies?.size)
-    }
+    assertEquals("lib-linuxx64-1.0.klib", artifact?.klibFileUrl)
+    assertEquals("def", artifact?.klibSha256)
+    assertEquals(0, artifact?.dependencies?.size)
+  }
 
-    @Test
-    fun parseNativeArtifactReturnsNullWhenNoKlibFile() {
-        val json = """
+  @Test
+  fun parseNativeArtifactReturnsNullWhenNoKlibFile() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -530,19 +562,21 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        assertNull(parseNativeArtifact(json, "linux_x64"))
-    }
+    assertNull(parseNativeArtifact(json, "linux_x64"))
+  }
 
-    @Test
-    fun parseNativeArtifactReturnsNullForInvalidJson() {
-        assertNull(parseNativeArtifact("not json", "linux_x64"))
-    }
+  @Test
+  fun parseNativeArtifactReturnsNullForInvalidJson() {
+    assertNull(parseNativeArtifact("not json", "linux_x64"))
+  }
 
-    @Test
-    fun parseNativeArtifactPicksKlibFileAmongMultiple() {
-        val json = """
+  @Test
+  fun parseNativeArtifactPicksKlibFileAmongMultiple() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -569,17 +603,19 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val artifact = parseNativeArtifact(json, "linux_x64")
+    val artifact = parseNativeArtifact(json, "linux_x64")
 
-        assertEquals("lib-linuxx64-2.0.klib", artifact?.klibFileUrl)
-        assertEquals("good", artifact?.klibSha256)
-    }
+    assertEquals("lib-linuxx64-2.0.klib", artifact?.klibFileUrl)
+    assertEquals("good", artifact?.klibSha256)
+  }
 
-    @Test
-    fun parseJvmRedirectPicksJvmRuntimeVariantToo() {
-        val json = """
+  @Test
+  fun parseJvmRedirectPicksJvmRuntimeVariantToo() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -597,21 +633,23 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseJvmRedirect(json)
+    val redirect = parseJvmRedirect(json)
 
-        assertEquals("com.example", redirect?.group)
-        assertEquals("lib-jvm", redirect?.module)
-        assertEquals("1.0", redirect?.version)
-    }
+    assertEquals("com.example", redirect?.group)
+    assertEquals("lib-jvm", redirect?.module)
+    assertEquals("1.0", redirect?.version)
+  }
 
-    // Gradle Module Metadata attribute values can be non-string JSON primitives
-    // (e.g. kotlinx-datetime:0.7.1-0.6.x-compat emits `"org.gradle.jvm.version": 8`).
+  // Gradle Module Metadata attribute values can be non-string JSON primitives
+  // (e.g. kotlinx-datetime:0.7.1-0.6.x-compat emits `"org.gradle.jvm.version": 8`).
 
-    @Test
-    fun parseNativeRedirectToleratesNumericAttributeValueOnUnrelatedVariant() {
-        val json = """
+  @Test
+  fun parseNativeRedirectToleratesNumericAttributeValueOnUnrelatedVariant() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -647,18 +685,20 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseNativeRedirect(json, "linux_x64")
+    val redirect = parseNativeRedirect(json, "linux_x64")
 
-        assertEquals("com.example", redirect?.group)
-        assertEquals("lib-linuxx64", redirect?.module)
-        assertEquals("1.0", redirect?.version)
-    }
+    assertEquals("com.example", redirect?.group)
+    assertEquals("lib-linuxx64", redirect?.module)
+    assertEquals("1.0", redirect?.version)
+  }
 
-    @Test
-    fun parseJvmRedirectToleratesNumericJvmVersionAttribute() {
-        val json = """
+  @Test
+  fun parseJvmRedirectToleratesNumericJvmVersionAttribute() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -679,18 +719,20 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseJvmRedirect(json)
+    val redirect = parseJvmRedirect(json)
 
-        assertEquals("com.example", redirect?.group)
-        assertEquals("lib-jvm", redirect?.module)
-        assertEquals("1.0", redirect?.version)
-    }
+    assertEquals("com.example", redirect?.group)
+    assertEquals("lib-jvm", redirect?.module)
+    assertEquals("1.0", redirect?.version)
+  }
 
-    @Test
-    fun parseNativeRedirectToleratesBooleanAttributeValue() {
-        val json = """
+  @Test
+  fun parseNativeRedirectToleratesBooleanAttributeValue() {
+    val json =
+      """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -712,98 +754,90 @@ class GradleMetadataTest {
             }
           ]
         }
-        """.trimIndent()
+        """
+        .trimIndent()
 
-        val redirect = parseNativeRedirect(json, "linux_x64")
+    val redirect = parseNativeRedirect(json, "linux_x64")
 
-        assertEquals("com.example", redirect?.group)
-        assertEquals("lib-linuxx64", redirect?.module)
-        assertEquals("1.0", redirect?.version)
-    }
+    assertEquals("com.example", redirect?.group)
+    assertEquals("lib-linuxx64", redirect?.module)
+    assertEquals("1.0", redirect?.version)
+  }
 
-    @Test
-    fun parseNativeArtifactPicksStrictlyOverRequiresAndSetsStrictFlag() {
-        val json = nativeArtifactJson(
-            """{ "strictly": "1.5.0", "requires": "1.7.0" }"""
-        )
+  @Test
+  fun parseNativeArtifactPicksStrictlyOverRequiresAndSetsStrictFlag() {
+    val json = nativeArtifactJson("""{ "strictly": "1.5.0", "requires": "1.7.0" }""")
 
-        val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
+    val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
 
-        assertEquals("1.5.0", dep?.version)
-        assertEquals(true, dep?.strict)
-        assertEquals(emptyList(), dep?.rejects)
-    }
+    assertEquals("1.5.0", dep?.version)
+    assertEquals(true, dep?.strict)
+    assertEquals(emptyList(), dep?.rejects)
+  }
 
-    @Test
-    fun parseNativeArtifactPicksRequiresOverPrefers() {
-        val json = nativeArtifactJson(
-            """{ "requires": "1.7.0", "prefers": "2.0.0" }"""
-        )
+  @Test
+  fun parseNativeArtifactPicksRequiresOverPrefers() {
+    val json = nativeArtifactJson("""{ "requires": "1.7.0", "prefers": "2.0.0" }""")
 
-        val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
+    val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
 
-        assertEquals("1.7.0", dep?.version)
-        assertEquals(false, dep?.strict)
-    }
+    assertEquals("1.7.0", dep?.version)
+    assertEquals(false, dep?.strict)
+  }
 
-    @Test
-    fun parseNativeArtifactFallsBackToPrefersWhenOnlyPrefersPresent() {
-        val json = nativeArtifactJson(
-            """{ "prefers": "2.0.0" }"""
-        )
+  @Test
+  fun parseNativeArtifactFallsBackToPrefersWhenOnlyPrefersPresent() {
+    val json = nativeArtifactJson("""{ "prefers": "2.0.0" }""")
 
-        val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
+    val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
 
-        assertEquals("2.0.0", dep?.version)
-        assertEquals(false, dep?.strict)
-    }
+    assertEquals("2.0.0", dep?.version)
+    assertEquals(false, dep?.strict)
+  }
 
-    @Test
-    fun parseNativeArtifactCarriesRejectsIncludingIntervalSyntax() {
-        val json = nativeArtifactJson(
-            """{ "requires": "1.7.0", "rejects": ["1.6.0", "[1.0.0,1.5.0)"] }"""
-        )
+  @Test
+  fun parseNativeArtifactCarriesRejectsIncludingIntervalSyntax() {
+    val json =
+      nativeArtifactJson("""{ "requires": "1.7.0", "rejects": ["1.6.0", "[1.0.0,1.5.0)"] }""")
 
-        val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
+    val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
 
-        assertEquals("1.7.0", dep?.version)
-        assertEquals(listOf("1.6.0", "[1.0.0,1.5.0)"), dep?.rejects)
-    }
+    assertEquals("1.7.0", dep?.version)
+    assertEquals(listOf("1.6.0", "[1.0.0,1.5.0)"), dep?.rejects)
+  }
 
-    @Test
-    fun parseNativeArtifactReturnsNullWhenDepHasNoVersionAtAll() {
-        val json = nativeArtifactJson("""{}""")
+  @Test
+  fun parseNativeArtifactReturnsNullWhenDepHasNoVersionAtAll() {
+    val json = nativeArtifactJson("""{}""")
 
-        assertNull(parseNativeArtifact(json, "linux_x64"))
-    }
+    assertNull(parseNativeArtifact(json, "linux_x64"))
+  }
 
-    @Test
-    fun parseNativeArtifactHandlesAllThreeVersionFieldsCoexisting() {
-        val json = nativeArtifactJson(
-            """{ "strictly": "1.5.0", "requires": "1.7.0", "rejects": ["1.6.0"] }"""
-        )
+  @Test
+  fun parseNativeArtifactHandlesAllThreeVersionFieldsCoexisting() {
+    val json =
+      nativeArtifactJson("""{ "strictly": "1.5.0", "requires": "1.7.0", "rejects": ["1.6.0"] }""")
 
-        val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
+    val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
 
-        assertEquals("1.5.0", dep?.version)
-        assertEquals(true, dep?.strict)
-        assertEquals(listOf("1.6.0"), dep?.rejects)
-    }
+    assertEquals("1.5.0", dep?.version)
+    assertEquals(true, dep?.strict)
+    assertEquals(listOf("1.6.0"), dep?.rejects)
+  }
 
-    @Test
-    fun parseNativeArtifactDefaultsStrictFalseAndRejectsEmptyForBareRequires() {
-        val json = nativeArtifactJson(
-            """{ "requires": "1.0.0" }"""
-        )
+  @Test
+  fun parseNativeArtifactDefaultsStrictFalseAndRejectsEmptyForBareRequires() {
+    val json = nativeArtifactJson("""{ "requires": "1.0.0" }""")
 
-        val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
+    val dep = parseNativeArtifact(json, "linux_x64")?.dependencies?.single()
 
-        assertEquals("1.0.0", dep?.version)
-        assertEquals(false, dep?.strict)
-        assertEquals(emptyList(), dep?.rejects)
-    }
+    assertEquals("1.0.0", dep?.version)
+    assertEquals(false, dep?.strict)
+    assertEquals(emptyList(), dep?.rejects)
+  }
 
-    private fun nativeArtifactJson(versionSpec: String): String = """
+  private fun nativeArtifactJson(versionSpec: String): String =
+    """
         {
           "formatVersion": "1.1",
           "variants": [
@@ -832,5 +866,6 @@ class GradleMetadataTest {
             }
           ]
         }
-    """.trimIndent()
+    """
+      .trimIndent()
 }

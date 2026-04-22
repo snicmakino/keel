@@ -20,14 +20,11 @@ import com.github.michaelbull.result.Result
 // worker-pool change in DaemonServer must replace the compiler with a
 // thread-safe variant before it can fan out.
 interface NativeCompiler {
-    fun compile(args: List<String>): Result<NativeCompileOutcome, NativeCompileError>
+  fun compile(args: List<String>): Result<NativeCompileOutcome, NativeCompileError>
 }
 
-data class NativeCompileOutcome(
-    val exitCode: Int,
-    val stderr: String,
-)
+data class NativeCompileOutcome(val exitCode: Int, val stderr: String)
 
 sealed interface NativeCompileError {
-    data class InvocationFailed(val cause: Throwable) : NativeCompileError
+  data class InvocationFailed(val cause: Throwable) : NativeCompileError
 }

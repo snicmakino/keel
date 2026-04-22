@@ -29,20 +29,22 @@ import java.io.PrintStream
 // fixed-prefix strings, so this is enforced by construction rather
 // than escaping at the sink layer.
 interface IcMetricsSink {
-    fun record(name: String, value: Long = 1L)
+  fun record(name: String, value: Long = 1L)
 }
 
 object NoopIcMetricsSink : IcMetricsSink {
-    override fun record(name: String, value: Long) { /* intentional no-op */ }
+  override fun record(name: String, value: Long) {
+    /* intentional no-op */
+  }
 }
 
 class StderrIcMetricsSink(
-    // Defaults to `System.err` so the daemon's normal stderr stream
-    // carries the metric lines. Tests inject a ByteArrayOutputStream-
-    // backed PrintStream to observe the wire.
-    private val stderr: PrintStream = System.err,
+  // Defaults to `System.err` so the daemon's normal stderr stream
+  // carries the metric lines. Tests inject a ByteArrayOutputStream-
+  // backed PrintStream to observe the wire.
+  private val stderr: PrintStream = System.err
 ) : IcMetricsSink {
-    override fun record(name: String, value: Long) {
-        stderr.println("""kolt-ic-metric {"name":"$name","value":$value}""")
-    }
+  override fun record(name: String, value: Long) {
+    stderr.println("""kolt-ic-metric {"name":"$name","value":$value}""")
+  }
 }

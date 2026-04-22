@@ -6,39 +6,47 @@ import com.github.michaelbull.result.mapError
 import kolt.infra.homeDirectory
 
 internal data class KoltPaths(val home: String) {
-    val cacheBase: String = "$home/.kolt/cache"
-    val toolsDir: String = "$home/.kolt/tools"
-    val toolchainsDir: String = "$home/.kolt/toolchains"
-    val daemonBaseDir: String = "$home/.kolt/daemon"
-    val daemonIcDir: String = "$daemonBaseDir/ic"
+  val cacheBase: String = "$home/.kolt/cache"
+  val toolsDir: String = "$home/.kolt/tools"
+  val toolchainsDir: String = "$home/.kolt/toolchains"
+  val daemonBaseDir: String = "$home/.kolt/daemon"
+  val daemonIcDir: String = "$daemonBaseDir/ic"
 
-    fun daemonDir(projectHash: String, kotlinVersion: String): String =
-        "$daemonBaseDir/$projectHash/$kotlinVersion"
-    fun daemonSocketPath(projectHash: String, kotlinVersion: String): String =
-        "${daemonDir(projectHash, kotlinVersion)}/jvm-compiler-daemon.sock"
-    fun daemonLogPath(projectHash: String, kotlinVersion: String): String =
-        "${daemonDir(projectHash, kotlinVersion)}/jvm-compiler-daemon.log"
+  fun daemonDir(projectHash: String, kotlinVersion: String): String =
+    "$daemonBaseDir/$projectHash/$kotlinVersion"
 
-    // ADR 0024 §3: native daemon sits under the same <projectHash>/<version>
-    // directory as the JVM daemon, distinguished by its socket filename.
-    // Keeping both sockets under one directory lets `kolt daemon stop`
-    // enumerate them in a single pass (ADR 0020 §2).
-    fun nativeDaemonSocketPath(projectHash: String, kotlinVersion: String): String =
-        "${daemonDir(projectHash, kotlinVersion)}/native-compiler-daemon.sock"
-    fun nativeDaemonLogPath(projectHash: String, kotlinVersion: String): String =
-        "${daemonDir(projectHash, kotlinVersion)}/native-compiler-daemon.log"
+  fun daemonSocketPath(projectHash: String, kotlinVersion: String): String =
+    "${daemonDir(projectHash, kotlinVersion)}/jvm-compiler-daemon.sock"
 
-    fun kotlincPath(version: String): String = "$toolchainsDir/kotlinc/$version"
-    fun kotlincBin(version: String): String = "${kotlincPath(version)}/bin/kotlinc"
+  fun daemonLogPath(projectHash: String, kotlinVersion: String): String =
+    "${daemonDir(projectHash, kotlinVersion)}/jvm-compiler-daemon.log"
 
-    fun jdkPath(version: String): String = "$toolchainsDir/jdk/$version"
-    fun javaBin(version: String): String = "${jdkPath(version)}/bin/java"
-    fun jarBin(version: String): String = "${jdkPath(version)}/bin/jar"
+  // ADR 0024 §3: native daemon sits under the same <projectHash>/<version>
+  // directory as the JVM daemon, distinguished by its socket filename.
+  // Keeping both sockets under one directory lets `kolt daemon stop`
+  // enumerate them in a single pass (ADR 0020 §2).
+  fun nativeDaemonSocketPath(projectHash: String, kotlinVersion: String): String =
+    "${daemonDir(projectHash, kotlinVersion)}/native-compiler-daemon.sock"
 
-    fun konancPath(version: String): String = "$toolchainsDir/konanc/$version"
-    fun konancBin(version: String): String = "${konancPath(version)}/bin/konanc"
-    fun cinteropBin(version: String): String = "${konancPath(version)}/bin/cinterop"
+  fun nativeDaemonLogPath(projectHash: String, kotlinVersion: String): String =
+    "${daemonDir(projectHash, kotlinVersion)}/native-compiler-daemon.log"
+
+  fun kotlincPath(version: String): String = "$toolchainsDir/kotlinc/$version"
+
+  fun kotlincBin(version: String): String = "${kotlincPath(version)}/bin/kotlinc"
+
+  fun jdkPath(version: String): String = "$toolchainsDir/jdk/$version"
+
+  fun javaBin(version: String): String = "${jdkPath(version)}/bin/java"
+
+  fun jarBin(version: String): String = "${jdkPath(version)}/bin/jar"
+
+  fun konancPath(version: String): String = "$toolchainsDir/konanc/$version"
+
+  fun konancBin(version: String): String = "${konancPath(version)}/bin/konanc"
+
+  fun cinteropBin(version: String): String = "${konancPath(version)}/bin/cinterop"
 }
 
 internal fun resolveKoltPaths(): Result<KoltPaths, String> =
-    homeDirectory().map { KoltPaths(it) }.mapError { it.message }
+  homeDirectory().map { KoltPaths(it) }.mapError { it.message }

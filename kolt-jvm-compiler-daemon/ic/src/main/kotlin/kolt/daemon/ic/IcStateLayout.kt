@@ -28,29 +28,29 @@ import java.security.MessageDigest
 // future reaper (ADR §Negative) to clean up.
 object IcStateLayout {
 
-    // On-disk names under `<icRoot>/<kotlinVersion>/<projectId>/`.
-    // `BtaIncrementalCompiler` writes these and `IcReaper` reads them;
-    // collecting the constants here keeps the layout contract in one
-    // file. BTA's own state lives one level deeper under `BTA_SUBDIR`
-    // so the reaper-facing metadata is not swept away by BTA's
-    // cold-path housekeeping of its `workingDirectory`.
-    const val BREADCRUMB_FILE: String = "project.path"
-    const val LOCK_FILE: String = "LOCK"
-    const val BTA_SUBDIR: String = "bta"
-    const val CLASSPATH_SNAPSHOTS_SUBDIR: String = "classpath-snapshots"
+  // On-disk names under `<icRoot>/<kotlinVersion>/<projectId>/`.
+  // `BtaIncrementalCompiler` writes these and `IcReaper` reads them;
+  // collecting the constants here keeps the layout contract in one
+  // file. BTA's own state lives one level deeper under `BTA_SUBDIR`
+  // so the reaper-facing metadata is not swept away by BTA's
+  // cold-path housekeeping of its `workingDirectory`.
+  const val BREADCRUMB_FILE: String = "project.path"
+  const val LOCK_FILE: String = "LOCK"
+  const val BTA_SUBDIR: String = "bta"
+  const val CLASSPATH_SNAPSHOTS_SUBDIR: String = "classpath-snapshots"
 
-    // The native client mirrors this in
-    // `src/nativeMain/kotlin/kolt/build/daemon/IcStateCleanup.kt`
-    // (`daemonIcProjectIdOf`). Update both when changing the algorithm.
-    fun projectIdFor(projectRoot: Path): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(projectRoot.toString().toByteArray(Charsets.UTF_8))
-        return digest.take(16).joinToString("") { "%02x".format(it) }
-    }
+  // The native client mirrors this in
+  // `src/nativeMain/kotlin/kolt/build/daemon/IcStateCleanup.kt`
+  // (`daemonIcProjectIdOf`). Update both when changing the algorithm.
+  fun projectIdFor(projectRoot: Path): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    val digest = md.digest(projectRoot.toString().toByteArray(Charsets.UTF_8))
+    return digest.take(16).joinToString("") { "%02x".format(it) }
+  }
 
-    fun workingDirFor(icRoot: Path, kotlinVersion: String, projectRoot: Path): Path =
-        icRoot.resolve(kotlinVersion).resolve(projectIdFor(projectRoot))
+  fun workingDirFor(icRoot: Path, kotlinVersion: String, projectRoot: Path): Path =
+    icRoot.resolve(kotlinVersion).resolve(projectIdFor(projectRoot))
 
-    fun classpathSnapshotsDirFor(icRoot: Path, kotlinVersion: String): Path =
-        icRoot.resolve(kotlinVersion).resolve(CLASSPATH_SNAPSHOTS_SUBDIR)
+  fun classpathSnapshotsDirFor(icRoot: Path, kotlinVersion: String): Path =
+    icRoot.resolve(kotlinVersion).resolve(CLASSPATH_SNAPSHOTS_SUBDIR)
 }
