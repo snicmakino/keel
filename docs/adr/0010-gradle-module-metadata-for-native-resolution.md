@@ -1,54 +1,44 @@
+---
+status: accepted
+date: 2026-04-13
+---
+
 # ADR 0010: Use Gradle Module Metadata for Kotlin/Native dependency resolution
 
-## Status
+## Summary
 
-Accepted (2026-04-13)
+- Native artifacts (`.klib`) and their transitive dependencies are not described in POMs — the only authoritative source is Gradle Module Metadata (`.module` JSON). (§1)
+- `NativeResolver` walks `.module` files exclusively; `TransitiveResolver` (JVM) walks POMs, calling `parseJvmRedirect` for KMP redirects only. (§2)
+- The dispatch is a single `if (config.target == "native")` in `Resolver.resolve()`; the two pipelines share `ResolverDeps`, `ResolveError`, `ResolveResult`, and download helpers. (§3)
+- For each dependency, `NativeResolver` follows the `available-at` redirect to the target-specific module, extracts the `.klib` url + sha256 from `files[]`, and recurses on `dependencies[]`. (§4)
+- sha256 values are read from `files[].sha256` in the metadata — not fetched from `.sha256` sidecars — eliminating one round-trip per artifact. (§5)
 
-## Context
+## Context and Problem Statement
 
-kolt supports two build targets: `target = "jvm"` and `target = "native"`
-(see #16). The two targets need different artifacts from Maven Central:
+kolt supports `target = "jvm"` and `target = "native"` (see #16). JVM builds consume `.jar` files whose dependency information lives in Maven POMs. Native builds consume `.klib` files; modern Kotlin Multiplatform libraries (kotlinx-coroutines, kotlinx-serialization, ktor) publish per-target `.klib` artifacts via Gradle Module Metadata, not via POMs.
 
-- **jvm** consumes `.jar` files. Their dependency information lives in
-  `.pom` files (Maven POMs), which kolt parses and walks transitively in
-  `TransitiveResolver` / `PomParser`.
-- **native** consumes `.klib` files. Modern Kotlin Multiplatform libraries
-  (kotlinx-coroutines, kotlinx-serialization, ktor, etc.) publish their
-  per-target `.klib` artifacts as **Gradle Module Metadata** (`.module`
-  JSON files), not as POMs.
+A spike against `kotlinx-coroutines-core:1.9.0` confirmed that POMs cannot carry the required information: the POM describes only the JVM jar; the native variant's `available-at` redirect (e.g. `kotlinx-coroutines-core` → `kotlinx-coroutines-core-linuxx64`) is encoded as a metadata variant, not a Maven dependency; transitive dependencies for the native variant live in `variants[].dependencies[]`; and `.klib` file hashes live in `variants[].files[]`. `.module` files are not optional decoration — they are the only place native resolution information lives.
 
-The first decision point was whether kolt should:
+## Decision Drivers
 
-1. Try to extract native dependencies from POMs anyway (the root POM of a
-   KMP library does have a `<dependencies>` section), or
-2. Use the `.module` files as the authoritative source for native
-   resolution.
+- Must resolve the correct `.klib` for `linux_x64` without guessing artifact name conventions.
+- sha256 verification must not require a separate sidecar fetch per artifact.
+- JVM and native resolvers must be independently evolvable without cross-contamination.
+- `available-at` coordinates must be followed verbatim; no name inference.
 
-A spike against `kotlinx-coroutines-core:1.9.0` (see Phase B research for
-#16) confirmed that POMs **cannot** carry the information needed:
+## Decision Outcome
 
-- The POM only describes the JVM jar — it has no knowledge of the
-  per-target `.klib` artifacts.
-- The native variant's `available-at` redirect (e.g. `kotlinx-coroutines-core`
-  → `kotlinx-coroutines-core-linuxx64`) is encoded as a Gradle metadata
-  *variant*, not as a Maven dependency.
-- The native variant's transitive dependencies are listed in the
-  `.module` file's `variants[].dependencies[]`, not in the POM.
-- File hashes (sha256/sha512) for `.klib` files live in
-  `variants[].files[]` in the metadata, not in `.sha256` sidecars (the
-  sidecars exist too, but the metadata is the authoritative source).
+Chosen option: **two parallel pipelines with metadata-only native resolution**, because POMs and Gradle metadata have fundamentally different shapes; a unified BFS that branches on target type would push conditional logic into every helper.
 
-In short, `.module` files are not optional decoration on top of POMs:
-they are the only place where Kotlin/Native artifact resolution
-information lives.
+### §1 POMs cannot describe native artifacts
 
-## Decision
+The root POM of a KMP library has a `<dependencies>` section, but it describes JVM artifacts only. There is no Maven mechanism to encode a per-target `.klib` coordinate, file hash, or native-variant transitive graph. Any approach starting from POMs for native would require fabricating information the POM does not contain.
 
-Native dependency resolution uses Gradle Module Metadata exclusively. The
-JVM and native paths are kept as **two parallel pipelines** that share
-only the surrounding `Resolver` interface and download / cache plumbing.
+### §2 Two parallel resolvers
 
-`Resolver.resolve()` dispatches on `config.target`:
+`TransitiveResolver` + `PomParser` handle JVM; `NativeResolver` handles native. They are not unified. The JVM path calls `parseJvmRedirect` from `GradleMetadata.kt` to follow KMP redirects, then switches back to POM-based walking (see ADR 0005). The native path uses Gradle metadata for everything.
+
+### §3 Dispatch
 
 ```kotlin
 fun resolve(...): Result<ResolveResult, ResolveError> =
@@ -56,99 +46,50 @@ fun resolve(...): Result<ResolveResult, ResolveError> =
     else resolveTransitive(config, existingLock, cacheBase, deps)
 ```
 
-- **jvm path** (`TransitiveResolver` + `PomParser`): unchanged, walks
-  POMs as before. KMP libraries with a JVM redirect are followed via
-  `parseJvmRedirect` from `GradleMetadata.kt` — Gradle metadata is used
-  here only to find the `available-at` JVM-specific module, then kolt
-  switches back to POM-based resolution from that point.
-- **native path** (`NativeResolver`): walks `.module` files only. For
-  each direct dependency:
-  1. Fetch the root `.module` and find the `available-at` redirect for
-     the current native target via `parseNativeRedirect`.
-  2. Fetch the redirect-target `.module` and extract the `.klib` file
-     reference (url + sha256) and the variant's `dependencies[]` via
-     `parseNativeArtifact`.
-  3. Verify the `.klib` sha256 against the value declared in the
-     metadata.
-  4. Recurse on the variant's `dependencies[]`.
+Shared: `ResolverDeps`, `ResolveError`, `ResolveResult`, `downloadFromRepositories`, `fetchAndRead`.
 
-The two resolvers are not unified. They share `ResolverDeps`,
-`ResolveError`, `ResolveResult`, and the `downloadFromRepositories` /
-`fetchAndRead` helpers.
+### §4 Native resolution walk
 
-## Consequences
+For each dependency, `NativeResolver`:
+1. Fetches the root `.module` and finds the `available-at` redirect for the current native target via `parseNativeRedirect`.
+2. Fetches the redirect-target `.module` and extracts the `.klib` file reference (url + sha256) and `dependencies[]` via `parseNativeArtifact`.
+3. Verifies the `.klib` sha256 against the value declared in `files[]`.
+4. Recurses on the variant's `dependencies[]`.
 
-### Positive
+`GradleMetadata.kt` reads four attributes (`platform.type`, `native.target`, `usage`, `category`), the `available-at` block, and `files[]` / `dependencies[]`. The full Gradle metadata 1.1 spec is not implemented. The decoder is configured `ignoreUnknownKeys = true` so schema evolution does not break kolt.
 
-- **Correct native artifact resolution**: kolt picks up exactly the
-  `.klib` published for `linux_x64`, the version pinned by the publisher,
-  and the transitive native dependencies the library actually needs at
-  link time.
-- **Authoritative sha256**: hashes are read from the metadata's
-  `files[].sha256` rather than fetched from a separate `.sha256` sidecar,
-  which removes one network round-trip and one failure mode.
-- **No POM-fitting hacks**: kolt does not have to invent fake "native
-  classifier" coordinates or guess the `linuxx64` artifact name from the
-  POM. The `available-at` redirect is followed verbatim from the
-  metadata.
-- **Independent evolution**: the native and jvm resolvers can be
-  optimised, hardened, or rewritten independently. Bugs in one cannot
-  break the other.
+### §5 sha256 from metadata
 
-### Negative
+Hashes are read from `files[].sha256` in the metadata rather than fetched from a separate `.sha256` sidecar, removing one network round-trip and one failure mode per artifact.
 
-- **Two resolvers to maintain**: `TransitiveResolver` and
-  `NativeResolver` duplicate the BFS skeleton, the highest-version-wins
-  rule, and the direct-deps-win precedence. Bug fixes in one path may
-  need to be ported to the other.
-- **Two parsers to maintain**: `PomParser.kt` (XML) and
-  `GradleMetadata.kt` (JSON via kotlinx-serialization) are entirely
-  separate code paths.
-- **Libraries without Gradle metadata cannot be used as native deps**:
-  if a library is published with a POM only and no `.module` file
-  (rare for modern Kotlin libraries, but possible for very old or
-  hand-rolled artifacts), `parseNativeRedirect` returns `null` and kolt
-  surfaces `ResolveError.NoNativeVariant`. This is the correct user-
-  facing failure mode but may surprise users porting jvm projects.
+### Consequences
 
-### Neutral
+**Positive**
+- kolt picks up exactly the `.klib` published for `linux_x64`, the version the publisher pinned, and the transitive native dependencies needed at link time.
+- No POM-fitting hacks; no invented "native classifier" coordinates; `available-at` is followed verbatim.
+- sha256 sourced from metadata eliminates a sidecar round-trip per artifact.
+- Native and JVM resolvers evolve independently; bugs in one cannot break the other.
 
-- **`.module` parsing complexity is bounded**: kolt only reads four
-  attributes (`platform.type`, `native.target`, `usage`, `category`),
-  the `available-at` block, and the `files[]` / `dependencies[]` arrays.
-  We do not implement the full Gradle metadata 1.1 specification.
-- **JVM path still uses Gradle metadata for KMP redirects**: the JVM
-  resolver calls `parseJvmRedirect` from the same `GradleMetadata.kt`
-  file. The split is "metadata for variant selection, POMs for
-  dependency walking" on the JVM side, and "metadata for everything"
-  on the native side.
+**Negative**
+- `TransitiveResolver` and `NativeResolver` duplicate the BFS skeleton, highest-version-wins rule, and direct-deps-win precedence — bug fixes may need porting to both.
+- `PomParser.kt` (XML) and `GradleMetadata.kt` (JSON) are separate code paths to maintain.
+- Libraries published with a POM only and no `.module` cause `parseNativeRedirect` to return `null`, surfacing `ResolveError.NoNativeVariant` — correct behaviour, but may surprise users porting JVM projects.
 
-## Alternatives Considered
+### Confirmation
 
-1. **Unify under a single `Resolver` that branches inside the BFS** —
-   rejected because POMs and Gradle metadata have fundamentally
-   different shapes (XML element tree vs JSON variant array, parent POM
-   chain vs `available-at` redirect, `<dependencyManagement>` vs version
-   constraints in metadata). The branching would have to extend down to
-   every helper, producing more conditional code than two parallel
-   pipelines.
-2. **Treat `.module` files as supplemental metadata on top of POMs** —
-   rejected because the POM does not describe native artifacts at all.
-   You cannot start from the POM and "augment" with `.module` data; the
-   POM literally has nothing to augment.
-3. **Walk only the root `.module` and skip the `available-at` redirect**
-   (assume artifact name = `<module>-<targetname>` by convention) —
-   rejected because Android Native targets, special case names, and
-   future targets break the convention. The `available-at.module` value
-   must be used verbatim.
-4. **Use Coursier as an external dependency** — out of scope; kolt is a
-   single self-contained Kotlin/Native binary and does not shell out
-   to JVM tools for core operations.
+Verified by `NativeResolverTest.kt` integration tests that download real KMP artifacts and confirm the resolved `.klib` list matches the expected target-specific variants.
+
+## Alternatives considered
+
+1. **Unify under a single `Resolver` that branches inside the BFS.** Rejected — POMs and Gradle metadata differ in structure (XML element tree vs JSON variant array, parent POM chain vs `available-at` redirect, `<dependencyManagement>` vs metadata version constraints); branching would extend into every helper, producing more conditional code than two pipelines.
+2. **Treat `.module` files as supplemental metadata on top of POMs.** Rejected — the POM does not describe native artifacts at all; there is nothing in the POM to augment.
+3. **Walk only the root `.module` and skip `available-at`, assuming `<module>-<targetname>` by convention.** Rejected — Android Native targets, special-case names, and future targets break the convention; `available-at.module` must be used verbatim.
+4. **Use Coursier as an external dependency.** Out of scope — kolt is a single self-contained Kotlin/Native binary and does not shell out to JVM tools for core operations.
 
 ## Related
 
-- #16 (Kotlin/Native target support — parent issue)
-- PR #53 (Phase B-1, parser-only)
-- PR #55 (Phase B-2, native resolver wired into `Resolver.resolve`)
-- ADR 0011 (kotlin-stdlib skip — load-bearing assumption that depends
-  on this resolver design)
+- #16 — Kotlin/Native target support (parent issue)
+- PR #53 — Phase B-1, parser-only implementation
+- PR #55 — Phase B-2, `NativeResolver` wired into `Resolver.resolve`
+- ADR 0005 — JVM redirect handling; shares `GradleMetadata.kt` with this resolver
+- ADR 0011 — kotlin-stdlib skip; load-bearing assumption that depends on this resolver design

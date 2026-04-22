@@ -1,67 +1,39 @@
+---
+status: implemented
+date: 2026-04-08
+---
+
 # ADR 0001: Use kotlin-result `Result<V, E>` for all error handling
 
-## Status
+## Summary
 
-Accepted (2026-04-08)
+- Every side-effectful function returns `Result<V, E>` from `kotlin-result` 2.3.1; pure functions are exempt. (§1)
+- Each function declares its own error type — no global `KoltError`. Sealed classes group meaningful variants (`ProcessError`); independent errors stay as data classes (`OpenFailed`, `MkdirFailed`). (§2)
+- Consumers unwrap with `getOrElse { error -> ... }` and exhaust with `when`; the compiler forces every variant to be handled. (§3)
+- `ConfigParseException`, the `-1` sentinel in `executeCommand`, and nullable error returns are deleted in favour of explicit `Result` types. (§4)
+- `ExitCode.kt` plus per-command mapping translates every `Result<_, E>` into a deterministic CLI exit code; users never see a Kotlin stack trace. (§5)
 
-## Context
+## Context and Problem Statement
 
-The Phase 1 implementation of kolt handled errors in three different ways,
-often within the same call path:
+The Phase 1 prototype mixed three error styles on the same call path: exceptions (`ConfigParseException` from `parseConfig`), sentinel exit codes (`executeCommand` returning `-1` for "failed to start"), and nullable returns (`readFileAsString` collapsing "missing", "permission denied", and "I/O error" into one `null`). `Main.kt` combined `try/catch`, `if (result == -1)`, and `?: run { ... }` in sequence, and adding a failure mode meant auditing every caller.
 
-- **Exceptions**: `parseConfig` threw a custom `ConfigParseException` when
-  `kolt.json` was malformed or missing required fields.
-- **Sentinel exit codes**: `executeCommand` returned `-1` for "process
-  failed to start" and any non-zero integer for "process ran but exited
-  non-zero". Callers had to know that `-1` was special.
-- **Nullable returns**: `readFileAsString` returned `String?`, leaving
-  callers to infer whether `null` meant "file missing", "permission
-  denied", or "I/O error".
+Kotlin/Native exceptions are also a poor fit: stack traces are expensive, `CancellationException` semantics diverge from JVM, and exceptions interact poorly with `cinterop` boundaries. The project charter prohibits throwing for these reasons. We need a discipline that puts every failure mode in the signature, forces exhaustive handling at the call site, and works without exceptions or reflection on Kotlin/Native linuxX64.
 
-This made error handling unpredictable. `Main.kt` had to mix `try/catch`,
-`if (result == -1)` checks, and `?: run { ... }` null-guards in sequence,
-and there was no single place that listed all the ways a given operation
-could fail. Adding a new failure mode meant auditing every caller.
+## Decision Drivers
 
-kolt also has a hard constraint from the project charter: **exception
-throwing is prohibited**. Kotlin/Native exceptions are awkward
-(stack traces are expensive, `CancellationException` semantics differ
-from JVM, and coroutine boundaries interact poorly with C interop), and
-the tool's error reporting must be deterministic — every `kolt build`
-failure should map to a known exit code and a known message.
+- Failure modes must be visible in the function signature.
+- The call site must be forced to handle every variant.
+- No exceptions across `cinterop` or `fork`/`execvp` boundaries.
+- No JVM-only libraries — must work on Kotlin/Native linuxX64.
+- Every `kolt build` failure must map to a known exit code and known message.
 
-We needed an error-handling discipline that:
+## Decision Outcome
 
-1. Made the full set of failure modes visible in the function signature.
-2. Forced exhaustive handling at the call site.
-3. Did not rely on exceptions.
-4. Worked well with Kotlin/Native's type system (no reflection tricks,
-   no JVM-only libraries).
+Chosen library: **`kotlin-result` 2.3.1**, because it ships a single Kotlin/Native-compatible klib with no transitive dependencies and satisfies every driver above.
 
-## Decision
+### §1 `Result` is the return type for every side-effectful function
 
-Adopt `kotlin-result` (`com.michael-bull.kotlin-result:kotlin-result:2.3.1`)
-and use `Result<V, E>` as the return type for every side-effectful
-function in kolt. Pure functions (value-in / value-out, no I/O) are
-exempt.
-
-- Each fallible function declares its own error type. Only the errors
-  that function can actually produce appear in the signature.
-- A sealed class is used when several variants share a meaningful parent
-  (e.g. `ProcessError` covers `StartFailed`, `RunFailed`, `ExitNonZero`).
-  Independent errors stay as plain data classes (`OpenFailed`,
-  `MkdirFailed`).
-- Consumers unwrap with `getOrElse { error -> ... }` and match on the
-  error with an exhaustive `when`. The compiler enforces that every
-  variant is handled.
-- `ConfigParseException` is deleted. `parseConfig` returns
-  `Result<KoltConfig, ConfigError>`.
-- Exit-code sentinels in `executeCommand` are replaced with
-  `Result<Int, ProcessError>` — the `Int` is the actual process exit
-  code, and start failures are a separate `ProcessError.StartFailed`
-  variant.
-
-The canonical signatures established at Phase 1 are:
+Pure helpers (value-in / value-out, no I/O — `Builder.buildCommand`, `VersionCompare.compare`, …) keep plain return types. Every function that touches the filesystem, a subprocess, the network, or fallible decoding returns `Result<V, E>`. Canonical signatures from Phase 1:
 
 ```
 parseConfig()       -> Result<KoltConfig, ConfigError>
@@ -71,81 +43,52 @@ executeCommand()    -> Result<Int, ProcessError>
 executeAndCapture() -> Result<String, ProcessError>
 ```
 
-All code added after Phase 1 follows the same pattern. New error types
-are introduced per subsystem (`ResolveError`, `LockfileError`,
-`DownloadError`, `ToolchainError`, etc.).
+New subsystems follow the pattern: `ResolveError`, `LockfileError`, `DownloadError`, `ToolchainError`, etc.
 
-## Consequences
+### §2 Per-subsystem error types, no global hierarchy
 
-### Positive
+Each function declares the smallest error type that fits its actual failure modes. Variants that share a meaningful parent become a sealed class (`ProcessError` covers `EmptyArgs`, `ForkFailed`, `WaitFailed`, `NonZeroExit`, `SignalKilled`). Independent errors stay as plain data classes. A global `KoltError` was rejected (see Alternatives) because it defeats signature precision.
 
-- **Signatures are honest**: a function's error type lists every way it
-  can fail. Adding a new failure mode is a type-level change that breaks
-  the build at every call site, forcing reviewers to update handling
-  deliberately.
-- **Exhaustive handling**: `when (error) { ... }` over a sealed class
-  is a compile error if a new variant is added and an old call site is
-  missed. This has already caught several bugs during refactors
-  (ToolchainError expansion, native resolve error additions).
-- **No exceptions across native boundaries**: all C interop sites return
-  `Result`, so exceptions never propagate through `cinterop` or
-  `fork/execvp` boundaries.
-- **Composability**: `andThen`, `map`, `mapError`, `flatMap` let us
-  chain fallible operations without pyramid-of-doom `if` nesting.
-  `BuildCommands` orchestration reads top-to-bottom.
-- **Deterministic exit codes**: the CLI has a single place (`ExitCode.kt`
-  + per-command error mapping) that translates `Result<_, E>` into a
-  numeric exit code. Users never see a Kotlin stack trace.
+### §3 Exhaustive handling at every call site
 
-### Negative
+Consumers unwrap with `getOrElse { error -> ... }` and match with an exhaustive `when` over the sealed hierarchy. Adding a new variant breaks every call site that does not handle it — this has already caught real bugs during refactors (ToolchainError expansion, native resolve error additions).
 
-- **Signature noise**: every function gains a `Result<_, _>` wrapper and
-  an explicit error type, which is more verbose than `throws` or a
-  global exception hierarchy.
-- **Error type proliferation**: each subsystem defines its own sealed
-  class, and there are now a dozen or more `*Error` types across the
-  codebase. Choosing whether a new failure belongs in an existing type
-  or a new one is a judgement call.
-- **Friction at boundaries**: converting from a third-party API that
-  still throws (e.g. ktoml parsing) requires an explicit
-  `runCatching { ... }.mapError { ... }` wrapper. kotlin-result does not
-  automatically bridge exceptions.
-- **Stack traces are lost**: an `Err(OpenFailed(path, errno))` carries
-  only the data in the error object. When debugging, we sometimes want
-  the call chain, and adding it back means either throwing-and-catching
-  or threading an extra `cause` field manually.
+### §4 No exceptions, no sentinels
 
-### Neutral
+`ConfigParseException` is deleted; `parseConfig` returns `Result<KoltConfig, ConfigError>`. The `-1` exit-code sentinel in `executeCommand` is gone — start failures are `ProcessError.StartFailed`, and the `Int` in `Result<Int, ProcessError>` is the actual child exit code. Nullable error returns are replaced with `Result<T, *Error>`. Bridging third-party APIs that still throw (e.g. ktoml) requires `runCatching { ... }.mapError { ... }` at the boundary.
 
-- **Pure functions stay plain**: `Builder.buildCommand`,
-  `Runner.runCommand`, `VersionCompare.compare`, and the other pure
-  helpers return regular values and take regular arguments. The
-  `Result` discipline applies to the I/O edge, not to the whole codebase.
-- **kotlin-result is a small dependency**: one klib, no transitive
-  dependencies, MIT-licensed, stable API. The cost of adopting it is
-  negligible compared to the surface it replaces.
+### §5 Deterministic CLI exit codes
 
-## Alternatives Considered
+`ExitCode.kt` plus per-command error mapping is the single place that translates `Result<_, E>` into a numeric exit code. Stack traces never reach the user.
 
-1. **Checked exceptions via `@Throws`** — rejected. Kotlin's `@Throws`
-   annotation is only enforced on the JVM for Java interop and has no
-   effect on Kotlin call sites. It would be documentation, not
-   enforcement.
-2. **A single top-level `KoltError` sealed class** — rejected. Every
-   function would declare it could return any error, defeating the
-   purpose of making signatures precise. Error types need to be local
-   to the subsystem they come from.
-3. **Arrow `Either<E, V>`** — rejected because Arrow pulls in a much
-   larger dependency footprint (arrow-core, arrow-fx-coroutines,
-   kotlinx-coroutines) than kotlin-result. For a build tool whose
-   selling point is fast Kotlin/Native builds, the extra klibs were
-   not worth the incremental ergonomic gain.
-4. **Nullable returns with a separate "last error" field** — rejected.
-   Stateful error reporting is exactly the pattern we were moving away
-   from, and it does not compose.
+### Consequences
+
+**Positive**
+- Signatures list every failure mode; new ones are type-level changes that break every call site.
+- Exhaustive `when` over sealed hierarchies turns missed-variant bugs into compile errors.
+- Exceptions never propagate through `cinterop` or `fork`/`execvp` boundaries.
+- `andThen`/`map`/`mapError`/`flatMap` keep orchestration code top-to-bottom.
+- Single, predictable CLI exit-code surface.
+
+**Negative**
+- Every signature gains a `Result<_, _>` wrapper and an explicit error type — more verbose than `throws`.
+- A dozen-plus `*Error` types now exist; choosing whether a new failure belongs in an existing type or a new one is a judgement call.
+- Throwing third-party APIs need `runCatching` wrappers at the boundary.
+- Stack traces are lost — recovering call context means threading a `cause` field manually.
+
+### Confirmation
+
+Enforced by review and by the `CLAUDE.md` rule ("Exception throwing is prohibited — use kotlin-result `Result<V, E>` for all error handling"). A PR adding `throw` outside a `runCatching` boundary is rejected.
+
+## Alternatives considered
+
+1. **Checked exceptions via `@Throws`.** Rejected — `@Throws` is only enforced on the JVM for Java interop; on Kotlin call sites it is documentation, not a compile error.
+2. **A single top-level `KoltError` sealed class.** Rejected — every function would advertise it could return any error, defeating precise signatures. Errors must be local to the subsystem.
+3. **Arrow `Either<E, V>`.** Rejected — Arrow's footprint (arrow-core, arrow-fx-coroutines, kotlinx-coroutines) is far larger than kotlin-result for marginal ergonomic gain in a fast-startup native binary.
+4. **Nullable returns plus a separate "last-error" field.** Rejected — stateful error reporting is exactly the pattern this ADR leaves behind, and it does not compose.
 
 ## Related
 
-- Commit `670e5c3` (initial migration to Result for Phase 1 operations)
-- `CLAUDE.md` project rule: "Exception throwing is prohibited — use
-  kotlin-result `Result<V, E>` for all error handling"
+- `CLAUDE.md` — project rule prohibiting exception throwing
+- ADR 0002 — `ProcessError` is the surface this ADR formalises
+- Commit `670e5c3` — initial Phase 1 migration to `Result`

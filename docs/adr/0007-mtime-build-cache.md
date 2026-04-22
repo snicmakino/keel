@@ -1,201 +1,96 @@
+---
+status: accepted
+date: 2026-04-09
+---
+
 # ADR 0007: Skip unchanged builds by comparing mtimes in a JSON state file
 
-## Status
+## Summary
 
-Accepted (2026-04-09)
+- `build/.kolt-state.json` records the mtimes of every build input after each successful build; the next build reads and compares them before invoking kotlinc. (§1)
+- Source and resource directories are collapsed to `max(mtime)` across all files rather than a per-file map; deleted files are caught by `classesDirMtime`. (§2)
+- `parseBuildState` swallows parse errors and returns `null`, treating a corrupt or missing state file as "no cache" rather than a hard failure. (§3)
+- `classpath` is stored as a string in the state so a classpath change without a lockfile mtime change still invalidates the cache. (§4)
+- Schema changes are backwards-compatible via nullable-with-default fields; a breaking change is handled by deleting `build/`. (§5)
 
-## Context
+## Context and Problem Statement
 
-Before the build cache, `kolt build` always re-invoked kotlinc, even
-when nothing had changed. kotlinc on Kotlin/Native takes roughly one
-second of fixed overhead per invocation even for a no-op, and the jvm
-compiler is no better. For anyone running `kolt build && kolt run` in
-a tight edit-compile-test loop, that fixed overhead was the dominant
-cost.
+Before the build cache, `kolt build` always re-invoked kotlinc, even when nothing had changed. kotlinc carries roughly one second of fixed overhead per invocation on both JVM and Native targets, and this dominated the edit-compile-test loop.
 
-The goal was to skip recompilation when the inputs haven't changed.
-The inputs to a kolt build are:
+The inputs to a kolt build are: source files under the configured source directory, resource files, `kolt.toml`, `kolt.lock`, and the compiled output directory. If none has changed since the last successful build, the output is still valid.
 
-- The source files under `src/main/kotlin` (or the configured source
-  directory).
-- The resource files under `src/main/resources` (if any).
-- The configuration file `kolt.toml` (compiler args, main class,
-  plugin list, custom repositories, target).
-- The lockfile `kolt.lock` (the resolved dependency graph — if it
-  changes, the classpath changes).
-- The compiled output directory itself (so that deleting `build/`
-  triggers a rebuild).
+Three options exist for change detection: content hashing (accurate but reads every source file on every build), mtime comparison (cheap, rarely wrong in a single-user dev loop), and a full task graph with file watchers (Gradle/Bazel scale, out of scope). False negatives from mtime are rare and recoverable (`kolt clean && kolt build` always works). Reading and hashing every source file is a performance regression paid on every build in exchange for accuracy almost nobody will need.
 
-If none of these has changed since the last successful build, the
-output is still valid and kotlinc does not need to run.
+## Decision Drivers
 
-There are three common ways to answer "has this file changed":
+- No-op build wall time must be near-instant (dominated by process startup, not compilation).
+- `kolt clean` must clear the cache automatically with no second directory to manage.
+- A corrupt or partially written state file must degrade to a rebuild, not a hard failure.
+- Debugging a spurious rebuild must be possible by reading the state file directly.
 
-1. **Content hashing**: read the file, sha256 it, compare to a stored
-   hash. Correct, but expensive on every build.
-2. **Modification time (mtime)**: `stat` the file, compare its mtime
-   to a stored mtime. Cheap, but can be fooled by filesystems with
-   coarse mtime resolution or by `touch` without real changes.
-3. **Full dependency graph with watchers**: what Gradle and Bazel do.
-   Powerful but a major engineering investment.
+## Decision Outcome
 
-kolt is a lightweight build tool. Option 3 is out of scope. Between
-1 and 2, the trade-off is: content hashing is always accurate but
-reads every source file on every build; mtime is cheap but may
-produce a false negative (skip when it should rebuild) on pathological
-edge cases.
+Chosen option: **mtime-based JSON state file at `build/.kolt-state.json`**, because it eliminates the kotlinc overhead on no-op builds with minimal implementation complexity.
 
-For a single-user development loop, false negatives from mtime are
-rare and recoverable (`kolt clean && kolt build` always works).
-Content hashing is a performance regression we would pay on every
-build in exchange for an accuracy improvement that almost nobody
-will hit.
+### §1 State file and comparison
 
-## Decision
-
-Persist a small JSON file at `build/.kolt-state.json` that records
-the mtimes of every input from the last successful build. On the
-next `kolt build`, `kolt check`, or `kolt run`, compute the current
-mtimes, compare them field by field, and skip kotlinc entirely if
-they all match.
-
-The state record (`BuildState` in `build/BuildCache.kt`):
+`BuildState` in `build/BuildCache.kt`:
 
 ```kotlin
 data class BuildState(
-    val configMtime: Long,            // kolt.toml
-    val sourcesNewestMtime: Long,     // max(mtime) across source files
-    val classesDirMtime: Long?,       // compiled output directory
-    val lockfileMtime: Long?,         // kolt.lock
-    val classpath: String? = null,    // serialised classpath string
-    val resourcesNewestMtime: Long? = null  // max(mtime) across resources
+    val configMtime: Long,
+    val sourcesNewestMtime: Long,
+    val classesDirMtime: Long?,
+    val lockfileMtime: Long?,
+    val classpath: String? = null,
+    val resourcesNewestMtime: Long? = null
 )
 ```
 
-`isBuildUpToDate(current, cached)` compares every field for
-equality. If any differs, or if the cached state is missing, the
-build proceeds.
+`isBuildUpToDate(current, cached)` compares every field for equality. Any difference, or a missing cached state, causes a full rebuild. The state is written once after a successful build. `build/.kolt-state.json` lives inside `build/`, so `kolt clean` removes it automatically.
 
-Key shape decisions:
+### §2 Directory mtime collapse
 
-- **"Newest mtime across a directory"**, not per-file mtime maps.
-  Taking `max(mtime)` over every source file collapses the state to
-  a single `Long` and is still sufficient: if any source file was
-  modified, the max goes up. Deleted files are caught by the
-  `classesDirMtime` check (the compiled output does not update for
-  deletions, so the classes dir mtime moves backwards relative to
-  the expected rebuild output).
-- **Nullable fields** for `classesDirMtime`, `lockfileMtime`, and
-  `resourcesNewestMtime`. `kolt.lock` may not exist yet for a
-  project with no dependencies; `resources/` is optional; the
-  classes dir does not exist on the first build.
-- **Classpath string in the state**: if the user adds or removes a
-  dependency without changing the lockfile mtime (rare but possible
-  with manual edits), the classpath change is still visible via
-  direct string comparison.
-- **JSON, not TOML or binary**: the state file is internal to the
-  build directory and never edited by hand, but keeping it JSON
-  means we can pretty-print it and eyeball the values when debugging
-  a cache-invalidation bug.
-- **`build/.kolt-state.json`** is under `build/`, so
-  `kolt clean` removes it automatically. There is no separate cache
-  directory to manage.
+`sourcesNewestMtime` and `resourcesNewestMtime` are `max(mtime)` across all files in the directory. If any file is modified, the max increases. Deleted files are caught by `classesDirMtime` — the compiled output does not update for deletions, so its mtime diverges from the expected post-rebuild value. `kolt.lock` may not exist yet for a project with no dependencies; `resources/` is optional; the classes dir does not exist on the first build — hence the nullable fields.
 
-`parseBuildState` swallows any parse error and returns `null`,
-treating a corrupt state file as "no cache". That way a botched
-write (crash mid-serialise, partial disk) degrades cleanly to a
-rebuild rather than a hard failure.
+### §3 Corrupt-state handling
 
-## Consequences
+`parseBuildState` swallows any parse error and returns `null`. A botched write (crash mid-serialise, partial disk flush) degrades cleanly to a rebuild rather than an error.
 
-### Positive
+### §4 Classpath string
 
-- **No-op builds are near-instant**: `kolt build` with no changes
-  does a handful of `stat` calls and a JSON parse, then exits. The
-  dominant cost is now process startup, not compilation.
-- **Correct for the common case**: edit a source file → mtime moves
-  → rebuild. Change `kolt.toml` → rebuild. `kolt install` writes a
-  new lockfile → rebuild. Delete `build/` → rebuild. All the
-  ordinary workflows invalidate correctly.
-- **Self-cleaning**: the state lives inside `build/`, so
-  `kolt clean` removes it for free. There is no second cache
-  directory in `~/.kolt` to keep consistent.
-- **Cheap to write**: one small JSON file, one `writeText` after a
-  successful build. Fails cleanly if the filesystem is unhappy
-  (the Result-based I/O surfaces the error, and the next build
-  treats the state as missing).
-- **Debuggable**: the state file is human-readable. If a rebuild
-  happens when it shouldn't, you can `cat build/.kolt-state.json`
-  and compare the stored mtimes against `stat` on the real files.
-- **Foundation for future work**: if we later want content-hash
-  verification for specific fields, we can add them to
-  `BuildState` as new nullable columns without changing the
-  comparison logic.
+`classpath` stores the full serialised classpath string. A manual edit of a dependency that changes the classpath without moving the lockfile mtime (rare) is still detected via direct string comparison. If the resolver produces a different ordering without changing content, the comparison spuriously invalidates; in practice the resolver is deterministic, so this has not occurred.
 
-### Negative
+### §5 Schema evolution
 
-- **False negatives on coarse mtime filesystems**: filesystems with
-  1-second mtime resolution (older ext4, FAT32) can miss a
-  modification made within the same second as the last build. For
-  a human edit loop this is extremely rare, but CI systems that
-  regenerate files programmatically can hit it. The workaround is
-  `kolt clean`.
-- **False negatives on `touch -d`**: a file whose mtime is set
-  backwards will not trigger a rebuild. This is a self-inflicted
-  wound; no sensible tool does it in practice.
-- **Doesn't detect external classpath changes**: a classpath jar
-  whose contents change without its path or the lockfile changing
-  (manual edit of a cached JAR in `~/.kolt/cache`) will not be
-  detected. SHA-verified cache entries make this unreachable in
-  normal use.
-- **Single max-mtime loses granularity**: we cannot tell which
-  source file changed, only that *some* file changed. This is fine
-  for "rebuild or not" but would need to be richer if we ever want
-  incremental compilation inside kotlinc.
-- **Classpath stored as a string**: if the ordering of the
-  classpath changes without the content changing (different
-  resolver pass), the state comparison spuriously invalidates.
-  In practice the resolver is deterministic, so this has not
-  caused problems.
+Adding a field as nullable-with-default is backwards-compatible. A breaking schema change requires a cache bust: delete `build/`. No cache-key versioning is necessary for additive changes. Future content-hash verification for specific fields can be added as new nullable `BuildState` columns without touching the comparison logic.
 
-### Neutral
+### Consequences
 
-- **No cache key versioning**: the `BuildState` schema is plain
-  kotlinx-serialization with default values. Adding a field as
-  nullable-with-default is backwards-compatible; a breaking schema
-  change would require a cache bust, which is just "delete
-  `build/`".
-- **Future incremental compilation is a different problem**:
-  skipping the whole build when nothing changed is orthogonal to
-  recompiling only changed files when something did change. This
-  ADR does not attempt the latter.
+**Positive**
+- No-op builds cost a handful of `stat` calls and one JSON parse; process startup is now the dominant cost.
+- All ordinary invalidation paths work: edit a source file, change `kolt.toml`, run `kolt install`, delete `build/`.
+- The state file is human-readable — compare `build/.kolt-state.json` against `stat` on real files to debug a spurious rebuild.
 
-## Alternatives Considered
+**Negative**
+- Filesystems with 1-second mtime resolution (older ext4, FAT32, WSL2 9p) can miss a modification made within the same second as the last build. CI systems regenerating files programmatically can hit this; workaround is `kolt clean`.
+- A file whose mtime is set backwards (`touch -d`) will not trigger a rebuild.
+- A cached JAR manually edited without changing its path or the lockfile mtime is not detected. SHA-verified cache entries make this unreachable in normal use.
+- `max(mtime)` cannot identify which source file changed — sufficient for "rebuild or not", but insufficient for future per-file incremental compilation inside kotlinc.
 
-1. **SHA-256 of every source file** — rejected. Reading and
-   hashing every source file on every build reintroduces the
-   overhead we were trying to eliminate. The accuracy gain does
-   not justify the cost for a local build loop.
-2. **Gradle-style task graph with up-to-date checking** —
-   rejected as far out of scope. kolt's whole value proposition is
-   being orders of magnitude simpler than Gradle. Rebuilding that
-   machinery would defeat the purpose.
-3. **`mtime + size` combined key** — considered. `size` changes
-   independently for same-second edits that add or remove a
-   character. It would reduce false negatives slightly, but the
-   cost is non-trivial (a second `stat` field per file, extra
-   plumbing) and the added accuracy is marginal. Revisit if the
-   simple mtime approach produces bug reports.
-4. **Delegate to kotlinc's `-Xbuild-file` incremental cache** —
-   rejected. kotlinc's incremental support is complex, version-
-   specific, and oriented at Gradle's execution model. Using it
-   from an ad-hoc CLI would require replicating a lot of Gradle's
-   inputs-tracking surface.
+### Confirmation
+
+`BuildCache.kt` is the single implementation. Tests in `BuildCacheTest.kt` cover the mtime comparison logic and the corrupt-state fallback. The state file location (`build/.kolt-state.json`) is verified to be under `build/` so that `kolt clean` removes it.
+
+## Alternatives considered
+
+1. **SHA-256 of every source file.** Rejected. Reading and hashing every source file on every build reintroduces the overhead we are trying to eliminate.
+2. **Gradle-style task graph with up-to-date checking.** Rejected as far out of scope. Rebuilding that machinery defeats the purpose of kolt.
+3. **`mtime + size` combined key.** Considered. `size` changes for same-second edits, reducing false negatives slightly. Cost is marginal complexity; revisit if mtime-only produces bug reports.
+4. **kotlinc `-Xbuild-file` incremental cache.** Rejected. kotlinc's incremental support is version-specific and oriented at Gradle's execution model; using it from a CLI would require replicating a large slice of Gradle's inputs-tracking surface.
 
 ## Related
 
-- `src/nativeMain/kotlin/kolt/build/BuildCache.kt` — `BuildState`,
-  `isBuildUpToDate`, `serializeBuildState`, `parseBuildState`
-- Commit `4d94ce0` (initial mtime-based build cache)
-- ADR 0003 (JSON lockfile — same serialisation policy for internal
-  machine-readable files)
+- `src/nativeMain/kotlin/kolt/build/BuildCache.kt` — `BuildState`, `isBuildUpToDate`, `serializeBuildState`, `parseBuildState`
+- Commit `4d94ce0` — initial mtime-based build cache
+- ADR 0003 — same serialisation policy (JSON for internal machine-readable files)

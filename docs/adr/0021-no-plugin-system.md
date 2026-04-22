@@ -1,229 +1,96 @@
+---
+status: accepted
+date: 2026-04-15
+---
+
 # ADR 0021: kolt does not ship a plugin system
 
-## Status
+## Summary
 
-Accepted (2026-04-15).
+- kolt will not provide a plugin API, plugin loader, or plugin dependency-resolution path for third-party code executed at build time. (§1)
+- Kotlin/Native binaries cannot host JVM code in-process; the only warm JVM kolt owns is reserved for compilation by ADR 0020. (§2)
+- kolt's declared scope (JVM CLI tools and server-side Kotlin binaries) is closed and small; it does not carry Amper-level scope. (§3)
+- A plugin API is a forever contract; any proposal to add one is rejected by default and requires a successor ADR with evidence that the three structural reasons no longer apply. (§4)
+- This ADR does not prohibit declarative extension points (e.g. lifecycle hooks) that run user-supplied jars as subprocesses — those do not host third-party code in-process. (§5)
 
-## Context
+## Context and Problem Statement
 
-`docs/design.md` has listed "プラグインシステム" under スコープ外 since
-Phase 1, with the one-line rationale "拡張性は重要だが、安定したコア
-機能の確立が先". That framing reads as "not yet" — as if a plugin
-system is the obvious long-term direction and the only open question
-is timing. After more experience with kolt's shape, with how other
-Kotlin build tools (Gradle, Amper) have approached extensibility, and
-with the practical consequences of kolt being a Kotlin/Native binary,
-that framing is wrong. The honest position is closer to "not this
-tool, not this shape". This ADR upgrades the scope-out note to a
-load-bearing architectural decision, records the three reasons for
-it, and makes clear what the decision does *not* say.
+`docs/design.md` listed "プラグインシステム" as out of scope since Phase 1, with a rationale that reads as "not yet" rather than "not this tool." After more experience with kolt's shape and with how Gradle and Amper approached extensibility, the honest position is "not this shape, structurally." This ADR upgrades the scope-out note to a load-bearing architectural decision.
 
-The decision matters now, not later, because:
+The decision matters now because ADR 0020 drew a hard boundary around the compiler daemon's charter. A plugin system would be the natural thing to wire into that daemon, and that boundary is easier to hold with a sibling ADR ruling out plugin ambitions entirely. User pressure for "a way to run my own code as part of the build" is also accumulating; without a decision every request restarts the same debate from first principles.
 
-- ADR 0016 (warm JVM compiler daemon) and ADR 0019 (incremental
-  compilation) are building up a warm JVM inside `kolt-compiler-daemon`.
-  A plugin system would be natural to wire into that daemon, and ADR
-  0020 just drew a hard boundary around what the daemon is for. That
-  boundary is easier to hold if there is a sibling ADR saying kolt
-  does not have plugin ambitions in the first place.
-- Real user pressure for "a way to run my own code as part of the
-  build" is accumulating (build hooks, code generation, custom
-  checks). Without a decision on the plugin shape, every one of
-  those asks gets re-debated from first principles.
+## Decision Drivers
 
-This ADR answers the shape question ("no plugin system") but
-deliberately does **not** answer the companion question ("what is the
-extensibility story, then?"). See §Non-goals.
+- Internal changes (renames, data-structure reshaping, moving work between native client and daemon) must stay internal — no downstream plugin migration cost.
+- ADR 0020's daemon boundary ("compilation only") must have a sibling ruling out the complementary plugin loader use case.
+- The native-binary architecture (no in-process JVM) must be an asset, not a liability that forces workarounds.
 
-## Decision
+## Decision Outcome
 
-### 1. kolt will not ship a plugin system
+Chosen option: **no plugin system**, because all three structural reasons in §2–§4 are independent and each alone is sufficient to reject it.
 
-Concretely, kolt does not and will not provide:
+### §1 What this ADR prohibits
 
-- a plugin API (interfaces, SPI, annotation-driven extension points)
-  that third-party code implements and kolt loads at build time
-- a plugin loader inside `kolt-compiler-daemon`,
-  `kolt-jvm-daemon` (were it to exist), or the native client
-- a `[plugins]` section in `kolt.toml` naming arbitrary extension
-  libraries by Maven coordinate and having kolt execute them
-- a dependency-resolution path specifically for "plugin
-  dependencies" as distinct from "project dependencies"
-- plugin metadata on the wire between the native client and any
-  kolt-owned daemon
+kolt does not and will not provide:
 
-A proposal to add any of the above is rejected by default under this
-ADR. Overriding it requires a new ADR that supersedes this one, with
-concrete evidence that the three reasons in §2 no longer apply.
+- A plugin API (interfaces, SPI, annotation-driven extension points) that third-party code implements and kolt loads at build time.
+- A plugin loader inside `kolt-compiler-daemon`, `kolt-jvm-daemon` (were it to exist), or the native client.
+- A `[plugins]` section in `kolt.toml` naming arbitrary extension libraries by Maven coordinate for kolt to execute.
+- A dependency-resolution path specifically for "plugin dependencies."
+- Plugin metadata on the wire between the native client and any kolt-owned daemon.
 
-### 2. Why — three reasons, in order
+A proposal to add any of the above is rejected by default. Overriding requires a new ADR that supersedes this one, with concrete evidence that the three reasons below no longer apply.
 
-**(a) Kotlin/Native binaries cannot host JVM code in-process.** kolt
-itself is a Kotlin/Native Linux x64 binary. A JVM-language plugin
-cannot be loaded into kolt's address space; the native process has no
-JVM and starting one on demand is exactly the JVM startup cost kolt
-exists to avoid. The only place kolt already has a warm JVM is
-`kolt-compiler-daemon`, and ADR 0020 reserves that for compilation.
-So a plugin system would either (i) spawn a fresh JVM per plugin
-invocation, which surrenders the startup-cost win, or (ii) introduce
-a second long-running daemon whose charter is "run arbitrary plugin
-code", which is a large new surface with a large new failure mode.
-Either choice is strictly worse than not having the system at all.
+### §2 Structural reason A — Kotlin/Native cannot host JVM code in-process
 
-**(b) Amper chose plugins because its scope demanded them — kolt's
-scope does not.** JetBrains' [Amper] moved toward a
-plugin-based architecture because it targets Kotlin Multiplatform,
-Android (AGP integration), iOS (Xcode integration), and server-side
-Kotlin under one config. The *matrix* of targets, toolchains, and
-build phases is too wide for any fixed set of built-ins. Plugins are
-the only way to factor that without shipping a monolith. kolt's
-declared target is narrower: JVM CLI tools and server-side Kotlin
-binaries, with Kotlin/Native as a secondary target (Issue #16). For
-that scope, the set of concerns — compile, test, run, dependency
-resolve, clean, init — is closed and small, and a built-in
-implementation of each is tractable. kolt is not Amper and should not
-pretend to carry Amper's scope.
+kolt is a Kotlin/Native Linux x64 binary. A JVM-language plugin cannot be loaded into its address space; the native process has no JVM, and starting one on demand surrenders the startup-cost win kolt exists to provide. The only warm JVM kolt owns is `kolt-compiler-daemon`, and ADR 0020 reserves it for compilation. A plugin system would therefore either (a) spawn a fresh JVM per plugin invocation, losing the startup win, or (b) introduce a second long-running daemon whose charter is "run arbitrary plugin code" — a large new surface with a large new failure mode. Either is strictly worse than no plugin system.
+
+### §3 Structural reason B — kolt's scope is closed and small
+
+JetBrains' [Amper] adopted a plugin-based architecture because it targets Kotlin Multiplatform, Android, iOS, and server-side Kotlin simultaneously. That target matrix is too wide for any fixed built-in set. kolt's declared target is narrower: JVM CLI tools and server-side Kotlin binaries, with Kotlin/Native as a secondary target (Issue #16). For that scope the set of concerns — compile, test, run, dependency resolve, clean, init — is closed and small, and a built-in implementation of each is tractable.
 
 [Amper]: https://github.com/JetBrains/amper
 
-**(c) Plugin systems are forever contracts with unbounded failure
-modes.** Once third-party plugins exist, any change to the plugin
-API is a semver-breaking event for an unknown number of downstream
-authors kolt has never met. Gradle carries this cost: a non-trivial
-fraction of Gradle release-note real estate is dedicated to plugin
-API deprecations and migration guides. kolt is a small project and
-cannot subsidize that cost. "No plugin system" means every internal
-change — renaming a class, reshaping a data structure, moving work
-between the daemon and the native client — stays internal. That
-property is load-bearing for a one-to-few-person project.
+### §4 Structural reason C — a plugin API is a forever contract
 
-### 3. Non-goals of this ADR
+Once third-party plugins exist, any change to the plugin API is a semver-breaking event for downstream authors kolt has never met. Gradle dedicates a non-trivial fraction of release-note real estate to plugin API deprecations and migration guides. kolt is a small project and cannot subsidise that cost. "No plugin system" means every internal change — renaming a class, reshaping a data structure, moving work between daemon and native client — stays internal.
 
-This ADR does **not**:
+### §5 What this ADR does not prohibit
 
-- declare that kolt users can never run their own code as part of a
-  build. Build-lifecycle hooks (pre/post-build, pre-test) running a
-  user-supplied jar or shell command are an open design area being
-  discussed separately. "Not a plugin system" and "not extensible
-  at all" are different statements.
-- constrain what a future extensibility story can look like, *as
-  long as* it does not reintroduce the shape this ADR rejects
-  (third-party code hosted in-process inside kolt or
-  `kolt-compiler-daemon`; a plugin API kolt must preserve across
-  versions; a plugin dependency-resolution path).
-- remove `kolt.toml`'s existing and future declarative sections.
-  Adding a new declarative section (e.g., a hypothetical `[hooks]`)
-  that invokes jars which kolt runs as subprocesses is not "a
-  plugin system" in the sense this ADR rejects, because it does not
-  host third-party code in kolt's process and does not commit kolt
-  to a plugin SPI. If and when such a section is proposed, it is a
-  fresh design question.
-- forbid internal modularization. Splitting kolt's own source tree
-  into subprojects (as `kolt-compiler-daemon/` already is) is an
-  internal refactor, not a plugin system.
+This ADR does not prohibit:
 
-Put differently: this ADR closes the door on *third parties
-implementing a kolt-defined interface and kolt loading their code*.
-It does not close the door on *users telling kolt, declaratively,
-to run a specific jar at a specific lifecycle point*.
+- Declarative sections in `kolt.toml` (e.g. a hypothetical `[hooks]`) that invoke user-supplied jars kolt runs as subprocesses. Running a subprocess does not host third-party code in-process and does not commit kolt to a plugin SPI. Whether such a section ships is a separate design question.
+- Internal modularisation. Splitting kolt's own source tree into subprojects (`kolt-compiler-daemon/` already exists) is an internal refactor.
+- Future extensibility of any shape that does not reintroduce third-party code hosted in kolt's process, a plugin API kolt must preserve across versions, or a plugin dependency-resolution path.
 
-## Consequences
+This ADR closes the door on *third parties implementing a kolt-defined interface and kolt loading their code*. It does not close the door on *users telling kolt, declaratively, to run a specific jar at a specific lifecycle point*.
 
-### Positive
+### Consequences
 
-- **Internal changes stay internal.** Refactors, rename passes, and
-  data-structure changes in kolt do not carry a downstream plugin
-  migration cost, because there are no downstream plugin authors by
-  construction. The contrast with Gradle is explicit and
-  intentional.
-- **ADR 0020 gets a sibling.** "The compiler daemon compiles, full
-  stop" (0020) and "kolt has no plugin system" (this ADR) together
-  make the default answer to "can we run this third-party JVM code
-  inside the daemon" an unambiguous no, without having to relitigate
-  either side per request.
-- **The native-binary architecture stops being a liability.** Not
-  being able to host a JVM in-process has been a framed as a
-  limitation. Under this ADR, it is the *reason* kolt gets to have
-  a narrow, stable internal shape. What looked like a limit is the
-  constraint that makes the small-tool story credible.
-- **Scope of user-facing extensibility discussions shrinks to one
-  question.** "What declarative extension point do we want?" is a
-  single, scoped design question (hooks, codegen, …). "How do we
-  build a plugin system?" is an open-ended one. This ADR removes
-  the second question so the first one can be answered.
+**Positive**
+- Internal refactors, renames, and data-structure changes carry no downstream plugin migration cost.
+- ADR 0020 ("daemon compiles, full stop") and this ADR together make the default answer to "can we run third-party JVM code inside the daemon?" an unambiguous no.
+- The Kotlin/Native architecture stops being a liability — the inability to host an in-process JVM is the constraint that makes the narrow, stable internal shape credible.
+- Extensibility discussions shrink to one scoped question ("what declarative extension point?") rather than the open-ended "how do we build a plugin system?"
 
-### Negative
+**Negative**
+- Users who need a custom compiler plugin (kapt, K2 FIR plugin, KSP processor) through kolt have no path until compile-time plugin support is designed separately as a feature of the compile pipeline. Those users stay on Gradle for now.
+- Extensibility requests will keep arriving. This ADR routes them toward concrete declarative-section proposals (§5), but discussion will continue.
 
-- **Some use cases have no good answer today.** A user who wants to
-  run a custom compiler plugin (a kapt-style annotation processor,
-  a K2 FIR plugin, a ksp processor) through kolt has no path until
-  compile-time plugin support is designed separately — and that
-  design will happen, if it happens at all, as a feature of the
-  compile pipeline, not as a general plugin system. Users with that
-  need today will stay on Gradle.
-- **Extensibility requests will keep landing.** Closing the plugin
-  door does not close user demand for "a way to run my own code".
-  This ADR explicitly invites those requests to become concrete
-  declarative-section proposals (per §3), but it does accept that
-  more discussion will happen, not less.
-- **The ADR is easy to misread as "kolt will never extend".** The
-  §3 non-goals section exists specifically to head that off, but
-  some fraction of readers will still quote this ADR as "kolt said
-  no to extensibility" when it said no to a specific shape of
-  extensibility. Mitigation: the non-goals stay load-bearing in any
-  future edit of this ADR.
+### Confirmation
 
-### Neutral
+Any proposal adding a plugin API, plugin loader, or plugin dependency-resolution path is rejected by reference to this ADR. Overriding requires a successor ADR citing concrete evidence that §2, §3, and §4 no longer apply.
 
-- **Hooks (or any other declarative extension) are not endorsed
-  here.** §3 lists hooks as an example of a shape that is *not*
-  what this ADR rejects, but that is a scoping clarification, not
-  a commitment. Whether hooks ship is a separate decision tracked
-  elsewhere.
+## Alternatives considered
 
-## Alternatives Considered
-
-1. **Adopt a plugin system modeled on Gradle's.** A plugin SPI,
-   plugin dependency resolution, plugin classloading inside the
-   daemon. Rejected for all three reasons in §2: Kotlin/Native
-   can't host JVM plugins in-process, kolt's scope doesn't need
-   Amper-level extensibility, and the forever-contract cost is
-   strictly net-negative for a small project.
-
-2. **Adopt a plugin system modeled on Amper's.** Amper's plugin
-   story is lighter than Gradle's and is closer to a template
-   system than a full SPI. Rejected anyway: Amper's plugin choice
-   is justified by Amper's scope (Multiplatform + Android + iOS),
-   which kolt does not share. Inheriting the plugin machinery
-   without the scope that motivates it is a cost without the
-   benefit.
-
-3. **"We'll add plugins later."** Leave `docs/design.md`'s existing
-   "安定したコア機能の確立が先" note as the de-facto answer.
-   Rejected: that framing implies plugins are the eventual
-   direction, which biases every near-term design toward
-   preserving plugin-friendliness. Writing the decision down
-   explicitly frees near-term designs from that implicit
-   constraint.
-
-4. **Ship a plugin system but keep it in-daemon-only.** Load
-   plugin jars into `kolt-compiler-daemon`'s URLClassLoader and
-   let them see the compiler. Rejected: it violates ADR 0020
-   (daemon charter) directly, and it maximizes blast radius —
-   a buggy plugin can crash the compile path, corrupt incremental
-   state, or leak classloader roots into the warm JVM kolt is
-   working hard to keep clean (ADR 0016 §4's 30-minute idle
-   restart, etc.).
+1. **Gradle-style plugin system (SPI, plugin dependency resolution, classloading inside the daemon).** Rejected for all three reasons in §2–§4: Kotlin/Native cannot host JVM plugins in-process, kolt's scope does not need Amper-level extensibility, and the forever-contract cost is net-negative for a small project.
+2. **Amper-style plugin system (lighter, closer to a template system).** Rejected. Amper's plugin choice is justified by Amper's scope (Multiplatform + Android + iOS). Inheriting the machinery without the scope is a cost without the benefit.
+3. **Leave the `docs/design.md` "安定したコア機能の確立が先" note as the de-facto answer.** Rejected. That framing implies plugins are the eventual direction, biasing near-term designs toward preserving plugin-friendliness. Writing the decision down explicitly removes that bias.
+4. **In-daemon-only plugins (load plugin jars into `kolt-compiler-daemon`'s URLClassLoader).** Rejected. Violates ADR 0020 directly, and maximises blast radius — a buggy plugin can crash the compile path, corrupt incremental state, or leak classloader roots into the warm JVM (ADR 0016 §4's 30-minute idle restart).
 
 ## Related
 
-- ADR 0016 — warm JVM compiler daemon (the only warm JVM kolt
-  currently owns; this ADR rules out loading plugins into it)
-- ADR 0019 — incremental compilation via kotlin-build-tools-api
-  (the daemon's compile-surface extension, which this ADR does
-  not cover)
-- ADR 0020 — compiler daemon scope is compilation-only (the
-  sibling decision, covering the daemon's charter)
-- `docs/design.md` — scope-out section (updated in the same
-  change as this ADR to replace the "安定したコア機能の確立が先"
-  note with a pointer to this ADR)
+- ADR 0016 — warm JVM compiler daemon (the only warm JVM kolt owns; this ADR rules out loading plugins into it)
+- ADR 0019 — incremental compilation via kotlin-build-tools-api (the daemon's compile-surface extension)
+- ADR 0020 — compiler daemon scope is compilation-only (sibling decision)
+- `docs/design.md` — scope-out section updated to replace the Japanese rationale note with a pointer to this ADR

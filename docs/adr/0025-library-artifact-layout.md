@@ -1,8 +1,9 @@
+---
+status: implemented
+date: 2026-04-22
+---
+
 # ADR 0025: Library artifact layout for native and JVM targets
-
-## Status
-
-Implemented (2026-04-22).
 
 ## Summary
 

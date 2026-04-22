@@ -1,78 +1,60 @@
+---
+status: accepted
+date: 2026-04-13
+---
+
 # ADR 0015: `main` field is a Kotlin function FQN
 
-## Status
+## Summary
 
-Accepted (2026-04-13). Supersedes ADR 0012.
+- `config.main` holds a Kotlin top-level function FQN (e.g. `com.example.main`), not a JVM class name. (§1)
+- `validateMainFqn` rejects values ending in `Kt` at parse time with a migration hint; there is no migration period. (§2)
+- JVM builds derive `MainKt` from the function FQN via `jvmMainClass()`; native builds forward `config.main` to konanc verbatim via `-e`. (§3)
+- `nativeEntryPoint()` / `needsNativeEntryPointWarning()` (ADR 0012) are deleted; `nativeLinkCommand` now emits `-e config.main` directly. (§4)
+- `kolt init` generates `main = "main"` instead of `main = "MainKt"`. (§5)
 
-## Context
+## Context and Problem Statement
 
-kolt.toml's `main` field originally held a JVM facade class name:
+ADR 0012 defined `config.main` as a JVM facade class name (`com.example.MainKt`) and derived the native entry FQN from it. Two problems surfaced once `target = "native"` became a first-class path:
 
-```toml
-main = "com.example.MainKt"
-```
+1. **Leaky abstraction.** `MainKt` is a JVM implementation artifact — kotlinc synthesises it from the file name, and it has no meaning outside the JVM. Forcing users to write a JVM class name in a target-agnostic config field exposes a JVM-internal concept.
+2. **Field meaning diverges from effect.** On the native path, kolt silently ignored the `Kt` suffix and derived the function FQN. `config.main = "com.example.MainKt"` did not mean "this is my entry" for konanc — it was a seed for a heuristic.
 
-This worked for `target = "jvm"` because the JVM runner passes the
-value directly to `java -cp ... <main>`. For `target = "native"`,
-konanc wants the fully-qualified name of the entry **function** (e.g.
-`com.example.main`), so ADR 0012 introduced `nativeEntryPoint()` to
-derive the FQN by stripping the trailing class segment and appending
-`.main`.
+The self-host effort (#61) triggered the concrete bug: kolt's own `fun kolt.cli.main()` lives in a named package. ADR 0014's `nativeLinkCommand` intentionally omitted `-e`, assuming `-Xinclude` would carry the entry point. konanc failed with `could not find '/main' function` because it searched the root package. The `-Xinclude` assumption holds only when `fun main()` is at the root package.
 
-Two problems surfaced once `target = "native"` became a first-class
-path rather than an add-on:
+## Decision Drivers
 
-1. **Leaky abstraction.** `MainKt` is a JVM implementation artifact —
-   kotlinc synthesizes it from the file name, and it only exists to
-   satisfy JVM interop. Forcing users to write a JVM class name in a
-   build-tool config file that also targets native exposes something
-   they did not ask for and that has no meaning outside the JVM.
-2. **Target switching requires edits.** Flipping a project from
-   `target = "jvm"` to `target = "native"` should not require rewriting
-   `main`. With the class-name scheme, it technically does not (the
-   derivation papers over it), but the field's declared meaning no
-   longer matches its effect on the native path — `MainKt` is not an
-   entry for konanc.
+- `config.main` is target-agnostic — the same `kolt.toml` works for both JVM and native
+- Users express their intent in Kotlin terms (function FQN), not JVM-backend terms
+- Hard error at parse time for old-style values; no silent two-mode interpretation
+- `nativeEntryPoint()` heuristic eliminated from the compile path
 
-While verifying the self-host effort (#61), the inverse bug bit us:
-kolt's own `fun kolt.cli.main()` lives in a named package, and
-`nativeLinkCommand` intentionally omitted `-e` on the assumption that
-`-Xinclude` would carry the entry point through. konanc then failed
-with `could not find '/main' function` because it looked for `main` in
-the root package. The assumption only holds when `fun main()` sits at
-the root.
+## Decision Outcome
 
-## Decision
+Chosen option: **function FQN as the canonical `main` value**, because it matches the native backend directly and lets kolt derive the JVM class name mechanically.
 
-**`main` holds a Kotlin top-level function FQN**, not a JVM class
-name. The field is target-independent; kolt derives whatever each
-backend needs:
+| `main` value | JVM Main-Class | Native `-e` |
+| :--- | :--- | :--- |
+| `main` | `MainKt` | `main` |
+| `com.example.main` | `com.example.MainKt` | `com.example.main` |
 
-| `main` value         | JVM Main-Class        | Native `-e`         |
-| :---                 | :---                  | :---                |
-| `main`               | `MainKt`              | `main`              |
-| `com.example.main`   | `com.example.MainKt`  | `com.example.main`  |
+### §1 Semantic change
 
-### Parsing and validation
+`config.main` holds the fully-qualified name of a Kotlin top-level `fun main()`. It is target-independent; each backend derives what it needs from the same value.
+
+### §2 Parsing and validation
 
 `parseConfig` calls `validateMainFqn` after schema decoding:
 
-- Accepts the bare literal `"main"`, or any dotted package followed
-  by `".main"`.
-- Rejects any value ending in `Kt` with a migration hint that
-  back-derives the function FQN: `main = "com.example.MainKt"` →
-  `"Use a Kotlin function FQN instead: main = \"com.example.main\""`.
+- Accepts the bare literal `"main"`, or any dotted package followed by `".main"`.
+- Rejects any value ending in `Kt` with a migration hint back-deriving the function FQN: `main = "com.example.MainKt"` → `Use a Kotlin function FQN instead: main = "com.example.main"`.
 - Rejects other malformed values with a generic error.
 
-There is no migration period. kolt is pre-1.0 (v0.9.0) and the
-field's new meaning cannot coexist with the old — either the JVM path
-treats `MainKt` as a class name directly (old) or it derives
-`MainKt` from `main` (new). A hard error at parse time is less
-confusing than a silent two-mode interpretation.
+No migration period. kolt is pre-1.0 (v0.9.0) and the two meanings cannot coexist — a hard error at parse time is less confusing than silent dual-mode interpretation.
 
-### JVM facade derivation
+### §3 Per-backend derivation
 
-`jvmMainClass(main)` replaces the final `main` segment with `MainKt`:
+**JVM.** `jvmMainClass(main)` replaces the final `main` segment with `MainKt`:
 
 ```kotlin
 fun jvmMainClass(main: String): String {
@@ -81,54 +63,49 @@ fun jvmMainClass(main: String): String {
 }
 ```
 
-This is a best-effort heuristic that assumes the entry function lives
-in a file named `Main.kt`, which is kolt init's template convention.
-Projects that put `fun main()` in a file with a different name will
-compile to `<FileName>Kt` on the JVM side, and kolt's derivation will
-point at the wrong class.
+This is a best-effort heuristic: it assumes `fun main()` lives in a file named `Main.kt`, which is `kolt init`'s convention. Projects that place `fun main()` in a file with a different name compile to `<FileName>Kt`; `jvmMainClass()` will point at the wrong class. Out of scope until needed — see §6.
 
-### Native entry derivation
-
-The native path forwards `config.main` to konanc verbatim via `-e`:
+**Native.** `nativeLinkCommand` forwards `config.main` verbatim to konanc via `-e`:
 
 ```kotlin
 add("-e")
 add(config.main)
 ```
 
-No derivation is needed — the FQN in `main` is already what konanc
-expects.
+No derivation required — the function FQN is exactly what konanc expects.
 
-## Consequences
+### §4 Deletions
 
-- `config.main` is finally target-agnostic: the same `kolt.toml` works
-  for both `target = "jvm"` and `target = "native"` without touching
-  the field.
-- The `nativeEntryPoint()` / `needsNativeEntryPointWarning()` helpers
-  introduced by ADR 0012 are deleted. The comment on
-  `nativeLinkCommand` warning against `-e` is removed — the flag is
-  now load-bearing.
-- `kolt init` generates `main = "main"` instead of `main = "MainKt"`.
-- Users migrating from the old scheme see a precise error at parse
-  time telling them exactly what to change.
+`nativeEntryPoint()` and `needsNativeEntryPointWarning()` (ADR 0012) are deleted. The comment on `nativeLinkCommand` warning against `-e` is removed — `-e config.main` is now load-bearing.
 
-### Non-goal: `@JvmName`
+### §5 `kolt init` template
 
-Projects that override the JVM class name via `@JvmName("Foo")` or
-place `fun main()` in a non-`Main.kt` file produce a JVM class whose
-name `jvmMainClass()` cannot recover from `main` alone. This is
-deliberately out of scope: YAGNI until someone actually needs it. The
-eventual fix would be an explicit `jvm_main_class` override in
-`kolt.toml`, derived on demand and unused for `target = "native"`.
+`kolt init` generates `main = "main"` (bare function name) instead of `main = "MainKt"`.
 
-## References
+### §6 Non-goal: `@JvmName` overrides
 
-- ADR 0012 — the superseded scheme
-- Issue #61 — self-host work, where the old `nativeLinkCommand`
-  assumption broke on kolt's own `kolt.cli.main`
-- `src/nativeMain/kotlin/kolt/config/Main.kt` — `jvmMainClass`,
-  `validateMainFqn`
-- `src/nativeMain/kotlin/kolt/build/Builder.kt` — `nativeLinkCommand`
-  now emits `-e config.main`
-- `src/nativeMain/kotlin/kolt/build/Runner.kt` — JVM `runCommand` uses
-  `jvmMainClass(config.main)`
+Projects that override the JVM class name via `@JvmName("Foo")` or place `fun main()` in a non-`Main.kt` file produce a JVM class `jvmMainClass()` cannot recover from `main` alone. Deliberately out of scope (YAGNI). The eventual fix is an explicit `jvm_main_class` override in `kolt.toml`, unused for `target = "native"`.
+
+### Consequences
+
+**Positive**
+- `config.main` is target-agnostic: the same `kolt.toml` works for both targets without touching the field.
+- `nativeEntryPoint()` heuristic is eliminated; the compile path is simpler and direct.
+- Users migrating from the old scheme see a precise parse-time error with an exact replacement.
+
+**Negative**
+- `jvmMainClass()` is a best-effort heuristic that fails for non-`Main.kt` entry files.
+- No override until `jvm_main_class` is added to the schema.
+
+### Confirmation
+
+`parseConfig` tests: a value ending in `Kt` returns `Err(ConfigError.InvalidMain(...))` with the migration hint. A valid function FQN returns `Ok`. `jvmMainClass("com.example.main")` returns `"com.example.MainKt"`.
+
+## Related
+
+- ADR 0012 — superseded by this decision; the `nativeEntryPoint()` heuristic is deleted.
+- ADR 0014 — `nativeLinkCommand` note updated: `-e config.main` is now emitted directly.
+- #61 — self-host work, where the `nativeLinkCommand` `-Xinclude` assumption broke on `kolt.cli.main`
+- `src/nativeMain/kotlin/kolt/config/Main.kt` — `jvmMainClass`, `validateMainFqn`
+- `src/nativeMain/kotlin/kolt/build/Builder.kt` — `nativeLinkCommand` emits `-e config.main`
+- `src/nativeMain/kotlin/kolt/build/Runner.kt` — JVM `runCommand` uses `jvmMainClass(config.main)`

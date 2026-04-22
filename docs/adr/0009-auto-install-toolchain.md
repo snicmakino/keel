@@ -1,193 +1,90 @@
+---
+status: accepted
+date: 2026-04-11
+---
+
 # ADR 0009: Auto-install managed toolchains instead of falling back to system
 
-## Status
+## Summary
 
-Accepted (2026-04-11)
+- `kolt.toml` is the single source of truth for compiler and JDK versions. If the managed toolchain for the declared version is absent, kolt downloads and installs it automatically before proceeding. (§1)
+- The resolve→install→resolve pattern is applied via `ensureKotlincBin` and `ensureJdkBins` in `ToolchainManager.kt`, reusing the shape already in use for `ktfmt` and the JUnit Console Launcher. (§2)
+- `checkVersion()` and all system-fallback paths are deleted. (§3)
+- Downloads are SHA-256 verified before installation, inheriting the check already in place for explicit `kolt toolchain install`. (§4)
+- `kolt toolchain install` remains available as an explicit pre-install step; auto-install is idempotent alongside it. (§5)
 
-## Context
+## Context and Problem Statement
 
-By the time Issue #40 was opened, kolt already had two distinct ways
-to find a kotlinc or a JDK at build time:
+Before Issue #40, kolt had two parallel toolchain strategies. The managed path downloaded a specific kotlinc/JDK version to `~/.kolt/toolchains/` via `kolt toolchain install` (landed in PR #42 and #44). If the managed binary was absent, kolt fell through to whatever `kotlinc` was on `PATH` and emitted a version-mismatch warning that users learned to ignore.
 
-1. **System fallback**: look up `kotlinc` on `PATH` and trust
-   whatever the user happens to have installed. The version declared
-   in `kolt.toml` was compared against the system version for a
-   warning, but the build proceeded regardless.
-2. **Managed toolchains**: download a specific kotlinc/JDK version
-   to `~/.kolt/toolchains/` via `kolt toolchain install`. If found,
-   use it. If not, fall through to the system.
+The result was that `kolt.toml`'s `kotlinc_version` field was not authoritative. A project declaring `kotlinc_version = "2.3.20"` might compile with 2.0.0 on one machine and 2.3.20 on another, with no reliable detection. The first `kolt build` on a fresh clone also failed with a cryptic "no kotlinc on PATH" error unless the user knew to pre-run `kolt toolchain install`.
 
-The managed-toolchains path had landed in PR #42 and #44 (kotlinc
-and JDK respectively). It worked, but only if the user remembered
-to run `kolt toolchain install` before their first `kolt build`.
-Without that step, kolt silently picked up whatever `kotlinc` was
-on `PATH`, which could be a wildly different version from what
-`kolt.toml` said.
+## Decision Drivers
 
-The effect was that `kolt.toml` had a `kotlinc_version = "2.3.20"`
-field that **was not actually authoritative**. The real compiler
-version depended on the user's environment. A project that said
-2.3.20 might compile with 2.0.0 on one machine and 2.3.20 on
-another, with no reliable way to catch the mismatch at build time.
-The "warning" emitted by `checkVersion()` was noise that users
-learned to ignore.
+- The version in `kolt.toml` must control which compiler actually runs on every machine.
+- `git clone && kolt build` must succeed on a clean machine, assuming network access.
+- No silent version mismatch between declared and actual compiler.
+- Reuse existing toolchain code paths; no parallel mechanism.
 
-This defeats the main reason to have a toolchain version in the
-config in the first place. If the declared version does not
-control what actually runs, what does the declaration mean?
+## Decision Outcome
 
-The other ergonomic problem: the first `kolt build` of a freshly
-cloned project failed with a cryptic "no kotlinc on PATH" error
-unless the user knew to run the toolchain-install command first.
-That is the worst possible first-run experience for a build tool.
+Chosen option: **auto-install**, because it makes `kolt.toml` the sole runtime decision point for compiler and JDK selection.
 
-## Decision
+### §1 `kolt.toml` as authoritative toolchain spec
 
-Replace the system-fallback strategy with **auto-install**. The
-version declared in `kolt.toml` is the single source of truth. If
-the managed toolchain for that version is not installed, kolt
-downloads and installs it automatically before proceeding.
+The version declared in `[build] kotlinc_version` and `[build] jdk` is what runs. If the managed toolchain for that version is absent from `~/.kolt/toolchains/`, kolt downloads and installs it synchronously before any compile step. There is no fallback to system binaries.
 
-In `ToolchainManager.kt`:
+### §2 resolve → install → resolve pattern
 
-- Add `ensureKotlincBin(version, paths, exitCode)`: check
-  `resolveKotlincPath`; if missing, call `installKotlincToolchain`;
-  re-resolve; hard-fail the process if the binary is still not
-  found after install.
-- Add `ensureJdkBins(version, paths, exitCode)`: same pattern for
-  `java` and `jar` binaries, returning a `JdkBins(java, jar)`
-  record.
-- Both functions follow the existing `ensureTool` pattern used for
-  ktfmt and the JUnit Console Launcher: **resolve → install →
-  resolve**.
+`ToolchainManager.kt` adds:
 
-In `BuildCommands.kt`:
+- `ensureKotlincBin(version, paths, exitCode)`: calls `resolveKotlincPath`; on miss, calls `installKotlincToolchain`; re-resolves; hard-fails if the binary is still absent.
+- `ensureJdkBins(version, paths, exitCode)`: same for `java` and `jar`, returning a `JdkBins(java, jar)` record.
 
-- `doBuild`, `doCheck`, `doTest`, and related entry points call
-  `ensureKotlincBin` / `ensureJdkBinsFromConfig` instead of the old
-  `resolveKotlincPath` / `resolveJdkBins`.
-- Remove `checkVersion()`. There is no longer anything to warn
-  about — the managed toolchain version is guaranteed to match
-  `kolt.toml` because it was chosen by the same string.
-- Remove the "warning: jdk not installed, falling back to system"
-  branch and its associated path-probing code.
-- Move `JdkBins` out of `BuildCommands` and into `ToolchainManager`,
-  where `ensureJdkBins` lives.
+`BuildCommands.kt` entry points (`doBuild`, `doCheck`, `doTest`, …) call these instead of the old `resolveKotlincPath` / `resolveJdkBins`. `JdkBins` moves from `BuildCommands` to `ToolchainManager`.
 
-`kolt toolchain install` is still available as an explicit
-command, but it is no longer required for a first build. Running
-`kolt build` on a fresh checkout will block on the toolchain
-download the first time and be a no-op on subsequent runs.
+### §3 Removal of system-fallback paths
 
-## Consequences
+`checkVersion()` is deleted — there is nothing to warn about because the managed toolchain version is guaranteed to match `kolt.toml`. The "falling back to system" branch and its path-probing code are removed. Dead-code cleanup followed in PR #47.
 
-### Positive
+### §4 SHA-256 verification
 
-- **`kolt.toml` is authoritative**: whatever version the user
-  writes is what runs. Different machines building the same
-  checkout produce compiler-identical output. CI, local, and
-  collaborators' machines stop diverging on "which kotlinc was on
-  PATH".
-- **First-run works**: `git clone && cd && kolt build` succeeds
-  on a machine that has never seen kolt before, assuming network
-  access. There is no separate "please run X first" step.
-- **No silent mismatch**: the `checkVersion` warning is gone
-  because there is no mismatch to warn about. The only way to get
-  a different compiler is to edit `kolt.toml`, which is an
-  explicit change under version control.
-- **Reuses the `ensureTool` pattern**: the resolve→install→resolve
-  shape is already proven by ktfmt and the JUnit Console Launcher.
-  Adding kotlinc and JDK to the same pattern means there is now
-  one idiom for "make sure this tool is available", and it is
-  uniformly applied.
-- **SHA-verified downloads**: `installJdkToolchain` and
-  `installKotlincToolchain` verify downloads before installation
-  (per `4b3fe4f`). Auto-install therefore inherits the supply
-  chain check that explicit `toolchain install` already had.
+`installJdkToolchain` and `installKotlincToolchain` verify downloads before installation (per `4b3fe4f`). Auto-install inherits this check.
 
-### Negative
+### §5 `kolt toolchain install` preserved
 
-- **First build blocks on a download**: an unseen kotlinc + JDK
-  combination can be 150 MB. On a slow connection this is a
-  visible, unavoidable wait on the first `kolt build` — and it
-  runs without the user having typed "install". We accept this
-  as the price of removing the silent-mismatch failure mode.
-- **Offline-first-run is impossible**: a user who clones a
-  project without network access cannot build until they can
-  reach GitHub (kotlinc) and the JDK mirror. Previously a
-  system-installed kotlinc could rescue them. This is a real
-  regression for air-gapped environments; the workaround is to
-  pre-populate `~/.kolt/toolchains/` from a machine with network
-  access.
-- **Hard-coded download sources**: `kotlincDownloadUrl` points at
-  GitHub Releases; JDK downloads point at the upstream mirror. A
-  network outage or URL change breaks every first build until
-  the URLs are updated or the user pre-installs the toolchain.
-  Retries and mirrors are future work.
-- **Exit-code / process-kill on failure**: the `ensure*` helpers
-  call `exitProcess(exitCode)` when a download or resolve fails
-  after install, which means they side-step the Result-based
-  error handling (ADR 0001) and abort the process directly. The
-  rationale is that a missing compiler is unrecoverable at the
-  call site — there is nothing for `BuildCommands.kt` to fall
-  back to — but it is a carve-out from the general rule. A future
-  refactor may thread a `Result<String, ToolchainError>` through
-  `ensure*` and let the caller decide the exit code.
-- **Dead-code cleanup was its own follow-up**: the `system-fallback`
-  paths left behind several functions with nobody calling them.
-  PR #47 had to come through afterwards to remove the dead code
-  and tighten visibility. Mixing a strategy change with a cleanup
-  pass produces that kind of trailing-edge work.
+Users who want to pre-populate `~/.kolt/toolchains/` for CI timing predictability or offline use can still run `kolt toolchain install` explicitly. Auto-install is idempotent: the `ensure*` functions skip to the re-resolve step when the toolchain directory already exists.
 
-### Neutral
+### Consequences
 
-- **`kolt toolchain install` still works as an explicit command**:
-  users who want to pre-install toolchains before the first build
-  (for predictable CI timing, or for offline use) can do so. The
-  auto-install path is idempotent, so running
-  `kolt toolchain install` first is a no-op at build time.
-- **Toolchain downloads are cached forever**: once `~/.kolt/
-  toolchains/<version>/` exists, auto-install is a single
-  directory-existence check. There is no periodic refresh or
-  garbage collection.
+**Positive**
+- `kolt.toml` controls the exact compiler on every machine; CI, local, and collaborators' machines produce compiler-identical output.
+- `git clone && kolt build` works on a clean machine with no manual setup step.
+- `checkVersion` warning is gone — there is no mismatch to warn about.
+- One idiom — resolve→install→resolve — now covers kotlinc, JDK, ktfmt, and the JUnit Console Launcher uniformly.
 
-## Alternatives Considered
+**Negative**
+- First build blocks on a download: an unseen kotlinc + JDK pair can be 150 MB on a slow connection.
+- Offline first-run is impossible: without network access, a user cannot build until they reach GitHub (kotlinc) or the JDK mirror. Pre-populating `~/.kolt/toolchains/` from a networked machine is the workaround.
+- Hard-coded download sources: a URL change or outage breaks every first build until the source is updated.
+- The `ensure*` helpers call `exitProcess(exitCode)` on unrecoverable download failure, bypassing `Result`-based error handling (ADR 0001). A future refactor may thread `Result<String, ToolchainError>` through `ensure*` instead.
 
-1. **Keep the system fallback and make the version warning a hard
-   error** — rejected. Users running `kolt build` with the wrong
-   system version would get a confusing failure instead of a
-   successful build with the right compiler. The fix for "I don't
-   have the right kotlinc" should not be "install it yourself";
-   kolt already knows how to install it.
-2. **Auto-install only when the version is missing entirely, but
-   keep the fallback if *some* kotlinc is present** — rejected.
-   This is the worst of both: a mismatched system kotlinc would
-   still silently "succeed" on machines that happened to have any
-   kotlinc, and the behaviour would differ by environment. The
-   entire reason for this ADR is to make the outcome depend only
-   on `kolt.toml`, not on `PATH`.
-3. **Prompt the user interactively before downloading** — rejected.
-   It would block in non-interactive contexts (CI, scripts) and
-   add a failure mode where the prompt gets missed. Downloading
-   silently is the right default for a build tool; the download
-   is gated by the version the user already wrote into the repo,
-   so consent is implicit.
-4. **Ship kolt with a pre-bundled kotlinc/JDK** — rejected. It
-   would inflate the kolt binary by 150+ MB, bake in one specific
-   compiler version, and undo the "whatever `kolt.toml` says"
-   principle. The managed-toolchain directory is the right place
-   for compiler storage.
+### Confirmation
+
+PR review confirms system-fallback code is absent and `ensureKotlincBin` / `ensureJdkBins` are the only toolchain resolution paths in `BuildCommands.kt`.
+
+## Alternatives considered
+
+1. **Keep system fallback, make version mismatch a hard error.** Rejected — users with the wrong system version get a confusing failure instead of a successful build. kolt already knows how to install the right version.
+2. **Auto-install only when no kotlinc is present, keep fallback if any kotlinc exists.** Rejected — a mismatched system kotlinc would still silently succeed on machines that happened to have any kotlinc; behaviour would differ by environment.
+3. **Prompt the user interactively before downloading.** Rejected — blocks non-interactive contexts (CI, scripts). The version is already committed to the repo, so consent is implicit.
+4. **Bundle kotlinc/JDK in the kolt binary.** Rejected — inflates the binary by 150+ MB, bakes in one compiler version, and defeats the "whatever `kolt.toml` says" principle.
 
 ## Related
 
-- `src/nativeMain/kotlin/kolt/tool/ToolchainManager.kt` —
-  `ensureKotlincBin`, `ensureJdkBins`, `installKotlincToolchain`,
-  `installJdkToolchain`
-- `src/nativeMain/kotlin/kolt/tool/ToolManager.kt` — the
-  `ensureTool` template used for external tools
-- Commit `0daa432` / PR #46 (auto-install switch-over)
-- Commit `7d544bb` / PR #47 (dead-code cleanup after the switch)
-- Commit `4b3fe4f` (SHA256 verification for JDK downloads)
-- ADR 0001 (Result type — the `ensure*` helpers sit slightly
-  outside this rule by calling `exitProcess` on unrecoverable
-  failures)
+- `src/nativeMain/kotlin/kolt/tool/ToolchainManager.kt` — `ensureKotlincBin`, `ensureJdkBins`, `installKotlincToolchain`, `installJdkToolchain`
+- `src/nativeMain/kotlin/kolt/tool/ToolManager.kt` — the `ensureTool` template
+- Commit `0daa432` / PR #46 — auto-install switch-over
+- Commit `7d544bb` / PR #47 — dead-code cleanup
+- Commit `4b3fe4f` — SHA-256 verification for JDK downloads
+- ADR 0001 — `ensure*` helpers call `exitProcess` on unrecoverable failure, a carve-out from the `Result` rule

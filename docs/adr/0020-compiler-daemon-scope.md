@@ -1,203 +1,100 @@
+---
+status: accepted
+date: 2026-04-15
+---
+
 # ADR 0020: kolt-compiler-daemon scope is compilation-only
 
-## Status
+## Summary
 
-Accepted (2026-04-15).
+- `kolt-compiler-daemon` accepts `Message.Compile`, drives `kotlin-compiler-embeddable` or `kotlin-build-tools-api`, and returns the result. No other work belongs in this process. (§1)
+- Any new warm-JVM use case gets a separate daemon with its own socket, lifecycle, wire protocol, and fallback path. Two small daemons with disjoint responsibilities are cheaper to reason about than one growing daemon. (§2)
+- If a future decision folds non-compile work into the existing process, that decision must also rename the process. The rename is a conditional obligation, not a scheduled change. (§3)
+- `~/.kolt/tools/` remains native-client infrastructure; the tools cache is not behind the daemon. (§4)
 
-## Context
+## Context and Problem Statement
 
-ADR 0016 introduced `kolt-compiler-daemon`, a sidecar JVM that keeps
-`kotlin-compiler-embeddable` warm across `kolt build` invocations so
-the per-build JVM start + compiler warmup cost (~2.5 s) is paid once
-instead of every build. ADR 0019 extended the same daemon with
-incremental compilation via `kotlin-build-tools-api`. Both ADRs treat
-the daemon as the execution vehicle for `kotlinc`, nothing else.
+ADR 0016 introduced `kolt-compiler-daemon` as the execution vehicle for `kotlinc`. ADR 0019 extended it with IC via `kotlin-build-tools-api`. Both treat the daemon as compiler-only.
 
-As kolt grows, there will be pressure to add features that also want
-a warm JVM:
+As kolt grows, pressure will arise to add features that want a warm JVM: build lifecycle hooks, linters, code generators, a future `kolt watch`. Each individual addition looks small. Cumulatively they are how Gradle's daemon went from build-script evaluator to an umbrella for every JVM-side build concern — a process that is hard to reason about, hard to cold-start, and hard to isolate failures in. kolt exists to avoid that trajectory.
 
-- build lifecycle hooks (pre/post-build, pre-test, …) executing a
-  user-supplied jar
-- linters / formatters running against project sources
-- code generators driven off `kolt.toml`
-- future "kolt watch" style long-running clients
+This ADR records the scope boundary so the next time someone (or a future agent session) reaches for "just run this in the daemon", there is a written answer.
 
-Each of these has the same apparent argument: "the daemon is already
-a warm JVM, let it run our jar too and save another ~0.7 s of JVM
-startup". Taken individually each addition is small. Taken together
-they are how Gradle got to where it is today: the Gradle daemon began
-life as a build-script evaluator, absorbed task execution, then
-configuration, then daemon-side plugin loading, then test worker
-management, until "the Gradle daemon" became an umbrella for roughly
-every JVM-side concern in the build. The resulting process is hard
-to reason about, hard to cold-start, and hard to isolate failures in.
-kolt's whole reason to exist is the opposite of that trajectory.
+## Decision Drivers
 
-This ADR records the scope boundary explicitly so the next time
-someone (including a future Claude session) reaches for "just run
-this in the daemon", there is a written answer.
+- Failure blast radius of compiler bugs must not touch hooks, test execution, or formatters.
+- Wire protocol (`Message.Compile`) must not grow fields for non-compile work.
+- Future daemons should each be simple enough to understand in isolation.
 
-## Decision
+## Decision Outcome
 
-### 1. `kolt-compiler-daemon` runs `kotlinc` and nothing else
+Chosen: **compilation-only scope for `kolt-compiler-daemon`**, because the cost of a second daemon (slightly more RSS) is strictly less than the maintenance cost of a general-purpose JVM sidecar.
 
-The daemon's responsibility is: accept a `Message.Compile`, drive
-`kotlin-compiler-embeddable` (directly per ADR 0016, or through
-`kotlin-build-tools-api` per ADR 0019), return the result. That is
-the entire charter.
+### §1 kolt-compiler-daemon runs kotlinc and nothing else
 
-Specifically **out of scope** for `kolt-compiler-daemon`:
+The daemon's charter: accept `Message.Compile`, drive `kotlin-compiler-embeddable` (ADR 0016) or `kotlin-build-tools-api` (ADR 0019), return the result.
+
+Explicitly out of scope:
 
 - executing user-supplied jars (hooks, code generators, custom tasks)
-- running test binaries (test execution stays on the native client's
-  `java -jar junit-platform-console-standalone.jar` path)
+- running test binaries (test execution stays on the native client's `java -jar junit-platform-console-standalone.jar` path)
 - linters, formatters, static analysis
-- file watching, daemon-side source indexing, LSP responsibilities
+- file watching, source indexing, LSP responsibilities
 - any command that is not a compile
 
-A proposal to add any of the above to `kolt-compiler-daemon` is
-rejected by default under this ADR. Overriding it requires a new ADR
-that supersedes this one, with explicit measurements showing the
-warm-JVM saving is real and no comparable alternative exists.
+A proposal to add any of the above is rejected by default. Overriding requires a new ADR that supersedes this one, with measurements showing the warm-JVM saving is real and no comparable alternative exists.
 
-### 2. If a second warm-JVM use case ships, it gets a new daemon
+### §2 New warm-JVM use cases get a new daemon
 
-When a feature genuinely needs a warm JVM for non-compile work — the
-leading candidate today is jar-based build hooks — it is a new
-process, not a new responsibility on `kolt-compiler-daemon`. Two
-small daemons with disjoint responsibilities are strictly cheaper to
-reason about than one daemon with a growing responsibility list,
-even if the total RSS is slightly higher.
-
-A new daemon would get:
+When a feature genuinely needs a warm JVM for non-compile work, it is a new process. A new daemon gets:
 
 - its own socket path under `~/.kolt/daemon/<name>/`
 - its own lifecycle (spawn, health check, stop)
-- its own wire protocol, versioned independently of
-  `Message.Compile`
-- its own fallback path, analogous to `FallbackCompilerBackend`
-  (ADR 0016 §5), so its absence never breaks a build
+- its own wire protocol, versioned independently of `Message.Compile`
+- its own fallback path analogous to `FallbackCompilerBackend` (ADR 0016 §5)
 
-The native client orchestrates which daemon handles which work. The
-daemons never talk to each other.
+The native client orchestrates which daemon handles which work. Daemons never talk to each other.
 
-### 3. Rename path reserved, not committed
+`kolt daemon stop` discovers running daemons by walking `~/.kolt/daemon/<projectHash>/`; each new daemon inherits stop for free with no hard-coded list. (Issue #107 is currently scoped for one daemon; §2 expanding adds a directory walk, not a new stop command.)
 
-If a future ADR decides to fold hook execution (or another non-compile
-warm-JVM use case) into the *existing* compiler daemon process —
-instead of creating a second daemon per §2 — that decision must also
-rename the process to `kolt-jvm-daemon`. The rename is load-bearing:
-the name is how readers, logs, socket paths, and config fields
-communicate the daemon's charter, and silently widening
-"compiler-daemon" to cover non-compilation work would reintroduce
-exactly the ambiguity this ADR exists to prevent.
+### §3 Rename path reserved, not committed
 
-This ADR does **not** schedule such a rename. No code change, no
-socket path change, no user-facing rename is implied today. The
-rename is a *conditional obligation* attached to a future decision
-that has not been made. As of 2026-04-15 the preferred shape is §2
-(a separate daemon); §3 exists so that the alternative path cannot
-be taken cheaply and silently.
+If a future ADR folds non-compile work into this process instead of creating a second daemon per §2, that decision must also rename the process to `kolt-jvm-daemon`. The name communicates charter — widening "compiler-daemon" silently to cover non-compilation work reintroduces the ambiguity this ADR prevents.
 
-### 4. `~/.kolt/tools/` jar cache stays outside the daemon
+No code change, no socket path change, and no user-facing rename is implied today. The rename is a conditional obligation on a future decision that has not been made. The preferred shape remains §2.
 
-The existing `~/.kolt/tools/` cache (used today for
-`junit-platform-console-standalone`) is a *native-client* concern:
-it is populated and consulted by the native process before it spawns
-whatever JVM will run the jar. This ADR does not change that.
+### §4 ~/.kolt/tools/ is native-client infrastructure
 
-If a future warm-JVM use case (hooks, per §2) wants pre-loaded jars,
-its own daemon is responsible for loading them. The jar artifacts
-themselves continue to live in `~/.kolt/tools/` and to be fetched by
-the native client's existing dependency-resolution machinery. The
-tools cache is shared infrastructure; the warm JVM that eventually
-runs the jar is not.
+`~/.kolt/tools/` (used today for `junit-platform-console-standalone`) is populated and consulted by the native process before spawning whatever JVM runs the jar. If a future warm-JVM use case (hooks, per §2) wants pre-loaded jars, its own daemon loads them; the tools artifacts continue to live in `~/.kolt/tools/` and are fetched by native-client dependency resolution.
 
 ## Consequences
 
-### Positive
+**Positive**
+- A compiler daemon crash or OOM only kills compilation; hooks, test execution, and formatters are unaffected.
+- `Message.Compile` does not grow fields for non-compile work; ADR 0019 §4's "no wire change for IC" stays applicable.
+- Each new daemon is its own bounded thing rather than a conditional branch inside a multi-responsibility process.
+- "Does this belong in the compiler daemon?" has a default answer short enough to quote in a review.
 
-- **Gradle's trajectory is explicitly rejected.** The rule "the
-  compiler daemon compiles, full stop" is short enough to quote in a
-  code review. "Does this belong in the compiler daemon?" has a
-  default answer.
-- **Failure blast radius stays small.** A crash, OOM, or classloader
-  leak in the compiler daemon only kills compilation. Hooks, test
-  execution, and formatters are unaffected because they are not
-  running in the same process.
-- **Wire protocol stays narrow.** ADR 0016's `Message.Compile` does
-  not grow fields for non-compile work. ADR 0019 §4's "no wire
-  change for IC" rule stays applicable: the wire is
-  compile-compile-compile, and nothing else competes for it.
-- **Second daemons, when added, are cheap to think about.** Each new
-  daemon is its own small thing with its own socket and its own
-  charter, instead of a conditional branch inside a process that
-  does several unrelated jobs.
+**Negative**
+- If hooks get a second daemon (§2), a build pays two daemon warmups instead of one. Warmups are concurrent so wall-clock cost is ~max, not ~sum, but RSS is additive (~200 MB per daemon).
+- §3's rename obligation can be missed if the future PR author does not consult this ADR. Mitigation: this ADR is the source of truth; code review against it is the check.
 
-### Negative
+### Confirmation
 
-- **Some JVM startup cost is paid more than once.** If hooks
-  eventually get a second daemon (§2), a user running `kolt build`
-  pays one compiler-daemon warmup and one hook-daemon warmup instead
-  of one shared warmup. The warmups are concurrent, so wall-clock
-  cost is ~max, not ~sum, but RSS is additive.
-- **The rename door in §3 is a foot-gun if forgotten.** Someone
-  could land a "small" hook-execution change inside
-  `kolt-compiler-daemon/` without writing a superseding ADR or
-  renaming the process. Mitigation: this ADR is the source of truth;
-  code review against it is the check.
-- **Running two daemons complicates `kolt stop`.** Issue #107 is
-  currently scoped against a single daemon. If §2 fires, `kolt stop`
-  must learn to enumerate all kolt daemons under `~/.kolt/daemon/`
-  and shut each of them down. This is a cheap addition but it is an
-  addition.
+Enforced by review. A PR adding non-compile work to `kolt-compiler-daemon/` without a superseding ADR is rejected pointing at §1.
 
-### Neutral
+## Alternatives considered
 
-- **`~/.kolt/tools/` is declared native-client infrastructure.**
-  §4 records a fact about the current implementation (the native
-  client manages the tools cache) rather than changing anything. It
-  is written down so that a future "put the tools cache behind the
-  daemon" suggestion has a written counter.
-
-## Alternatives Considered
-
-1. **Let `kolt-compiler-daemon` grow.** Allow hook execution, test
-   execution, and whatever else needs a warm JVM into the same
-   process because "it's already warm". Rejected: this is exactly
-   the Gradle-daemon trajectory. The individual increments are
-   small; the cumulative effect is a component whose charter is
-   "JVM stuff", which is not a charter.
-
-2. **Rename to `kolt-jvm-daemon` now, even without adding
-   non-compile work.** Preemptively broaden the name so future
-   additions do not need a rename. Rejected: the rename is a
-   promise. Renaming without a concrete second use case commits the
-   project to a broader charter in docs, logs, and socket paths
-   before there is a reason. If the concrete use case never
-   materializes, we are stuck explaining why a "jvm-daemon" only
-   does one thing.
-
-3. **One daemon, multiple wire-protocol channels.** Keep a single
-   process but give it separate message families for compile,
-   hooks, etc. Rejected: this is (1) with extra ceremony. The
-   failure modes still share a process, the classloader state still
-   accumulates, and the wire protocol now has several independent
-   schemas evolving inside one version namespace.
-
-4. **No daemon at all for non-compile work.** Hooks and anything
-   else that needs a JVM spawn a fresh JVM each time they run.
-   Accepted as the *default* for anything that does not have a
-   measured reason to want a warm JVM. This ADR does not force a
-   second daemon into existence; §2 is the branch taken only when a
-   concrete use case proves a fresh JVM is too slow.
+1. **Let `kolt-compiler-daemon` grow.** Allow hooks, test execution, and whatever else needs a warm JVM. Rejected: this is the Gradle-daemon trajectory; individual increments are small, cumulative effect is a component whose charter is "JVM stuff".
+2. **Rename to `kolt-jvm-daemon` now.** Preemptively broaden the name so future additions do not need a rename. Rejected: the rename is a promise; committing to a broader charter before there is a concrete second use case documents a future that may never materialise.
+3. **One daemon, multiple wire-protocol channels.** Keep a single process with separate message families. Rejected: failure modes still share a process, classloader state still accumulates, and the wire protocol now has several independent schemas evolving inside one version namespace.
+4. **No daemon for non-compile work.** Hooks and anything else that needs a JVM spawn a fresh JVM. Accepted as the default; §2 is taken only when a concrete use case proves a fresh JVM is too slow.
 
 ## Related
 
-- ADR 0016 — warm JVM compiler daemon (what this ADR scopes)
-- ADR 0019 — incremental compilation via kotlin-build-tools-api
-  (extends the daemon's *compile* responsibility, stays within
-  this ADR's boundary)
-- ADR 0021 — kolt does not ship a plugin system (the sibling
-  decision this ADR complements)
-- Issue #107 — `kolt stop` command (scope expands if §2 fires)
+- ADR 0016 — JVM compiler daemon (what this ADR scopes)
+- ADR 0019 — IC via `kotlin-build-tools-api` (extends the daemon's compile responsibility, stays within this ADR's boundary)
+- ADR 0021 — kolt does not ship a plugin system (sibling decision)
+- ADR 0026 — current daemon naming authority (see for new module names; this ADR's identifiers are preserved as historical record)
+- ADR 0018 — distribution layout (daemon as IPC-only; context for what a second daemon would require in distribution terms)
+- #107 — `kolt daemon stop` command (scope expands if §2 fires)

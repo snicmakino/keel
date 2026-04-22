@@ -1,189 +1,94 @@
+---
+status: accepted
+date: 2026-04-09
+---
+
 # ADR 0004: Separate pure algorithms from I/O orchestration
 
-## Status
+## Summary
 
-Accepted (2026-04-09)
+- Every non-trivial subsystem splits into a pure module (value-in / value-out, no side effects) and an I/O module (filesystem, network, process). (§1)
+- Pure and I/O halves communicate through function parameters only — no shared mutable state visible from the pure side. (§2)
+- The resolver's pure core (`Resolution.kt`) takes a `pomLookup: (groupArtifact, version) -> PomInfo?` parameter and never touches the network or filesystem itself. (§3)
+- Purity is enforced by convention and package layout, not by the type system; kolt does not use an effect system. (§4)
 
-## Context
+## Context and Problem Statement
 
-Phase 2 landed the first working transitive dependency resolver, and
-Phase 3 grew it into a real BFS walk over POMs with
-`dependencyManagement`, scope filtering, conflict resolution, and
-cycle detection. The whole thing lived in a single file
-(`TransitiveResolver.kt`) that interleaved three kinds of work:
+Phase 3 left the transitive resolver as a single file (`TransitiveResolver.kt`) interleaving BFS logic, HTTP downloads, JAR writes, sha256 checks, and a memoisation map. Testing one corner case — a diamond dependency where two paths disagree on version — required a fake HTTP server or temp-directory setup. A single bug in version comparison needed an integration test to reproduce.
 
-1. **Algorithmic logic**: the BFS queue, version selection, exclusion
-   propagation, the highest-version-wins rule, cycle detection.
-2. **I/O**: downloading POMs over HTTP, writing JAR files to the
-   cache, computing and checking sha256 hashes, reading parent POMs
-   from disk.
-3. **Caching and memoisation**: a `pomLookup` map built up as the
-   walk progresses, so each `(groupArtifact, version)` is parsed at
-   most once.
+`Builder.kt` and `Runner.kt` had been pure argv builders from day one and were trivial to test. The resolver needed the same treatment after the fact. Coursier (the JVM dependency resolver) had solved this with a pattern worth copying: the algorithm is a pure state machine taking a "fetch function" as a parameter and never touching the network itself.
 
-Having them in one function meant the tests were painful. To exercise
-a corner of the algorithm (say, a diamond dependency where the two
-paths disagree on version), the test had to stand up a fake HTTP
-server or drop files into a temp directory, then invoke the whole
-pipeline. A single bug in version comparison needed an integration
-test to reproduce.
+## Decision Drivers
 
-It also meant the algorithm was not reviewable on its own. You could
-not read the resolver top-to-bottom and understand what rules it
-enforced, because every other line was `downloader.download(...)` or
-`file.writeBytes(...)`.
+- Diamond dependencies, parent POM chains, version intervals, exclusion propagation, and cycle detection must be exercisable with no filesystem or network access.
+- Adding a new download failure mode must not require changes to the resolution algorithm.
+- The pure core must be readable as a specification of the rules without I/O noise.
 
-Builder and Runner had already been written as pure argv builders
-(`Builder.buildCommand`, `Runner.runCommand`) from day one, which
-made them trivial to test. The resolver needed the same treatment,
-but doing it after the fact meant untangling a live codebase.
+## Decision Outcome
 
-Coursier — the JVM Scala/Java dependency resolver — had solved the
-same problem with a pattern we could copy: the resolution algorithm
-is a **pure state machine** that takes a "fetch function" as a
-parameter. It never touches the network itself. The caller wraps it
-with an I/O-aware fetcher and runs the whole thing. This cleanly
-separates "what should the graph look like" from "how do we get the
-bytes to answer that question".
+Chosen option: **pure-core / I/O-shell split via function parameters**, applied to every subsystem with enough logic to warrant its own tests.
 
-## Decision
+### §1 The split applies across subsystems
 
-Adopt the same pure-core / I/O-shell split for every non-trivial
-subsystem in kolt. The two halves live in separate files and
-communicate only through **function parameters**.
+| Pure module | I/O module | Role |
+|---|---|---|
+| `Resolution.kt` | `TransitiveResolver.kt` | Dependency graph BFS |
+| `PomParser.kt` | `TransitiveResolver.kt` | POM XML parsing |
+| `GradleMetadata.kt` | `NativeResolver.kt` | `.module` parsing, redirect |
+| `VersionCompare.kt` | (used by `Resolution.kt`) | Maven version comparison |
+| `Builder.kt` | `BuildCommands.kt` | kotlinc argv construction |
+| `Runner.kt` | `BuildCommands.kt` | `java -jar` argv construction |
+| `TestBuilder.kt` | `BuildCommands.kt` | Test compile argv |
+| `TestRunner.kt` | `BuildCommands.kt` | JUnit Platform launcher argv |
+| `TestDeps.kt` | `BuildCommands.kt` | Auto-injected test dependencies |
+| `Formatter.kt` | `FormatCommands.kt` | ktfmt argv construction |
+| `AddDependency.kt` | `DependencyCommands.kt` | TOML string manipulation |
+| `DepsTree.kt` | `DependencyCommands.kt` | Dependency tree ASCII rendering |
 
-For the resolver specifically:
+### §2 Communication via function parameters only
 
-- **`Resolution.kt`** (pure). Exposes `resolveGraph(deps, pomLookup)`,
-  which walks the dependency graph via BFS. It takes a `pomLookup`
-  function — `(groupArtifact, version) -> PomInfo?` — as a parameter.
-  `Resolution.kt` never reads files, never makes HTTP calls, never
-  computes hashes. It is all value-in / value-out.
-- **`TransitiveResolver.kt`** (I/O). Provides
-  `createPomLookup(cacheBase, downloader, ...)` which returns a
-  closure that encapsulates POM downloading, caching, and parsing,
-  and `materialize(nodes)` which downloads and verifies the JARs for
-  the resolved graph. `TransitiveResolver.resolve()` is the thin
-  orchestrator: build the `pomLookup`, hand it to
-  `Resolution.resolveGraph`, then `materialize` the result.
+Pure modules receive their I/O-backed inputs as function parameters. No I/O reference is stored as a field on the pure side. The `pomLookup` closure that `Resolution.kt` receives captures a mutable cache (`pomCache`) inside `TransitiveResolver.kt`; readers must understand the closure is stateful to reason about repeated lookups.
 
-The same split is applied elsewhere in the codebase from Phase 2
-onwards:
+### §3 Resolver split — concrete shape
 
-| Pure module              | I/O module                  | Role                              |
-| ------------------------ | --------------------------- | --------------------------------- |
-| `Resolution.kt`          | `TransitiveResolver.kt`     | Dependency graph BFS              |
-| `PomParser.kt`           | `TransitiveResolver.kt`     | POM XML parsing                   |
-| `GradleMetadata.kt`      | `NativeResolver.kt`         | `.module` parsing, redirect       |
-| `VersionCompare.kt`      | (used by `Resolution.kt`)   | Maven version comparison          |
-| `Builder.kt`             | `BuildCommands.kt`          | kotlinc argv construction         |
-| `Runner.kt`              | `BuildCommands.kt`          | `java -jar` argv construction     |
-| `TestBuilder.kt`         | `BuildCommands.kt`          | Test compile argv                 |
-| `TestRunner.kt`          | `BuildCommands.kt`          | JUnit Platform launcher argv      |
-| `TestDeps.kt`            | `BuildCommands.kt`          | Auto-injected test dependencies   |
-| `Formatter.kt`           | `FormatCommands.kt`         | ktfmt argv construction           |
-| `AddDependency.kt`       | `DependencyCommands.kt`     | TOML string manipulation          |
-| `DepsTree.kt`            | `DependencyCommands.kt`     | Dependency tree ASCII rendering   |
+`Resolution.kt` exposes `resolveGraph(deps, pomLookup)`. It walks the dependency graph via BFS, applies highest-version-wins, propagates exclusions, and detects cycles. It never reads files, makes HTTP calls, or computes hashes.
 
-The rule is: if a function can be expressed as "inputs in, outputs
-out, no side effects", it goes into the pure half. Side-effectful
-work (filesystem, process spawning, network, clock, hashing over
-file contents) is pushed into the I/O half under `infra/` or into a
-thin `*Commands.kt` orchestrator under `cli/`.
+`TransitiveResolver.kt` provides `createPomLookup(cacheBase, downloader, ...)` — a closure encapsulating POM downloading, disk caching, and parsing — and `materialize(nodes)` which downloads and verifies JARs for the resolved graph. `TransitiveResolver.resolve()` is the thin orchestrator: build the `pomLookup`, call `resolveGraph`, then `materialize`.
 
-## Consequences
+`DepsTree.kt` reuses the same `pomLookup` signature for the `kolt tree` command without triggering downloads — a direct payoff of the separation. kolt borrows the *separation* from Coursier, not Coursier's explicit `Done / Missing / Continue` state-machine encoding.
 
-### Positive
+### §4 Purity by convention
 
-- **Pure code is cheap to test**: `ResolutionTest` constructs a
-  hand-written `pomLookup` lambda that returns `PomInfo` values from
-  a `Map` literal. Every BFS corner case — diamonds, parent POM
-  chains, version intervals, exclusion propagation, cycles — is a
-  table-driven unit test with no filesystem, no network, no temp
-  directories. This is the single biggest reason kolt has a large
-  unit-test suite despite being a build tool with heavy I/O.
-- **Algorithms are reviewable top-to-bottom**: `Resolution.kt` reads
-  as a specification of the rules. The reader never has to keep two
-  concerns in their head at once.
-- **I/O is swappable**: because the pure core takes a `pomLookup`
-  function, a caller can substitute an offline lookup (e.g. build a
-  lookup from `kolt.lock` directly), or a recording lookup for
-  debugging, without touching the resolver logic. `DepsTree.kt`
-  actually does this — it reuses the same `pomLookup` signature to
-  walk the graph for the `kolt tree` command.
-- **Parallel development**: the two native resolvers
-  (`TransitiveResolver` for jvm, `NativeResolver` for native) share
-  `Resolution.kt`'s style but not its state. They were built
-  independently against the same pattern and the same pure helpers
-  (`VersionCompare`, `PomExclusion` matching), so bug fixes port
-  cleanly when they apply.
-- **I/O errors have a single home**: every network and filesystem
-  failure bubbles up through the I/O wrapper as a `Result<_, E>`.
-  The pure core does not have to know that a download can fail, only
-  that `pomLookup` can return `null`.
+Nothing in the type system prevents adding `downloader.download(...)` inside `Resolution.kt`. The rule is maintained by code review and package layout: pure modules do not import `infra/` or `platform.posix`. kolt does not use an effect system (Arrow, monadic IO); the convention-based split delivers most of the benefits at zero dependency cost.
 
-### Negative
+### Consequences
 
-- **The split is discipline, not enforcement**: nothing in the type
-  system prevents someone from adding `downloader.download(...)`
-  inside `Resolution.kt`. The rule is maintained by code review and
-  by the package layout. If a contributor is not familiar with the
-  convention, it is easy to break.
-- **Two files for what was one**: `TransitiveResolver.kt` is now a
-  thin orchestrator, and the real logic lives next door. Following a
-  call flow means jumping between files.
-- **Closures-as-parameters can hide state**: the `pomLookup` closure
-  captures a mutable cache (`pomCache`). Readers have to understand
-  that the closure is stateful to reason about repeated lookups.
-  This is the price of keeping `Resolution.kt` free of I/O.
-- **Not every subsystem is worth splitting**: very small pieces of
-  logic that happen to call the filesystem once do not benefit from
-  a pure shell. The rule is applied only where the pure core has
-  enough logic to warrant its own tests.
+**Positive**
+- `ResolutionTest` constructs a hand-written `pomLookup` from a `Map` literal. Every BFS corner case — diamonds, parent POM chains, version intervals, exclusion propagation, cycles — is a table-driven unit test with no filesystem, no network, no temp directories.
+- `Resolution.kt` reads as a specification of the rules; the reader never holds two concerns at once.
+- Callers can substitute an offline lookup built from `kolt.lock` (e.g. `DepsTree.kt`) without touching resolver logic.
+- The two native resolvers (`TransitiveResolver` for jvm, `NativeResolver` for native) share the same pure helpers (`VersionCompare`, `PomExclusion` matching); bug fixes port cleanly.
+- I/O errors stay in the I/O wrapper as `Result<_, E>`; the pure core only sees that `pomLookup` can return `null`.
 
-### Neutral
+**Negative**
+- The split is discipline, not enforcement — a contributor unfamiliar with the convention can break it without a compile error.
+- Following a call flow means jumping between two files (`Resolution.kt` ↔ `TransitiveResolver.kt`).
+- Very small pieces of logic that happen to call the filesystem once are not split; the rule applies only where the pure core has enough logic to warrant its own tests.
 
-- **Convention shared with Coursier, not copied verbatim**: kolt does
-  not implement Coursier's explicit `Done / Missing / Continue` state
-  machine. `resolveGraph` is a loop that terminates when the queue is
-  empty. The *separation* is what we borrowed, not the specific
-  state-machine encoding.
-- **No effect system**: we do not use any effect-tracking library
-  (Arrow, monadic IO, etc.). Purity is by convention, verified by the
-  fact that the pure modules do not import `infra/` or `platform.posix`.
+### Confirmation
 
-## Alternatives Considered
+Code review checks that pure modules do not import `infra/` or `platform.posix`. The absence of I/O in `Resolution.kt` is verified by the fact that `ResolutionTest` runs with no I/O setup.
 
-1. **Leave the I/O interleaved; rely on integration tests** —
-   rejected. Integration tests over a real cache directory were
-   slow, flaky (mtime races, concurrent temp dirs) and did not cover
-   the algorithmic corner cases at the granularity we needed. The
-   resolver has a dozen version-conflict rules; exercising them one
-   at a time through HTTP fixtures would have been a full-time job.
-2. **Mock the `Downloader` interface** — rejected. It would have let
-   us drive the resolver from tests, but it only pushed the mixing
-   problem down one layer. The resolver's logic would still have been
-   spread across an HTTP call site, a cache-layer method, and a
-   parser. You cannot unit-test the BFS in isolation just by mocking
-   the fetcher.
-3. **Adopt an effect system like Arrow `IO` or `Resource`** —
-   rejected. Too heavy a dependency and too novel a pattern for a
-   Kotlin/Native CLI whose primary goal is fast builds and simple
-   code. The convention-based split buys us most of the benefits at
-   zero dependency cost.
-4. **Port Coursier's full state-machine resolution verbatim** —
-   rejected. Coursier's state machine handles concurrent fetching,
-   conflict back-propagation, and a much richer conflict model
-   (forced versions, reconciliation strategies). kolt does not need
-   any of that yet. The simpler BFS with highest-version-wins is
-   enough for the scope we support, and we can always tighten it
-   later without rewriting the I/O shell.
+## Alternatives considered
+
+1. **Leave I/O interleaved; rely on integration tests.** Rejected. Integration tests over a real cache directory were slow, flaky (mtime races, concurrent temp dirs), and could not cover the dozen version-conflict rules at unit-test granularity.
+2. **Mock the `Downloader` interface.** Rejected. Mocking the fetcher still leaves BFS logic interleaved with cache-layer and parser code; you cannot unit-test the BFS in isolation.
+3. **Adopt an effect system (Arrow `IO`, `Resource`).** Rejected. Too heavy a dependency and too novel a pattern for a Kotlin/Native CLI. The convention-based split achieves the same separation at zero dependency cost.
+4. **Port Coursier's full state-machine resolution verbatim.** Rejected. Coursier's state machine handles concurrent fetching, conflict back-propagation, and reconciliation strategies kolt does not need. The simpler BFS with highest-version-wins is sufficient for the supported scope.
 
 ## Related
 
-- `src/nativeMain/kotlin/kolt/resolve/Resolution.kt` — the pure BFS
-- `src/nativeMain/kotlin/kolt/resolve/TransitiveResolver.kt` — the
-  I/O orchestrator and `pomLookup` factory
-- Commit `91d77fd` (initial extraction of `resolveGraph` from
-  `TransitiveResolver`)
+- `src/nativeMain/kotlin/kolt/resolve/Resolution.kt` — pure BFS
+- `src/nativeMain/kotlin/kolt/resolve/TransitiveResolver.kt` — I/O orchestrator and `pomLookup` factory
+- Commit `91d77fd` — initial extraction of `resolveGraph` from `TransitiveResolver`
 - Coursier — design reference for algorithm/fetch separation
