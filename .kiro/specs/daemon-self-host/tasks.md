@@ -58,7 +58,7 @@
   - _Depends: 1.3_
 
 - [ ] 3. `scripts/assemble-dist.sh` stitcher
-- [ ] 3.1 スクリプト骨格: 3 プロジェクトの直列 `kolt build` と `dist/` 準備
+- [x] 3.1 スクリプト骨格: 3 プロジェクトの直列 `kolt build` と `dist/` 準備
   - `#!/usr/bin/env bash`、`set -euo pipefail` で新規作成。
   - 起動時に既存 `dist/` を wipe し、ルート `kolt.toml` から `version` を grep で抜き出し、`dist/kolt-<version>-linux-x64/` を作成するのみ。配下サブディレクトリ (`bin/`, `libexec/`) の作成と内容書き込みは 3.2 / 3.3 の担当。
   - `${KOLT:-./build/bin/linuxX64/releaseExecutable/kolt.kexe} build` をルート / `kolt-jvm-compiler-daemon/` / `kolt-native-compiler-daemon/` の順で実行。
