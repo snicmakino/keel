@@ -68,7 +68,7 @@
   - _Boundary: scripts/assemble-dist.sh_
   - _Depends: 2.1, 2.2_
 
-- [ ] 3.2 `kotlin-build-tools-impl` の GAV/SHA pin 集合を決定し、curl で Maven Central から取得
+- [x] 3.2 `kotlin-build-tools-impl` の GAV/SHA pin 集合を決定し、curl で Maven Central から取得
   - pin 元資材の準備: 実装開始時に `./gradlew :kolt-jvm-compiler-daemon:stageBtaImplJars` を 1 回実行して `kolt-jvm-compiler-daemon/build/bta-impl-jars/` に配置される jar 集合を観測し、ファイル名 (GAV) と `sha256sum` をスクリプト内定数として転記する。pin 後は Gradle 成果物への依存はない。
   - スクリプト冒頭に GAV 配列と対応する SHA-256 定数を定義する。最低集合は `kotlin-build-tools-impl:2.3.20` + その transitive (daemon の `[dependencies]` で既に `deps/` に入るものは除外)。
   - `curl -fsSL` で `https://repo1.maven.org/maven2/...` から各 jar を `dist/kolt-<version>-linux-x64/libexec/kolt-bta-impl/` に配置し、`sha256sum` で定数と一致を検証する。不一致は非ゼロ終了。
