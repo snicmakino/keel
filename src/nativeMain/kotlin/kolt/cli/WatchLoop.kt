@@ -1,6 +1,7 @@
 package kolt.cli
 
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
 import kolt.build.nativeRunCommand
 import kolt.build.runCommand
@@ -261,11 +262,17 @@ private fun reapChild(pid: Int): Boolean {
 internal fun watchRunLoop(
     useDaemon: Boolean,
     appArgs: List<String> = emptyList(),
+    eprint: (String) -> Unit = ::eprintln,
 ) {
     val config = loadProjectConfig().getOrElse {
-        eprintln("error: cannot start watch mode with invalid config")
+        eprint("error: cannot start watch mode with invalid config")
         return
     }
+    // ADR 0023 §1 kind gate: emit the canonical rejection once at entry
+    // and return cleanly so a library invocation does not enter the
+    // rebuild-poll loop (R4.2 "no per-source-change error spam").
+    if (rejectIfLibrary(config, eprint).getError() != null) return
+
     val watchDirs = collectWatchPaths(config, "run")
     val setup = setupWatches(watchDirs, config) ?: return
     val watcher = setup.watcher
@@ -284,7 +291,15 @@ internal fun watchRunLoop(
         val runCmd = if (buildResult.config.build.target in NATIVE_TARGETS) {
             nativeRunCommand(buildResult.config, appArgs)
         } else {
-            runCommand(buildResult.config, buildResult.classpath, appArgs, javaPath = buildResult.javaPath)
+            // Parser invariant `kind == "app" ⇒ main != null` guarantees
+            // non-null; the lib kind gate at loop entry pre-empts libraries,
+            // so this `?: run` is ADR 0001 safety for the parser invariant
+            // and is unreachable on apps at runtime.
+            val jvmMain = buildResult.config.build.main ?: run {
+                eprintln("error: [build] main is required to run")
+                break
+            }
+            runCommand(buildResult.config, main = jvmMain, classpath = buildResult.classpath, appArgs = appArgs, javaPath = buildResult.javaPath)
         }
         val childPid = spawnInProcessGroup(runCmd.args)
         if (childPid < 0) {

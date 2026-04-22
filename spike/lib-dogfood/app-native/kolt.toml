@@ -1,0 +1,10 @@
+name = "nativeappdog"
+version = "0.0.1"
+
+[kotlin]
+version = "2.3.20"
+
+[build]
+target = "linuxX64"
+main = "dogfood.main"
+sources = ["src/main"]
