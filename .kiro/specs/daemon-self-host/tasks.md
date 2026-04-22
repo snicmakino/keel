@@ -8,7 +8,7 @@
   - _Requirements: 2.1, 2.6_
   - _Boundary: kolt.cli.DependencyResolution_
 
-- [ ] 1.2 `outputRuntimeClasspathPath` ヘルパーと `writeRuntimeClasspathManifest` emit 関数を追加
+- [x] 1.2 `outputRuntimeClasspathPath` ヘルパーと `writeRuntimeClasspathManifest` emit 関数を追加
   - `Builder.kt` に既存 `output*Path` helper と同じ internal visibility で `outputRuntimeClasspathPath(config): String` を追加し `"$BUILD_DIR/${config.name}-runtime.classpath"` を返す。
   - `writeRuntimeClasspathManifest(config, resolvedJars)` を Builder.kt に実装する。resolvedJars を file-name (path 最終要素) でアルファベット sort、同一ファイル名の場合は `group:artifact:version` 文字列でタイブレークする。self jar (`outputJarPath(config)`) は出力から除外。
   - UTF-8 / LF / 末尾空行なしで write し、failure は `ManifestWriteError.WriteFailed` で返す (例外 throw 禁止)。
