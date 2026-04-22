@@ -88,7 +88,7 @@
   - _Boundary: scripts/assemble-dist.sh_
 
 - [ ] 4. Self-host smoke CI companion job
-- [ ] 4.1 (P) Companion 用の最小 JVM fixture プロジェクト
+- [x] 4.1 (P) Companion 用の最小 JVM fixture プロジェクト
   - `spike/daemon-self-host-smoke/` に最小構成 (`kolt.toml` に `target = "jvm"`, `kind = "app"`, main 1 つ + `[dependencies]` なし or 最小)、`src/main/kotlin/Hello.kt` 等) を配置。
   - 既存 `kolt.kexe build` でこのディレクトリが build 成功し、`build/<name>.jar` が生成される (動作原理の smoke 用なので、テスト対象は通過)。
   - _Requirements: 4.4_
