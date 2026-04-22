@@ -25,7 +25,7 @@
   - _Requirements: 1.5, 2.1, 2.7_
   - _Boundary: kolt.cli.BuildCommands_
 
-- [ ] 1.4 `kolt run` が manifest を読まないことの回帰テスト
+- [x] 1.4 `kolt run` が manifest を読まないことの回帰テスト
   - `KoltRunManifestIndependenceTest.kt` を追加し、(a) `kolt build` 後に `build/<name>-runtime.classpath` を削除、(b) `kolt run` を起動、(c) 正常終了することを検証する。
   - テストが緑 (manifest 削除が `kolt run` の経路に影響しないことが CI で保証される)。
   - _Requirements: 2.8_
