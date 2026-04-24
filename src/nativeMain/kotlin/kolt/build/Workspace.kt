@@ -19,6 +19,7 @@ fun generateWorkspaceJson(
   config: KoltConfig,
   mainDeps: List<ResolvedDep>,
   testDeps: List<ResolvedDep>,
+  sdkHomePath: String? = null,
 ): String {
   val allDeps = mainDeps + testDeps
   val json = buildJsonObject {
@@ -29,7 +30,7 @@ fun generateWorkspaceJson(
       }
     }
     putJsonArray("libraries") { allDeps.forEach { dep -> add(buildLibraryEntry(dep)) } }
-    putJsonArray("sdks") { add(buildSdkEntry(config.build.jvmTarget)) }
+    putJsonArray("sdks") { add(buildSdkEntry(config.build.jvmTarget, sdkHomePath)) }
     putJsonArray("kotlinSettings") {
       add(buildKotlinSettings(config, isTest = false))
       if (config.build.testSources.isNotEmpty()) {
@@ -161,12 +162,15 @@ private fun buildLibraryEntry(dep: ResolvedDep): JsonObject = buildJsonObject {
   }
 }
 
-private fun buildSdkEntry(jvmTarget: String): JsonObject = buildJsonObject {
+// `roots` is intentionally omitted: per kotlin-lsp's SdkData model, an absent
+// roots key lets the LSP derive class/source/annotation roots from homePath
+// itself (including JDK 9+ jrt:/ module roots), which kolt cannot enumerate
+// without a JVM.
+private fun buildSdkEntry(jvmTarget: String, homePath: String?): JsonObject = buildJsonObject {
   put("name", jvmTarget)
   put("type", "jdk")
   put("version", "JDK_$jvmTarget")
-  put("homePath", JsonNull)
-  putJsonArray("roots") {}
+  put("homePath", homePath?.let { JsonPrimitive(it) } ?: JsonNull)
   put("additionalData", "")
 }
 

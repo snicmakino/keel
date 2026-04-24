@@ -3,11 +3,15 @@ package kolt.cli
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getOrElse
+import com.github.michaelbull.result.onErr
 import kolt.build.ResolvedJar
+import kolt.build.UserJdkError
 import kolt.build.autoInjectedTestDeps
 import kolt.build.generateKlsClasspath
 import kolt.build.generateWorkspaceJson
+import kolt.build.resolveUserJdkHome
 import kolt.config.*
 import kolt.infra.*
 import kolt.resolve.*
@@ -109,7 +113,7 @@ internal fun resolveDependencies(config: KoltConfig): Result<JvmResolutionOutcom
   }
 
   if (resolveResult.lockChanged || !fileExists(WORKSPACE_JSON) || !fileExists(KLS_CLASSPATH)) {
-    writeWorkspaceFiles(config, resolveResult.deps)
+    writeWorkspaceFiles(config, paths, resolveResult.deps)
   }
 
   return Ok(splitJvmOutcome(resolveResult.deps))
@@ -162,12 +166,13 @@ internal fun resolveNativeDependencies(
   return Ok(result.deps.map { it.cachePath })
 }
 
-private fun writeWorkspaceFiles(config: KoltConfig, deps: List<ResolvedDep>) {
+private fun writeWorkspaceFiles(config: KoltConfig, paths: KoltPaths, deps: List<ResolvedDep>) {
   // kls-classpath is a flat union — kotlin-lsp expects one classpath
   // and resolves visibility from module scopes. workspace.json
   // carries the main/test split for richer IDE consumers.
   val (mainDeps, testDeps) = splitByOrigin(deps)
-  val workspaceJson = generateWorkspaceJson(config, mainDeps, testDeps)
+  val sdkHomePath = resolveWorkspaceSdkHomePath(config, paths)
+  val workspaceJson = generateWorkspaceJson(config, mainDeps, testDeps, sdkHomePath = sdkHomePath)
   writeFileAsString(WORKSPACE_JSON, workspaceJson).getOrElse { error ->
     eprintln("warning: could not write $WORKSPACE_JSON: ${error.path}")
     return
@@ -179,3 +184,23 @@ private fun writeWorkspaceFiles(config: KoltConfig, deps: List<ResolvedDep>) {
     return
   }
 }
+
+// Best-effort: a null homePath just means the editor falls back to its own
+// JDK detection. Warn in each failure mode so the user can act on it without
+// blocking the resolve.
+private fun resolveWorkspaceSdkHomePath(config: KoltConfig, paths: KoltPaths): String? =
+  resolveUserJdkHome(config, paths)
+    .onErr { err ->
+      when (err) {
+        is UserJdkError.ManagedMissing ->
+          eprintln(
+            "warning: workspace.json sdk homePath left unset — jdk ${err.version} not installed at ${err.expectedPath} (run `kolt toolchain install`)"
+          )
+        UserJdkError.SystemProbeFailed ->
+          eprintln(
+            "warning: workspace.json sdk homePath left unset — could not locate `java` on PATH (install a JDK or set [build] jdk)"
+          )
+      }
+    }
+    .get()
+    ?.home

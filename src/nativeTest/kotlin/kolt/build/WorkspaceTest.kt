@@ -6,8 +6,10 @@ import kolt.testConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -211,6 +213,46 @@ class WorkspaceTest {
     assertEquals("21", sdk["name"]!!.jsonPrimitive.content)
     assertEquals("jdk", sdk["type"]!!.jsonPrimitive.content)
     assertEquals("JDK_21", sdk["version"]!!.jsonPrimitive.content)
+  }
+
+  // kotlin-lsp needs sdks[0].homePath to navigate JDK sources and verify
+  // APIs against the intended JDK; null forces it to fall back to whatever
+  // the editor locates. Issue #243.
+  @Test
+  fun generateWorkspaceJsonSdkHomePathPopulatedWhenProvided() {
+    val config = testConfig(jvmTarget = "21")
+
+    val result =
+      generateWorkspaceJson(config, emptyList(), emptyList(), sdkHomePath = "/opt/jdk/21")
+    val root = parseJson(result)
+
+    val sdk = root["sdks"]!!.jsonArray[0].jsonObject
+    assertEquals("/opt/jdk/21", sdk["homePath"]!!.jsonPrimitive.content)
+  }
+
+  @Test
+  fun generateWorkspaceJsonSdkHomePathNullWhenUnresolved() {
+    val config = testConfig()
+
+    val result = generateWorkspaceJson(config, emptyList(), emptyList(), sdkHomePath = null)
+    val root = parseJson(result)
+
+    val sdk = root["sdks"]!!.jsonArray[0].jsonObject
+    assertEquals(JsonNull, sdk["homePath"])
+  }
+
+  // SdkData model (kotlin-lsp) comment: when `roots` is absent the LSP
+  // computes them from `homePath`. An empty array is not the same as absent
+  // for this importer, so kolt must omit the key entirely.
+  @Test
+  fun generateWorkspaceJsonSdkOmitsRootsKey() {
+    val config = testConfig()
+
+    val withHome = generateWorkspaceJson(config, emptyList(), emptyList(), sdkHomePath = "/opt/j")
+    val withoutHome = generateWorkspaceJson(config, emptyList(), emptyList(), sdkHomePath = null)
+
+    assertNull(parseJson(withHome)["sdks"]!!.jsonArray[0].jsonObject["roots"])
+    assertNull(parseJson(withoutHome)["sdks"]!!.jsonArray[0].jsonObject["roots"])
   }
 
   @Test
