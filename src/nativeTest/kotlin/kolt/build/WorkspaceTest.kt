@@ -292,6 +292,55 @@ class WorkspaceTest {
     )
   }
 
+  // Per-module java language level is carried via `javaSettings`; the JSON
+  // wire has no `-Xjdk-release` slot, so this is the only channel for
+  // kotlin-lsp to diagnose mixed Kotlin/Java code at the right level.
+  @Test
+  fun generateWorkspaceJsonEmitsJavaSettingsForMainAndTest() {
+    val config = testConfig(jvmTarget = "17")
+
+    val result = generateWorkspaceJson(config, emptyList(), emptyList())
+    val root = parseJson(result)
+
+    val javaSettings = root["javaSettings"]!!.jsonArray
+    assertEquals(2, javaSettings.size)
+
+    val main = javaSettings[0].jsonObject
+    assertEquals("my-app.main", main["module"]!!.jsonPrimitive.content)
+    assertEquals("JDK_17", main["languageLevelId"]!!.jsonPrimitive.content)
+    assertEquals(false, main["inheritedCompilerOutput"]!!.jsonPrimitive.content.toBoolean())
+    assertEquals(false, main["excludeOutput"]!!.jsonPrimitive.content.toBoolean())
+
+    val test = javaSettings[1].jsonObject
+    assertEquals("my-app.test", test["module"]!!.jsonPrimitive.content)
+    assertEquals("JDK_17", test["languageLevelId"]!!.jsonPrimitive.content)
+  }
+
+  @Test
+  fun generateWorkspaceJsonJavaSettingsOmitsTestEntryWhenNoTestSources() {
+    val config = testConfig(testSources = emptyList())
+
+    val result = generateWorkspaceJson(config, emptyList(), emptyList())
+    val root = parseJson(result)
+
+    val javaSettings = root["javaSettings"]!!.jsonArray
+    assertEquals(1, javaSettings.size)
+    assertEquals("my-app.main", javaSettings[0].jsonObject["module"]!!.jsonPrimitive.content)
+  }
+
+  @Test
+  fun generateWorkspaceJsonJavaSettingsLanguageLevelTracksJvmTarget() {
+    val config = testConfig(jvmTarget = "21")
+
+    val result = generateWorkspaceJson(config, emptyList(), emptyList())
+    val root = parseJson(result)
+
+    val javaSettings = root["javaSettings"]!!.jsonArray
+    javaSettings.forEach {
+      assertEquals("JDK_21", it.jsonObject["languageLevelId"]!!.jsonPrimitive.content)
+    }
+  }
+
   // kotlin-lsp's JSON importer maps `excludedPatterns` to the underlying
   // ContentRootEntity but drops `excludedUrls`, so patterns are the only
   // effective exclusion channel for the WORKSPACE root today.

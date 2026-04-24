@@ -31,6 +31,12 @@ fun generateWorkspaceJson(
     putJsonArray("libraries") { allDeps.forEach { dep -> add(buildLibraryEntry(dep)) } }
     putJsonArray("sdks") { add(buildSdkEntry(config.build.jvmTarget)) }
     putJsonArray("kotlinSettings") { add(buildKotlinSettings(config)) }
+    putJsonArray("javaSettings") {
+      add(buildJavaSettings("${config.name}.main", config.build.jvmTarget))
+      if (config.build.testSources.isNotEmpty()) {
+        add(buildJavaSettings("${config.name}.test", config.build.jvmTarget))
+      }
+    }
   }
 
   return prettyJson.encodeToString(JsonObject.serializer(), json)
@@ -147,6 +153,16 @@ private fun buildSdkEntry(jvmTarget: String): JsonObject = buildJsonObject {
   put("homePath", JsonNull)
   putJsonArray("roots") {}
   put("additionalData", "")
+}
+
+private fun buildJavaSettings(moduleName: String, jvmTarget: String): JsonObject = buildJsonObject {
+  put("module", moduleName)
+  put("inheritedCompilerOutput", false)
+  put("excludeOutput", false)
+  put("compilerOutput", JsonNull)
+  put("compilerOutputForTests", JsonNull)
+  put("languageLevelId", "JDK_$jvmTarget")
+  putJsonObject("manifestAttributes") {}
 }
 
 private fun buildKotlinSettings(config: KoltConfig): JsonObject = buildJsonObject {
