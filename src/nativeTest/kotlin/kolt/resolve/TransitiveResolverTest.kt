@@ -1116,6 +1116,37 @@ class TransitiveResolverTest {
     assertEquals(null, resolved.deps[0].sourcesPath)
   }
 
+  // A network error on the sources fetch must never cascade into a
+  // binary-resolve failure. End-to-end pin for the silent-fail policy.
+  @Test
+  fun resolveTransitiveLeavesSourcesPathNullOnNetworkErrorWithoutFailingBinary() {
+    val config = testConfig().copy(dependencies = mapOf("com.example:lib" to "1.0.0"))
+    val pomXml =
+      """
+        <project>
+            <groupId>com.example</groupId>
+            <artifactId>lib</artifactId>
+            <version>1.0.0</version>
+        </project>
+      """
+        .trimIndent()
+    val sourcesUrl = "https://repo1.maven.org/maven2/com/example/lib/1.0.0/lib-1.0.0-sources.jar"
+
+    val deps =
+      fakeTransitiveDeps(
+        sha256Results = mapOf("/cache/com/example/lib/1.0.0/lib-1.0.0.jar" to "hash1"),
+        pomContents = mapOf("/cache/com/example/lib/1.0.0/lib-1.0.0.pom" to pomXml),
+        downloadErrors = mapOf(sourcesUrl to DownloadError.NetworkError(sourcesUrl, "timeout")),
+      )
+    val result = resolveTransitive(config, null, "/cache", deps)
+    val resolved = assertNotNull(result.get(), "binary resolve must succeed even if sources errors")
+
+    assertEquals(1, resolved.deps.size)
+    assertEquals("com.example:lib", resolved.deps[0].groupArtifact)
+    assertEquals("hash1", resolved.deps[0].sha256)
+    assertEquals(null, resolved.deps[0].sourcesPath)
+  }
+
   @Test
   fun downloadFromRepositoriesSucceedsOnFirstRepo() {
     val coord = Coordinate("com.example", "lib", "1.0.0")

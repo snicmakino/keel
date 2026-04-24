@@ -175,6 +175,11 @@ class WorkspaceTest {
 
     val roots = root["libraries"]!!.jsonArray[0].jsonObject["roots"]!!.jsonArray
     assertEquals(1, roots.size)
+    assertEquals(
+      null,
+      roots[0].jsonObject["type"],
+      "binary root must omit `type` so kotlin-lsp defaults to CLASSES",
+    )
   }
 
   @Test
