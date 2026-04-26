@@ -1,7 +1,7 @@
 # Implementation Plan
 
 - [ ] 1. Foundation: exit code と ADR
-- [ ] 1.1 EXIT_LOCK_TIMEOUT の exit code 定数を追加
+- [x] 1.1 EXIT_LOCK_TIMEOUT の exit code 定数を追加
   - `ExitCode.kt` に `EXIT_LOCK_TIMEOUT = 6` (既存最大値 5 の次) を新設
   - 既存の `EXIT_*` 命名・順序規則 (config / dependency / test / format の系列) と整合する位置に置く
   - **完了状態**: `kolt/cli/ExitCode.kt` に `EXIT_LOCK_TIMEOUT` 定数が公開され、import で参照可能になっている
