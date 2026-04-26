@@ -124,15 +124,20 @@ internal fun loadProjectConfig(): Result<KoltConfig, Int> {
     .let { Ok(it) }
 }
 
-internal fun doCheck(useDaemon: Boolean = true): Result<Unit, Int> {
+internal fun doCheck(useDaemon: Boolean = true): Result<Unit, Int> = withProjectLock {
+  doCheckInner(useDaemon)
+}
+
+private fun doCheckInner(useDaemon: Boolean): Result<Unit, Int> {
   val startMark = TimeSource.Monotonic.markNow()
   val config =
     loadProjectConfig().getOrElse {
       return Err(it)
     }
   // konanc has no syntax-only mode; a full build is the only option.
+  // doBuildInner skips the outer lock acquire — doCheck already holds it.
   if (config.build.target in NATIVE_TARGETS) {
-    doBuild(useDaemon = useDaemon).getOrElse {
+    doBuildInner(useDaemon = useDaemon).getOrElse {
       return Err(it)
     }
     return Ok(Unit)

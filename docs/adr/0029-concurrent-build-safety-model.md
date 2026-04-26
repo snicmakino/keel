@@ -92,13 +92,16 @@ The lock file is `build/.kolt-build.lock`:
 
 Critical-section scope:
 
-- **Locked**: `doBuild`, `doNativeBuild`, `doTest`, `doRun`, `doAdd`,
-  `doInstall`, `doUpdate`. The `lock.use { ... }` wrap covers
+- **Locked**: `doBuild`, `doNativeBuild`, `doCheck`, `doTest`, `doRun`,
+  `doAdd`, `doInstall`, `doUpdate`. The `lock.use { ... }` wrap covers
   dependency resolution (which rewrites `kolt.lock`), compile, and
   `build/` finalisation (`build/classes/`, `build/<name>.jar`,
-  `build/kolt.kexe`, `build/<name>-runtime.classpath`). `doRun`
-  internally invokes the build pipeline; the wrap stays at the entry
-  to avoid double-locking.
+  `build/kolt.kexe`, `build/<name>-runtime.classpath`). `doCheck`
+  rewrites `kolt.lock` via `resolveDependencies` even on the JVM
+  syntax-only path, so it is locked as well. Outer wrappers
+  delegate to private `*Inner` functions so call chains like
+  `doCheck → doBuildInner` and `doTest → doBuildInner` do not
+  re-acquire under the same OFD.
 - **Not locked**: `kolt --help`, `kolt --version`, `kolt deps tree`,
   `kolt fmt`. These are read-only or write only to source files
   outside `build/` and `kolt.lock`, and locking them would block IDE

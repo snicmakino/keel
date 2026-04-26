@@ -72,6 +72,7 @@ graph TB
     end
     subgraph Locked[Lock-protected Commands]
         Build[doBuild or doNativeBuild]
+        Check[doCheck]
         Test[doTest]
         Run[doRun]
         DepsAdd[doAdd]
@@ -134,7 +135,7 @@ src/
 │   ├── infra/
 │   │   └── Downloader.kt                  # 修正: temp+rename 化、stale sweep
 │   ├── cli/
-│   │   ├── BuildCommands.kt               # 修正: doBuild/doNativeBuild/doTest/doRun に lock wrap
+│   │   ├── BuildCommands.kt               # 修正: doBuild/doNativeBuild/doCheck/doTest/doRun に lock wrap
 │   │   └── DependencyCommands.kt          # 修正: doAdd/doInstall/doUpdate に lock wrap
 └── nativeTest/kotlin/kolt/
     ├── concurrency/
@@ -149,7 +150,7 @@ docs/
 
 ### Modified Files
 
-- `src/nativeMain/kotlin/kolt/cli/BuildCommands.kt` — `doBuild` / `doNativeBuild` / `doTest` / `doRun` の入口で `ProjectLock.acquire(buildDir)` を呼び、`use { ... }` で wrap
+- `src/nativeMain/kotlin/kolt/cli/BuildCommands.kt` — `doBuild` / `doNativeBuild` / `doCheck` / `doTest` / `doRun` の入口で `ProjectLock.acquire(buildDir)` を呼び、`use { ... }` で wrap (`doCheck` は JVM syntax-only 経路でも `kolt.lock` を rewrite するため lock 対象)
 - `src/nativeMain/kotlin/kolt/cli/DependencyCommands.kt` — `doAdd` / `doInstall` / `doUpdate` の入口で同様の wrap
 - `src/nativeMain/kotlin/kolt/infra/Downloader.kt` — `download()` を temp-path → SHA verify → `rename(2)` のシーケンスに改修。`cleanupStaleTemps(cacheDir)` を追加し `download()` 冒頭で対象 dir のみ sweep
 
@@ -315,7 +316,7 @@ object ProjectLock {
 
 **Implementation Notes**
 
-- Integration: `BuildCommands.kt` の `doBuild`, `doNativeBuild`, `doTest`, `doRun` 入口、`DependencyCommands.kt` の `doAdd`, `doInstall`, `doUpdate` 入口で `ProjectLock.acquire(...).use { ... }` パターンで使用
+- Integration: `BuildCommands.kt` の `doBuild`, `doNativeBuild`, `doCheck`, `doTest`, `doRun` 入口、`DependencyCommands.kt` の `doAdd`, `doInstall`, `doUpdate` 入口で `ProjectLock.acquire(...).use { ... }` パターンで使用
 - Validation: ProjectLockTest で in-process 二重 acquire (別 fd) → 二回目 TimedOut、handle.close() 後の三回目 → 成功、を検証
 - Risks: `flock(2)` は advisory lock なので、kolt 以外のプロセスが同 path に書くと無効。本 spec の Out of Boundary に該当 (kolt しか `build/` を扱わない前提)
 
@@ -373,7 +374,7 @@ internal fun cleanupStaleTemps(cacheDir: String, olderThanSeconds: Long = 86400L
 
 **Responsibilities & Constraints**
 
-- Primary: `doBuild`, `doNativeBuild`, `doTest`, `doRun`, `doAdd`, `doInstall`, `doUpdate` の最初で `ProjectLock.acquire` を呼ぶ。`Err(TimedOut)` は `EXIT_LOCK_TIMEOUT` (新規 exit code、要 design 確認) で exit
+- Primary: `doBuild`, `doNativeBuild`, `doCheck`, `doTest`, `doRun`, `doAdd`, `doInstall`, `doUpdate` の最初で `ProjectLock.acquire` を呼ぶ。`Err(TimedOut)` は `EXIT_LOCK_TIMEOUT` (新規 exit code、要 design 確認) で exit
 - Boundary: ロック対象は build/finalisation を含む call chain 全体。`doRun` は `doBuild` を内包するため `doRun` 入口で 1 度取れば十分
 - Out of scope: `kolt --version` / `kolt --help` / `deps tree` / `fmt` 等の read-only / source-write-only コマンドはロックしない
 
