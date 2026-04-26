@@ -26,7 +26,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
   - _Boundary: ProjectLock_
 
-- [ ] 2.2 (P) Downloader を temp+rename 化し global cache 競合を排除
+- [x] 2.2 (P) Downloader を temp+rename 化し global cache 競合を排除
   - `Downloader.kt` の `download()` を改修: `fopen(destPath, "wb")` を `fopen("$destPath.tmp.${getpid()}", "wb")` に変更、curl 完了 → `fclose` → SHA-256 検証 (既存ロジック維持) の後で `platform.posix.rename(tempPath, destPath)` を呼ぶ
   - 失敗時の `finally { remove(destPath) }` を `finally { remove(tempPath) }` に切替、SHA mismatch 時は rename せず temp を消す
   - `private fun cleanupStaleTemps(cacheDir: String, olderThanSeconds: Long = 86_400L)` を同ファイルに追加、`download()` 冒頭で対象 destPath の親ディレクトリのみ sweep (mtime が 24h 以上前の `*.tmp.*` を delete)
