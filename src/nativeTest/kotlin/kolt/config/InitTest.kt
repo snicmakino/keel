@@ -1,8 +1,10 @@
 package kolt.config
 
+import com.github.michaelbull.result.getOrElse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class InitTest {
@@ -225,5 +227,39 @@ class InitTest {
     assertFalse(isValidGroup("com.9example"))
     assertFalse(isValidGroup("com-example"))
     assertFalse(isValidGroup("com example"))
+  }
+
+  @Test
+  fun isValidGroupRejectsKotlinHardKeywords() {
+    assertFalse(isValidGroup("is"))
+    assertFalse(isValidGroup("com.is.example"))
+    assertFalse(isValidGroup("com.in"))
+    assertFalse(isValidGroup("com.if"))
+    assertFalse(isValidGroup("class"))
+    assertFalse(isValidGroup("package"))
+  }
+
+  @Test
+  fun generatedTomlForAppWithGroupParsesAndKeepsFqMain() {
+    val toml = generateKoltToml("myapp", kind = ScaffoldKind.APP, group = "com.example")
+    val parsed = parseConfig(toml).getOrElse { error("parseConfig failed: $it") }
+    assertEquals("myapp", parsed.name)
+    assertEquals("app", parsed.kind)
+    assertEquals("com.example.myapp.main", parsed.build.main)
+  }
+
+  @Test
+  fun generatedTomlForLibWithGroupParsesAndOmitsMain() {
+    val toml = generateKoltToml("mylib", kind = ScaffoldKind.LIB, group = "com.example")
+    val parsed = parseConfig(toml).getOrElse { error("parseConfig failed: $it") }
+    assertEquals("lib", parsed.kind)
+    assertNull(parsed.build.main)
+  }
+
+  @Test
+  fun generatedTomlForNativeTargetParses() {
+    val toml = generateKoltToml("myapp", target = "linuxX64")
+    val parsed = parseConfig(toml).getOrElse { error("parseConfig failed: $it") }
+    assertEquals("linuxX64", parsed.build.target)
   }
 }

@@ -335,6 +335,34 @@ class DoInitTest {
     assertTrue(fileExists("src/Main.kt"))
     val source = readFileAsString("src/Main.kt").getOrElse { error("read failed") }
     assertFalse(source.startsWith("package "), "no --group must not add package declaration")
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("main = \"main\""), "no --group must keep main = \"main\"")
+  }
+
+  @Test
+  fun groupFlagDuplicateConflictingValueFails() {
+    val exit = doInit(listOf("myapp", "--group", "com.a", "--group", "com.b")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
+  fun groupFlagDuplicateSameValueAccepted() {
+    doInit(listOf("myapp", "--group", "com.example", "--group", "com.example")).getOrElse {
+      error("doInit failed: exit=$it")
+    }
+    assertTrue(fileExists("src/com/example/myapp/Main.kt"))
+  }
+
+  @Test
+  fun groupFlagWithoutValueFails() {
+    val exit = doInit(listOf("myapp", "--group")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
+  fun groupFlagFollowedByAnotherFlagFails() {
+    val exit = doInit(listOf("myapp", "--group", "--lib")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
   }
 
   @Test

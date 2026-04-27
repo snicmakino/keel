@@ -114,5 +114,45 @@ fun projectNameToPackageSegment(name: String): String {
 
 private val packageSegmentPattern = Regex("""^[a-zA-Z_][a-zA-Z0-9_]*$""")
 
-fun isValidGroup(group: String): Boolean =
-  group.isNotEmpty() && group.split('.').all { packageSegmentPattern.matches(it) }
+// Kotlin hard keywords cannot appear unbackticked in a package declaration.
+// Generating `package com.is.example` would compile-fail on the very first
+// build, so the parser must catch these short segment names that real users
+// reach for (com.is, com.in, etc.).
+private val KOTLIN_HARD_KEYWORDS =
+  setOf(
+    "as",
+    "break",
+    "class",
+    "continue",
+    "do",
+    "else",
+    "false",
+    "for",
+    "fun",
+    "if",
+    "in",
+    "interface",
+    "is",
+    "null",
+    "object",
+    "package",
+    "return",
+    "super",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "var",
+    "when",
+    "while",
+  )
+
+fun isValidGroup(group: String): Boolean {
+  if (group.isEmpty()) return false
+  return group.split('.').all { segment ->
+    packageSegmentPattern.matches(segment) && segment !in KOTLIN_HARD_KEYWORDS
+  }
+}
