@@ -56,7 +56,10 @@ internal fun doInit(args: List<String>): Result<Unit, Int> {
     return Err(EXIT_CONFIG_ERROR)
   }
 
-  return scaffoldProject(".", ScaffoldOptions(projectName, parsed.kind, parsed.target))
+  return scaffoldProject(
+    ".",
+    ScaffoldOptions(projectName, parsed.kind, parsed.target, parsed.group),
+  )
 }
 
 internal fun doAdd(args: List<String>): Result<Unit, Int> = withDependencyLock { doAddInner(args) }

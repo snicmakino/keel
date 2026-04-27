@@ -14,7 +14,9 @@ import kolt.config.generateLibKt
 import kolt.config.generateLibTestKt
 import kolt.config.generateMainKt
 import kolt.config.generateTestKt
-import kolt.infra.ensureDirectory
+import kolt.config.isValidGroup
+import kolt.config.projectNameToPackageSegment
+import kolt.infra.ensureDirectoryRecursive
 import kolt.infra.eprintln
 import kolt.infra.executeCommand
 import kolt.infra.executeCommandQuiet
@@ -26,18 +28,21 @@ internal data class ScaffoldOptions(
   val projectName: String,
   val kind: ScaffoldKind = ScaffoldKind.APP,
   val target: String = DEFAULT_SCAFFOLD_TARGET,
+  val group: String? = null,
 )
 
 internal data class ParsedInitArgs(
   val projectName: String?,
   val kind: ScaffoldKind = ScaffoldKind.APP,
   val target: String = DEFAULT_SCAFFOLD_TARGET,
+  val group: String? = null,
 )
 
 internal fun parseInitArgs(args: List<String>): Result<ParsedInitArgs, String> {
   var projectName: String? = null
   var kind: ScaffoldKind? = null
   var target: String? = null
+  var group: String? = null
   val iter = args.iterator()
   while (iter.hasNext()) {
     val arg = iter.next()
@@ -59,6 +64,16 @@ internal fun parseInitArgs(args: List<String>): Result<ParsedInitArgs, String> {
             return Err(it)
           }
       }
+      arg == "--group" || arg.startsWith("--group=") -> {
+        val value =
+          readFlagValue(arg, "--group", iter).getOrElse {
+            return Err(it)
+          }
+        group =
+          mergeGroup(group, value).getOrElse {
+            return Err(it)
+          }
+      }
       arg.startsWith("--") -> return Err("unknown flag '$arg'")
       else -> {
         if (projectName != null) return Err("unexpected positional argument '$arg'")
@@ -71,6 +86,7 @@ internal fun parseInitArgs(args: List<String>): Result<ParsedInitArgs, String> {
       projectName = projectName,
       kind = kind ?: ScaffoldKind.APP,
       target = target ?: DEFAULT_SCAFFOLD_TARGET,
+      group = group,
     )
   )
 }
@@ -108,6 +124,16 @@ private fun mergeTarget(current: String?, value: String): Result<String, String>
   return Ok(value)
 }
 
+private fun mergeGroup(current: String?, value: String): Result<String, String> {
+  if (!isValidGroup(value)) {
+    return Err("invalid group '$value' (must be a dotted Kotlin package, e.g. com.example)")
+  }
+  if (current != null && current != value) {
+    return Err("--group already set to '$current'; cannot also set '$value'")
+  }
+  return Ok(value)
+}
+
 private const val SRC_DIR = "src"
 private const val TEST_DIR = "test"
 private const val GITIGNORE = ".gitignore"
@@ -123,25 +149,29 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
   }
 
   val tomlPath = resolveInTarget(targetDir, KOLT_TOML)
-  writeFileAsString(tomlPath, generateKoltToml(options.projectName, options.kind, options.target))
+  writeFileAsString(
+      tomlPath,
+      generateKoltToml(options.projectName, options.kind, options.target, options.group),
+    )
     .getOrElse { error ->
       eprintln("error: could not write ${error.path}")
       return Err(EXIT_BUILD_ERROR)
     }
   println("created $tomlPath")
 
-  val srcDir = resolveInTarget(targetDir, SRC_DIR)
-  if (!fileExists(srcDir)) {
-    ensureDirectory(srcDir).getOrElse { error ->
-      eprintln("error: could not create directory ${error.path}")
-      return Err(EXIT_BUILD_ERROR)
-    }
+  val packageDecl = options.group?.let { "$it.${projectNameToPackageSegment(options.projectName)}" }
+  val packageRelPath = packageDecl?.replace('.', '/')
+
+  val srcDir = nestedDir(resolveInTarget(targetDir, SRC_DIR), packageRelPath)
+  ensureDirectoryRecursive(srcDir).getOrElse { error ->
+    eprintln("error: could not create directory ${error.path}")
+    return Err(EXIT_BUILD_ERROR)
   }
 
   val (sourceFileName, sourceContent) =
     when (options.kind) {
-      ScaffoldKind.APP -> "Main.kt" to generateMainKt()
-      ScaffoldKind.LIB -> "Lib.kt" to generateLibKt()
+      ScaffoldKind.APP -> "Main.kt" to generateMainKt(packageDecl)
+      ScaffoldKind.LIB -> "Lib.kt" to generateLibKt(packageDecl)
     }
   val sourcePath = "$srcDir/$sourceFileName"
   if (!fileExists(sourcePath)) {
@@ -152,18 +182,16 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
     println("created $sourcePath")
   }
 
-  val testDir = resolveInTarget(targetDir, TEST_DIR)
-  if (!fileExists(testDir)) {
-    ensureDirectory(testDir).getOrElse { error ->
-      eprintln("error: could not create directory ${error.path}")
-      return Err(EXIT_BUILD_ERROR)
-    }
+  val testDir = nestedDir(resolveInTarget(targetDir, TEST_DIR), packageRelPath)
+  ensureDirectoryRecursive(testDir).getOrElse { error ->
+    eprintln("error: could not create directory ${error.path}")
+    return Err(EXIT_BUILD_ERROR)
   }
 
   val (testFileName, testContent) =
     when (options.kind) {
-      ScaffoldKind.APP -> "MainTest.kt" to generateTestKt()
-      ScaffoldKind.LIB -> "LibTest.kt" to generateLibTestKt()
+      ScaffoldKind.APP -> "MainTest.kt" to generateTestKt(packageDecl)
+      ScaffoldKind.LIB -> "LibTest.kt" to generateLibTestKt(packageDecl)
     }
   val testPath = "$testDir/$testFileName"
   if (!fileExists(testPath)) {
@@ -202,6 +230,9 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
 
 private fun resolveInTarget(targetDir: String, name: String): String =
   if (targetDir.isCurrent()) name else "$targetDir/$name"
+
+private fun nestedDir(base: String, packageRelPath: String?): String =
+  if (packageRelPath == null) base else "$base/$packageRelPath"
 
 private fun String.isCurrent(): Boolean = isEmpty() || this == "."
 

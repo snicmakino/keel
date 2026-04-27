@@ -141,4 +141,89 @@ class InitTest {
       "jvm_target must be omitted for non-jvm targets",
     )
   }
+
+  @Test
+  fun generateTomlAppWithGroupWritesFqMain() {
+    val toml = generateKoltToml("myapp", kind = ScaffoldKind.APP, group = "com.example")
+    assertTrue(toml.contains("main = \"com.example.myapp.main\""))
+  }
+
+  @Test
+  fun generateTomlLibWithGroupStillOmitsMain() {
+    val toml = generateKoltToml("mylib", kind = ScaffoldKind.LIB, group = "com.example")
+    assertFalse(toml.lineSequence().any { it.trimStart().startsWith("main") })
+  }
+
+  @Test
+  fun generateTomlAppWithGroupSanitizesHyphenInName() {
+    val toml = generateKoltToml("my-app", kind = ScaffoldKind.APP, group = "com.example")
+    assertTrue(toml.contains("main = \"com.example.my_app.main\""))
+  }
+
+  @Test
+  fun generateMainKtWithPackageDeclaresPackage() {
+    val source = generateMainKt(packageDecl = "com.example.myapp")
+    assertTrue(source.startsWith("package com.example.myapp\n"))
+    assertTrue(source.contains("fun main()"))
+  }
+
+  @Test
+  fun generateLibKtWithPackageDeclaresPackage() {
+    val source = generateLibKt(packageDecl = "com.example.mylib")
+    assertTrue(source.startsWith("package com.example.mylib\n"))
+    assertTrue(source.contains("fun greet()"))
+  }
+
+  @Test
+  fun generateTestKtWithPackageDeclaresPackage() {
+    val source = generateTestKt(packageDecl = "com.example.myapp")
+    assertTrue(source.startsWith("package com.example.myapp\n"))
+    assertTrue(source.contains("@Test"))
+  }
+
+  @Test
+  fun generateLibTestKtWithPackageDeclaresPackage() {
+    val source = generateLibTestKt(packageDecl = "com.example.mylib")
+    assertTrue(source.startsWith("package com.example.mylib\n"))
+    assertTrue(source.contains("greet()"))
+  }
+
+  @Test
+  fun projectNameToPackageSegmentReplacesHyphenAndDot() {
+    assertEquals("my_app", projectNameToPackageSegment("my-app"))
+    assertEquals("my_app", projectNameToPackageSegment("my.app"))
+    assertEquals("a_b_c", projectNameToPackageSegment("a-b.c"))
+  }
+
+  @Test
+  fun projectNameToPackageSegmentPrefixesDigitStart() {
+    assertEquals("_1foo", projectNameToPackageSegment("1foo"))
+    assertEquals("_9", projectNameToPackageSegment("9"))
+  }
+
+  @Test
+  fun projectNameToPackageSegmentLeavesPureNamesUntouched() {
+    assertEquals("myapp", projectNameToPackageSegment("myapp"))
+    assertEquals("Foo_Bar", projectNameToPackageSegment("Foo_Bar"))
+  }
+
+  @Test
+  fun isValidGroupAcceptsDottedSegments() {
+    assertTrue(isValidGroup("com"))
+    assertTrue(isValidGroup("com.example"))
+    assertTrue(isValidGroup("com.example.foo"))
+    assertTrue(isValidGroup("_priv.x"))
+  }
+
+  @Test
+  fun isValidGroupRejectsMalformed() {
+    assertFalse(isValidGroup(""))
+    assertFalse(isValidGroup("com."))
+    assertFalse(isValidGroup(".com"))
+    assertFalse(isValidGroup("com..example"))
+    assertFalse(isValidGroup("9com"))
+    assertFalse(isValidGroup("com.9example"))
+    assertFalse(isValidGroup("com-example"))
+    assertFalse(isValidGroup("com example"))
+  }
 }

@@ -251,6 +251,93 @@ class DoInitTest {
   }
 
   @Test
+  fun groupFlagNestsSourceUnderGroupPath() {
+    doInit(listOf("myapp", "--group", "com.example")).getOrElse { error("doInit failed: exit=$it") }
+
+    assertTrue(fileExists("src/com/example/myapp/Main.kt"))
+    assertFalse(fileExists("src/Main.kt"), "non-nested Main.kt must not exist with --group")
+  }
+
+  @Test
+  fun groupFlagNestsTestUnderGroupPath() {
+    doInit(listOf("myapp", "--group", "com.example")).getOrElse { error("doInit failed: exit=$it") }
+
+    assertTrue(fileExists("test/com/example/myapp/MainTest.kt"))
+    assertFalse(fileExists("test/MainTest.kt"))
+  }
+
+  @Test
+  fun groupFlagAddsPackageDeclaration() {
+    doInit(listOf("myapp", "--group", "com.example")).getOrElse { error("doInit failed: exit=$it") }
+
+    val source =
+      readFileAsString("src/com/example/myapp/Main.kt").getOrElse { error("read failed") }
+    assertTrue(source.startsWith("package com.example.myapp\n"))
+  }
+
+  @Test
+  fun groupFlagWritesFqMainToToml() {
+    doInit(listOf("myapp", "--group", "com.example")).getOrElse { error("doInit failed: exit=$it") }
+
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("main = \"com.example.myapp.main\""))
+  }
+
+  @Test
+  fun groupFlagWithLibNestsLibKtAndOmitsMain() {
+    doInit(listOf("mylib", "--lib", "--group", "com.example")).getOrElse {
+      error("doInit failed: exit=$it")
+    }
+
+    assertTrue(fileExists("src/com/example/mylib/Lib.kt"))
+    assertTrue(fileExists("test/com/example/mylib/LibTest.kt"))
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertFalse(
+      toml.lineSequence().any { it.trimStart().startsWith("main") },
+      "lib + group must still omit main",
+    )
+  }
+
+  @Test
+  fun groupFlagSanitizesHyphenInProjectName() {
+    doInit(listOf("my-app", "--group", "com.example")).getOrElse {
+      error("doInit failed: exit=$it")
+    }
+
+    assertTrue(fileExists("src/com/example/my_app/Main.kt"))
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("main = \"com.example.my_app.main\""))
+  }
+
+  @Test
+  fun groupFlagEqualsFormAccepted() {
+    doInit(listOf("myapp", "--group=com.example")).getOrElse { error("doInit failed: exit=$it") }
+
+    assertTrue(fileExists("src/com/example/myapp/Main.kt"))
+  }
+
+  @Test
+  fun groupFlagRejectsInvalidGroup() {
+    val exit = doInit(listOf("myapp", "--group", "9bad")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
+  fun groupFlagRejectsEmptyValue() {
+    val exit = doInit(listOf("myapp", "--group=")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
+  fun noGroupFlagKeepsTopLevelLayout() {
+    doInit(listOf("myapp")).getOrElse { error("doInit failed: exit=$it") }
+
+    assertTrue(fileExists("src/Main.kt"))
+    val source = readFileAsString("src/Main.kt").getOrElse { error("read failed") }
+    assertFalse(source.startsWith("package "), "no --group must not add package declaration")
+  }
+
+  @Test
   fun skipsGitInitInsideExistingWorktree() {
     // Make tmpDir a real repo, then run doInit from a subdirectory.
     executeCommand(listOf("git", "init", "-q")).getOrElse { error("parent git init failed") }

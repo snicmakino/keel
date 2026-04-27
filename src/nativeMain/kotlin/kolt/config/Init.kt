@@ -17,6 +17,7 @@ fun generateKoltToml(
   projectName: String,
   kind: ScaffoldKind = ScaffoldKind.APP,
   target: String = DEFAULT_SCAFFOLD_TARGET,
+  group: String? = null,
 ): String = buildString {
   appendLine("""name = "$projectName"""")
   appendLine("""version = "0.1.0"""")
@@ -33,12 +34,18 @@ fun generateKoltToml(
     appendLine("""jvm_target = "17"""")
   }
   if (kind == ScaffoldKind.APP) {
-    appendLine("""main = "main"""")
+    val mainFqn =
+      if (group == null) "main" else "$group.${projectNameToPackageSegment(projectName)}.main"
+    appendLine("""main = "$mainFqn"""")
   }
   appendLine("""sources = ["src"]""")
 }
 
-fun generateTestKt(): String = buildString {
+fun generateTestKt(packageDecl: String? = null): String = buildString {
+  if (packageDecl != null) {
+    appendLine("package $packageDecl")
+    appendLine()
+  }
   appendLine("import kotlin.test.Test")
   appendLine("import kotlin.test.assertEquals")
   appendLine()
@@ -50,17 +57,29 @@ fun generateTestKt(): String = buildString {
   appendLine("}")
 }
 
-fun generateMainKt(): String = buildString {
+fun generateMainKt(packageDecl: String? = null): String = buildString {
+  if (packageDecl != null) {
+    appendLine("package $packageDecl")
+    appendLine()
+  }
   appendLine("fun main() {")
   appendLine("""    println("Hello, world!")""")
   appendLine("}")
 }
 
-fun generateLibKt(): String = buildString {
+fun generateLibKt(packageDecl: String? = null): String = buildString {
+  if (packageDecl != null) {
+    appendLine("package $packageDecl")
+    appendLine()
+  }
   appendLine("""fun greet(): String = "Hello, world!"""")
 }
 
-fun generateLibTestKt(): String = buildString {
+fun generateLibTestKt(packageDecl: String? = null): String = buildString {
+  if (packageDecl != null) {
+    appendLine("package $packageDecl")
+    appendLine()
+  }
   appendLine("import kotlin.test.Test")
   appendLine("import kotlin.test.assertEquals")
   appendLine()
@@ -83,3 +102,17 @@ private val validProjectNamePattern = Regex("""^[a-zA-Z0-9][a-zA-Z0-9._-]*$""")
 
 fun isValidProjectName(name: String): Boolean =
   name.isNotEmpty() && validProjectNamePattern.matches(name)
+
+// Lowers a kolt project name (validated by isValidProjectName) into a
+// Kotlin package segment. Hyphens and dots become underscores; a leading
+// digit gets an underscore prefix because Kotlin identifiers must not
+// start with a digit. Total — assumes the caller has validated the name.
+fun projectNameToPackageSegment(name: String): String {
+  val replaced = name.replace('-', '_').replace('.', '_')
+  return if (replaced[0].isDigit()) "_$replaced" else replaced
+}
+
+private val packageSegmentPattern = Regex("""^[a-zA-Z_][a-zA-Z0-9_]*$""")
+
+fun isValidGroup(group: String): Boolean =
+  group.isNotEmpty() && group.split('.').all { packageSegmentPattern.matches(it) }
