@@ -87,4 +87,36 @@ class InitTest {
     assertFalse(isValidProjectName("-start-with-dash"))
     assertFalse(isValidProjectName(".hidden"))
   }
+
+  @Test
+  fun generateTomlForLibUsesKindLib() {
+    val toml = generateKoltToml("mylib", ScaffoldKind.LIB)
+    assertTrue(toml.contains("kind = \"lib\""))
+  }
+
+  @Test
+  fun generateTomlForLibOmitsMain() {
+    val toml = generateKoltToml("mylib", ScaffoldKind.LIB)
+    assertFalse(toml.contains("main = "), "library kolt.toml must not declare main")
+  }
+
+  @Test
+  fun generateTomlForAppOmitsKindLine() {
+    val toml = generateKoltToml("myapp", ScaffoldKind.APP)
+    assertFalse(toml.contains("kind = "), "app kolt.toml should rely on default kind")
+  }
+
+  @Test
+  fun generateLibKtContainsGreetFunction() {
+    val source = generateLibKt()
+    assertTrue(source.contains("fun greet()"))
+    assertTrue(source.contains("Hello, world!"))
+  }
+
+  @Test
+  fun generateLibTestKtCallsGreet() {
+    val source = generateLibTestKt()
+    assertTrue(source.contains("@Test"))
+    assertTrue(source.contains("greet()"))
+  }
 }

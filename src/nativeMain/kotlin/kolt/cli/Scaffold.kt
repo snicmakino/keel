@@ -5,8 +5,11 @@ import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
+import kolt.config.ScaffoldKind
 import kolt.config.generateGitignore
 import kolt.config.generateKoltToml
+import kolt.config.generateLibKt
+import kolt.config.generateLibTestKt
 import kolt.config.generateMainKt
 import kolt.config.generateTestKt
 import kolt.infra.ensureDirectory
@@ -17,7 +20,38 @@ import kolt.infra.fileExists
 import kolt.infra.formatProcessError
 import kolt.infra.writeFileAsString
 
-internal data class ScaffoldOptions(val projectName: String)
+internal data class ScaffoldOptions(
+  val projectName: String,
+  val kind: ScaffoldKind = ScaffoldKind.APP,
+)
+
+internal data class ParsedInitArgs(
+  val projectName: String?,
+  val kind: ScaffoldKind = ScaffoldKind.APP,
+)
+
+internal fun parseInitArgs(args: List<String>): Result<ParsedInitArgs, String> {
+  var projectName: String? = null
+  var kind: ScaffoldKind? = null
+  for (arg in args) {
+    when (arg) {
+      "--lib",
+      "--app" -> {
+        val newKind = if (arg == "--lib") ScaffoldKind.LIB else ScaffoldKind.APP
+        if (kind != null && kind != newKind) {
+          return Err("--app and --lib are mutually exclusive")
+        }
+        kind = newKind
+      }
+      else -> {
+        if (arg.startsWith("--")) return Err("unknown flag '$arg'")
+        if (projectName != null) return Err("unexpected positional argument '$arg'")
+        projectName = arg
+      }
+    }
+  }
+  return Ok(ParsedInitArgs(projectName, kind ?: ScaffoldKind.APP))
+}
 
 private const val SRC_DIR = "src"
 private const val TEST_DIR = "test"
@@ -34,7 +68,8 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
   }
 
   val tomlPath = resolveInTarget(targetDir, KOLT_TOML)
-  writeFileAsString(tomlPath, generateKoltToml(options.projectName)).getOrElse { error ->
+  writeFileAsString(tomlPath, generateKoltToml(options.projectName, options.kind)).getOrElse { error
+    ->
     eprintln("error: could not write ${error.path}")
     return Err(EXIT_BUILD_ERROR)
   }
@@ -48,13 +83,18 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
     }
   }
 
-  val mainKtPath = "$srcDir/Main.kt"
-  if (!fileExists(mainKtPath)) {
-    writeFileAsString(mainKtPath, generateMainKt()).getOrElse { error ->
+  val (sourceFileName, sourceContent) =
+    when (options.kind) {
+      ScaffoldKind.APP -> "Main.kt" to generateMainKt()
+      ScaffoldKind.LIB -> "Lib.kt" to generateLibKt()
+    }
+  val sourcePath = "$srcDir/$sourceFileName"
+  if (!fileExists(sourcePath)) {
+    writeFileAsString(sourcePath, sourceContent).getOrElse { error ->
       eprintln("error: could not write ${error.path}")
       return Err(EXIT_BUILD_ERROR)
     }
-    println("created $mainKtPath")
+    println("created $sourcePath")
   }
 
   val testDir = resolveInTarget(targetDir, TEST_DIR)
@@ -65,13 +105,18 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
     }
   }
 
-  val testKtPath = "$testDir/MainTest.kt"
-  if (!fileExists(testKtPath)) {
-    writeFileAsString(testKtPath, generateTestKt()).getOrElse { error ->
+  val (testFileName, testContent) =
+    when (options.kind) {
+      ScaffoldKind.APP -> "MainTest.kt" to generateTestKt()
+      ScaffoldKind.LIB -> "LibTest.kt" to generateLibTestKt()
+    }
+  val testPath = "$testDir/$testFileName"
+  if (!fileExists(testPath)) {
+    writeFileAsString(testPath, testContent).getOrElse { error ->
       eprintln("error: could not write ${error.path}")
       return Err(EXIT_BUILD_ERROR)
     }
-    println("created $testKtPath")
+    println("created $testPath")
   }
 
   val gitignorePath = resolveInTarget(targetDir, GITIGNORE)

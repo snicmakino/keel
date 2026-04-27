@@ -28,20 +28,25 @@ internal fun doInit(args: List<String>): Result<Unit, Int> {
     return Err(EXIT_CONFIG_ERROR)
   }
 
-  val projectName =
-    if (args.isNotEmpty()) {
-      args[0]
-    } else {
-      val cwd = memScoped {
-        val buf = allocArray<ByteVar>(PATH_MAX)
-        getcwd(buf, PATH_MAX.toULong())?.toKString()
-      }
-      if (cwd == null) {
-        eprintln("error: could not determine current directory")
-        return Err(EXIT_CONFIG_ERROR)
-      }
-      inferProjectName(cwd)
+  val parsed =
+    parseInitArgs(args).getOrElse { msg ->
+      eprintln("error: $msg")
+      return Err(EXIT_CONFIG_ERROR)
     }
+
+  val projectName =
+    parsed.projectName
+      ?: run {
+        val cwd = memScoped {
+          val buf = allocArray<ByteVar>(PATH_MAX)
+          getcwd(buf, PATH_MAX.toULong())?.toKString()
+        }
+        if (cwd == null) {
+          eprintln("error: could not determine current directory")
+          return Err(EXIT_CONFIG_ERROR)
+        }
+        inferProjectName(cwd)
+      }
 
   if (!isValidProjectName(projectName)) {
     eprintln("error: invalid project name '$projectName'")
@@ -51,7 +56,7 @@ internal fun doInit(args: List<String>): Result<Unit, Int> {
     return Err(EXIT_CONFIG_ERROR)
   }
 
-  return scaffoldProject(".", ScaffoldOptions(projectName))
+  return scaffoldProject(".", ScaffoldOptions(projectName, parsed.kind))
 }
 
 internal fun doAdd(args: List<String>): Result<Unit, Int> = withDependencyLock { doAddInner(args) }

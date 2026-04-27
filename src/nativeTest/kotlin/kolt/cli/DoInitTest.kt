@@ -1,5 +1,6 @@
 package kolt.cli
 
+import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
 import kolt.infra.ensureDirectoryRecursive
 import kolt.infra.executeCommand
@@ -107,6 +108,77 @@ class DoInitTest {
 
     val content = readFileAsString(".git").getOrElse { error("read failed") }
     assertEquals("gitdir: ../other/.git/worktrees/w1\n", content)
+  }
+
+  @Test
+  fun libFlagWritesLibKtNotMainKt() {
+    doInit(listOf("mylib", "--lib")).getOrElse { error("doInit failed: exit=$it") }
+
+    assertTrue(fileExists("src/Lib.kt"), "src/Lib.kt must exist for --lib")
+    assertFalse(fileExists("src/Main.kt"), "src/Main.kt must not exist for --lib")
+  }
+
+  @Test
+  fun libFlagWritesLibTestNotMainTest() {
+    doInit(listOf("mylib", "--lib")).getOrElse { error("doInit failed: exit=$it") }
+
+    assertTrue(fileExists("test/LibTest.kt"), "test/LibTest.kt must exist for --lib")
+    assertFalse(fileExists("test/MainTest.kt"), "test/MainTest.kt must not exist for --lib")
+  }
+
+  @Test
+  fun libFlagOmitsMainFromKoltToml() {
+    doInit(listOf("mylib", "--lib")).getOrElse { error("doInit failed: exit=$it") }
+
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("kind = \"lib\""), "kolt.toml must declare kind = \"lib\"")
+    assertFalse(
+      toml.lineSequence().any { it.trimStart().startsWith("main") },
+      "kolt.toml must not declare main for --lib",
+    )
+  }
+
+  @Test
+  fun appFlagAcceptedExplicitly() {
+    doInit(listOf("myapp", "--app")).getOrElse { error("doInit failed: exit=$it") }
+
+    assertTrue(fileExists("src/Main.kt"))
+    assertTrue(fileExists("test/MainTest.kt"))
+  }
+
+  @Test
+  fun unknownFlagFails() {
+    val exit = doInit(listOf("myapp", "--bogus")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
+  fun mutuallyExclusiveKindFlagsFail() {
+    val exit = doInit(listOf("myapp", "--lib", "--app")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
+  fun rejectsWhenKoltTomlAlreadyExists() {
+    writeFileAsString("kolt.toml", "name = \"seed\"\n").getOrElse { error("seed failed") }
+
+    val exit = doInit(listOf("my-app")).getError()
+
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+    val content = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertEquals("name = \"seed\"\n", content, "existing kolt.toml must not be overwritten")
+  }
+
+  @Test
+  fun infersProjectNameFromCwdWhenArgsEmpty() {
+    doInit(emptyList()).getOrElse { error("doInit failed: exit=$it") }
+
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    val expectedName = tmpDir.substringAfterLast('/')
+    assertTrue(
+      toml.contains("name = \"$expectedName\""),
+      "expected name = \"$expectedName\" in toml: $toml",
+    )
   }
 
   @Test
