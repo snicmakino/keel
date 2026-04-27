@@ -182,6 +182,44 @@ class DoInitTest {
   }
 
   @Test
+  fun targetFlagWritesNativeTargetIntoToml() {
+    doInit(listOf("myapp", "--target", "linuxX64")).getOrElse { error("doInit failed: exit=$it") }
+
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("target = \"linuxX64\""))
+    assertFalse(
+      toml.lineSequence().any { it.trimStart().startsWith("jvm_target") },
+      "jvm_target must be omitted for non-jvm targets",
+    )
+  }
+
+  @Test
+  fun targetFlagEqualsFormAccepted() {
+    doInit(listOf("myapp", "--target=linuxX64")).getOrElse { error("doInit failed: exit=$it") }
+
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("target = \"linuxX64\""))
+  }
+
+  @Test
+  fun targetFlagWithoutValueFails() {
+    val exit = doInit(listOf("myapp", "--target")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
+  fun targetFlagWithInvalidValueFails() {
+    val exit = doInit(listOf("myapp", "--target", "wasm")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
+  fun targetFlagDuplicateConflictingValueFails() {
+    val exit = doInit(listOf("myapp", "--target", "jvm", "--target", "linuxX64")).getError()
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
   fun skipsGitInitInsideExistingWorktree() {
     // Make tmpDir a real repo, then run doInit from a subdirectory.
     executeCommand(listOf("git", "init", "-q")).getOrElse { error("parent git init failed") }

@@ -119,4 +119,26 @@ class InitTest {
     assertTrue(source.contains("@Test"))
     assertTrue(source.contains("greet()"))
   }
+
+  @Test
+  fun generateTomlForJvmTargetIncludesJvmTarget() {
+    val toml = generateKoltToml("myapp", target = "jvm")
+    assertTrue(toml.contains("target = \"jvm\""))
+    assertTrue(toml.contains("jvm_target = "))
+  }
+
+  @Test
+  fun generateTomlForLinuxX64TargetWritesNativeTarget() {
+    val toml = generateKoltToml("myapp", target = "linuxX64")
+    assertTrue(toml.contains("target = \"linuxX64\""))
+  }
+
+  @Test
+  fun generateTomlForNativeTargetOmitsJvmTarget() {
+    val toml = generateKoltToml("myapp", target = "linuxX64")
+    assertFalse(
+      toml.lineSequence().any { it.trimStart().startsWith("jvm_target") },
+      "jvm_target must be omitted for non-jvm targets",
+    )
+  }
 }

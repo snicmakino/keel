@@ -5,7 +5,9 @@ import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
+import kolt.config.DEFAULT_SCAFFOLD_TARGET
 import kolt.config.ScaffoldKind
+import kolt.config.VALID_TARGETS
 import kolt.config.generateGitignore
 import kolt.config.generateKoltToml
 import kolt.config.generateLibKt
@@ -23,34 +25,70 @@ import kolt.infra.writeFileAsString
 internal data class ScaffoldOptions(
   val projectName: String,
   val kind: ScaffoldKind = ScaffoldKind.APP,
+  val target: String = DEFAULT_SCAFFOLD_TARGET,
 )
 
 internal data class ParsedInitArgs(
   val projectName: String?,
   val kind: ScaffoldKind = ScaffoldKind.APP,
+  val target: String = DEFAULT_SCAFFOLD_TARGET,
 )
 
 internal fun parseInitArgs(args: List<String>): Result<ParsedInitArgs, String> {
   var projectName: String? = null
   var kind: ScaffoldKind? = null
-  for (arg in args) {
-    when (arg) {
-      "--lib",
-      "--app" -> {
+  var target: String? = null
+  val iter = args.iterator()
+  while (iter.hasNext()) {
+    val arg = iter.next()
+    when {
+      arg == "--lib" || arg == "--app" -> {
         val newKind = if (arg == "--lib") ScaffoldKind.LIB else ScaffoldKind.APP
         if (kind != null && kind != newKind) {
           return Err("--app and --lib are mutually exclusive")
         }
         kind = newKind
       }
+      arg == "--target" -> {
+        if (!iter.hasNext()) return Err("--target requires a value")
+        val newTarget =
+          setTargetOnce(target, iter.next()).getOrElse {
+            return Err(it)
+          }
+        target = newTarget
+      }
+      arg.startsWith("--target=") -> {
+        val newTarget =
+          setTargetOnce(target, arg.removePrefix("--target=")).getOrElse {
+            return Err(it)
+          }
+        target = newTarget
+      }
+      arg.startsWith("--") -> return Err("unknown flag '$arg'")
       else -> {
-        if (arg.startsWith("--")) return Err("unknown flag '$arg'")
         if (projectName != null) return Err("unexpected positional argument '$arg'")
         projectName = arg
       }
     }
   }
-  return Ok(ParsedInitArgs(projectName, kind ?: ScaffoldKind.APP))
+  return Ok(
+    ParsedInitArgs(
+      projectName = projectName,
+      kind = kind ?: ScaffoldKind.APP,
+      target = target ?: DEFAULT_SCAFFOLD_TARGET,
+    )
+  )
+}
+
+private fun setTargetOnce(current: String?, value: String): Result<String, String> {
+  if (value.isEmpty()) return Err("--target requires a value")
+  if (value !in VALID_TARGETS) {
+    return Err("invalid target '$value' (valid: ${VALID_TARGETS.joinToString(", ")})")
+  }
+  if (current != null && current != value) {
+    return Err("--target may only be specified once")
+  }
+  return Ok(value)
 }
 
 private const val SRC_DIR = "src"
@@ -68,11 +106,11 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
   }
 
   val tomlPath = resolveInTarget(targetDir, KOLT_TOML)
-  writeFileAsString(tomlPath, generateKoltToml(options.projectName, options.kind)).getOrElse { error
-    ->
-    eprintln("error: could not write ${error.path}")
-    return Err(EXIT_BUILD_ERROR)
-  }
+  writeFileAsString(tomlPath, generateKoltToml(options.projectName, options.kind, options.target))
+    .getOrElse { error ->
+      eprintln("error: could not write ${error.path}")
+      return Err(EXIT_BUILD_ERROR)
+    }
   println("created $tomlPath")
 
   val srcDir = resolveInTarget(targetDir, SRC_DIR)
