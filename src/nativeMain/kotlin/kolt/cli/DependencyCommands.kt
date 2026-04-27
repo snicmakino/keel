@@ -12,55 +12,9 @@ import kolt.concurrency.ProjectLock
 import kolt.config.*
 import kolt.infra.*
 import kolt.resolve.*
-import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.allocArray
-import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.toKString
-import platform.posix.PATH_MAX
-import platform.posix.getcwd
 import platform.posix.getenv
-
-@OptIn(ExperimentalForeignApi::class)
-internal fun doInit(args: List<String>): Result<Unit, Int> {
-  if (fileExists(KOLT_TOML)) {
-    eprintln("error: $KOLT_TOML already exists")
-    return Err(EXIT_CONFIG_ERROR)
-  }
-
-  val parsed =
-    parseInitArgs(args).getOrElse { msg ->
-      eprintln("error: $msg")
-      return Err(EXIT_CONFIG_ERROR)
-    }
-
-  val projectName =
-    parsed.projectName
-      ?: run {
-        val cwd = memScoped {
-          val buf = allocArray<ByteVar>(PATH_MAX)
-          getcwd(buf, PATH_MAX.toULong())?.toKString()
-        }
-        if (cwd == null) {
-          eprintln("error: could not determine current directory")
-          return Err(EXIT_CONFIG_ERROR)
-        }
-        inferProjectName(cwd)
-      }
-
-  if (!isValidProjectName(projectName)) {
-    eprintln("error: invalid project name '$projectName'")
-    eprintln(
-      "  project name must start with a letter or digit and contain only letters, digits, '.', '-', '_'"
-    )
-    return Err(EXIT_CONFIG_ERROR)
-  }
-
-  return scaffoldProject(
-    ".",
-    ScaffoldOptions(projectName, parsed.kind, parsed.target, parsed.group),
-  )
-}
 
 internal fun doAdd(args: List<String>): Result<Unit, Int> = withDependencyLock { doAddInner(args) }
 

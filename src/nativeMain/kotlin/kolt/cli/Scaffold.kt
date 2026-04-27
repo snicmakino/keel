@@ -15,6 +15,7 @@ import kolt.config.generateLibTestKt
 import kolt.config.generateMainKt
 import kolt.config.generateTestKt
 import kolt.config.isValidGroup
+import kolt.config.isValidProjectName
 import kolt.config.projectNameToPackageSegment
 import kolt.infra.ensureDirectoryRecursive
 import kolt.infra.eprintln
@@ -124,6 +125,14 @@ private fun mergeTarget(current: String?, value: String): Result<String, String>
   return Ok(value)
 }
 
+internal fun validateProjectName(name: String): Result<Unit, String> {
+  if (isValidProjectName(name)) return Ok(Unit)
+  return Err(
+    "invalid project name '$name'\n" +
+      "  project name must start with a letter or digit and contain only letters, digits, '.', '-', '_'"
+  )
+}
+
 private fun mergeGroup(current: String?, value: String): Result<String, String> {
   if (!isValidGroup(value)) {
     return Err("invalid group '$value' (must be a dotted Kotlin package, e.g. com.example)")
@@ -145,7 +154,7 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
   // "<name>/ must not exist" cannot be enforced from inside ensureDirectory.
   if (!targetDir.isCurrent() && !fileExists(targetDir)) {
     eprintln("error: target directory '$targetDir' does not exist")
-    return Err(EXIT_BUILD_ERROR)
+    return Err(EXIT_CONFIG_ERROR)
   }
 
   val tomlPath = resolveInTarget(targetDir, KOLT_TOML)
@@ -162,44 +171,14 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
   val packageDecl = options.group?.let { "$it.${projectNameToPackageSegment(options.projectName)}" }
   val packageRelPath = packageDecl?.replace('.', '/')
 
-  val srcDir = nestedDir(resolveInTarget(targetDir, SRC_DIR), packageRelPath)
-  ensureDirectoryRecursive(srcDir).getOrElse { error ->
-    eprintln("error: could not create directory ${error.path}")
-    return Err(EXIT_BUILD_ERROR)
+  val sourceFile = sourceTemplateFor(options.kind, packageDecl)
+  writeKindFile(resolveInTarget(targetDir, SRC_DIR), packageRelPath, sourceFile).getOrElse {
+    return Err(it)
   }
 
-  val (sourceFileName, sourceContent) =
-    when (options.kind) {
-      ScaffoldKind.APP -> "Main.kt" to generateMainKt(packageDecl)
-      ScaffoldKind.LIB -> "Lib.kt" to generateLibKt(packageDecl)
-    }
-  val sourcePath = "$srcDir/$sourceFileName"
-  if (!fileExists(sourcePath)) {
-    writeFileAsString(sourcePath, sourceContent).getOrElse { error ->
-      eprintln("error: could not write ${error.path}")
-      return Err(EXIT_BUILD_ERROR)
-    }
-    println("created $sourcePath")
-  }
-
-  val testDir = nestedDir(resolveInTarget(targetDir, TEST_DIR), packageRelPath)
-  ensureDirectoryRecursive(testDir).getOrElse { error ->
-    eprintln("error: could not create directory ${error.path}")
-    return Err(EXIT_BUILD_ERROR)
-  }
-
-  val (testFileName, testContent) =
-    when (options.kind) {
-      ScaffoldKind.APP -> "MainTest.kt" to generateTestKt(packageDecl)
-      ScaffoldKind.LIB -> "LibTest.kt" to generateLibTestKt(packageDecl)
-    }
-  val testPath = "$testDir/$testFileName"
-  if (!fileExists(testPath)) {
-    writeFileAsString(testPath, testContent).getOrElse { error ->
-      eprintln("error: could not write ${error.path}")
-      return Err(EXIT_BUILD_ERROR)
-    }
-    println("created $testPath")
+  val testFile = testTemplateFor(options.kind, packageDecl)
+  writeKindFile(resolveInTarget(targetDir, TEST_DIR), packageRelPath, testFile).getOrElse {
+    return Err(it)
   }
 
   val gitignorePath = resolveInTarget(targetDir, GITIGNORE)
@@ -233,6 +212,40 @@ private fun resolveInTarget(targetDir: String, name: String): String =
 
 private fun nestedDir(base: String, packageRelPath: String?): String =
   if (packageRelPath == null) base else "$base/$packageRelPath"
+
+private data class TemplateFile(val name: String, val content: String)
+
+private fun sourceTemplateFor(kind: ScaffoldKind, packageDecl: String?): TemplateFile =
+  when (kind) {
+    ScaffoldKind.APP -> TemplateFile("Main.kt", generateMainKt(packageDecl))
+    ScaffoldKind.LIB -> TemplateFile("Lib.kt", generateLibKt(packageDecl))
+  }
+
+private fun testTemplateFor(kind: ScaffoldKind, packageDecl: String?): TemplateFile =
+  when (kind) {
+    ScaffoldKind.APP -> TemplateFile("MainTest.kt", generateTestKt(packageDecl))
+    ScaffoldKind.LIB -> TemplateFile("LibTest.kt", generateLibTestKt(packageDecl))
+  }
+
+private fun writeKindFile(
+  baseDir: String,
+  packageRelPath: String?,
+  template: TemplateFile,
+): Result<Unit, Int> {
+  val dir = nestedDir(baseDir, packageRelPath)
+  ensureDirectoryRecursive(dir).getOrElse { error ->
+    eprintln("error: could not create directory ${error.path}")
+    return Err(EXIT_BUILD_ERROR)
+  }
+  val path = "$dir/${template.name}"
+  if (fileExists(path)) return Ok(Unit)
+  writeFileAsString(path, template.content).getOrElse { error ->
+    eprintln("error: could not write ${error.path}")
+    return Err(EXIT_BUILD_ERROR)
+  }
+  println("created $path")
+  return Ok(Unit)
+}
 
 private fun String.isCurrent(): Boolean = isEmpty() || this == "."
 

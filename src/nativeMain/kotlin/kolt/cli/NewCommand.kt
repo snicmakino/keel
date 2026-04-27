@@ -3,7 +3,6 @@ package kolt.cli
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
-import kolt.config.isValidProjectName
 import kolt.infra.ensureDirectory
 import kolt.infra.eprintln
 import kolt.infra.fileExists
@@ -23,16 +22,14 @@ internal fun doNew(args: List<String>): Result<Unit, Int> {
         return Err(EXIT_CONFIG_ERROR)
       }
 
-  if (!isValidProjectName(projectName)) {
-    eprintln("error: invalid project name '$projectName'")
-    eprintln(
-      "  project name must start with a letter or digit and contain only letters, digits, '.', '-', '_'"
-    )
+  validateProjectName(projectName).getOrElse { msg ->
+    eprintln("error: $msg")
     return Err(EXIT_CONFIG_ERROR)
   }
 
   if (fileExists(projectName)) {
-    eprintln("error: '$projectName' already exists")
+    eprintln("error: directory '$projectName' already exists")
+    eprintln("  use `kolt init` to scaffold inside an existing directory")
     return Err(EXIT_CONFIG_ERROR)
   }
 
