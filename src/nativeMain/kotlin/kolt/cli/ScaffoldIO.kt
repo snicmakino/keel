@@ -14,7 +14,7 @@ internal interface ScaffoldIO {
 
 internal object SystemScaffoldIO : ScaffoldIO {
   @OptIn(ExperimentalForeignApi::class)
-  override fun isStdinTty(): Boolean = isatty(STDIN_FILENO) == 1
+  override fun isStdinTty(): Boolean = isatty(STDIN_FILENO) != 0
 
   override fun readLine(): String? = readlnOrNull()
 

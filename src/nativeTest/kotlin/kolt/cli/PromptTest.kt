@@ -169,8 +169,10 @@ class PromptTest {
 
     val joined = io.outputs.joinToString("\n")
     assertFalse(joined.contains("Project kind:"), "kind must not be prompted when --lib given")
-    assertTrue(joined.contains("Target:"))
-    assertTrue(joined.contains("Group "))
+    val targetIdx = joined.indexOf("Target:")
+    val groupIdx = joined.indexOf("Group ")
+    assertTrue(targetIdx >= 0, "target prompt missing")
+    assertTrue(groupIdx > targetIdx, "target must precede group even when kind is fixed")
     assertTrue(fileExists("mylib/src/com/example/mylib/Lib.kt"))
   }
 
@@ -214,6 +216,22 @@ class PromptTest {
     val exit = doInit(listOf("myapp"), io).getError()
 
     assertEquals(EXIT_CONFIG_ERROR, exit)
+  }
+
+  @Test
+  fun ttyEofOnFirstPromptCollapsesToDefaults() {
+    // Ctrl-D / closed stdin under TTY: readlnOrNull returns null on every
+    // call. The pipeline should treat it as blank input on each prompt and
+    // produce the default scaffold (app/jvm/no group) without erroring.
+    val io = FakeScaffoldIO(tty = true, inputs = emptyList())
+
+    doInit(listOf("myapp"), io).getOrElse { error("doInit failed: exit=$it") }
+
+    assertTrue(fileExists("src/Main.kt"))
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertFalse(toml.contains("kind = \"lib\""))
+    assertTrue(toml.contains("target = \"jvm\""))
+    assertTrue(toml.contains("main = \"main\""))
   }
 
   @Test
