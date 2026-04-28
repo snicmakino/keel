@@ -113,7 +113,7 @@
   - _Requirements: 1.1_
   - _Boundary: release.yml_
 
-- [ ] 3.2 release job: SemVer + kolt.toml + YANKED gates
+- [x] 3.2 release job: SemVer + kolt.toml + YANKED gates
   - Step 1 (SemVer): `${{ github.ref_name }}` を ADR 0028 §1 regex `^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-(rc|beta)\.[1-9]\d*)?$` に match させる。fail 時 step 失敗 + 該当 tag と regex を stderr
   - Step 2 (kolt.toml↔tag): `${{ github.ref_name }}` から `v` prefix を除いた値が `kolt.toml` の `version =` 行と一致することを assert。mismatch 時 両 value を stderr
   - Step 3 (YANKED gate): repo HEAD の `YANKED` を `awk` で逐行読み、各非空行が exactly 3 tab-separated non-empty fields であること (format validation) を assert。format error 時 違反行番号と reason を stderr で fail。tag の version が第 1 field に出現する行があれば fail (該当行を stderr)
