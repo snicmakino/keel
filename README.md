@@ -56,7 +56,8 @@ kolt init custom-name
 
 ```
 kolt init [name]       Create a new project
-kolt build             Compile the project
+kolt build             Compile the project (debug profile by default)
+kolt build --release   Compile under the release profile
 kolt run               Build and run (kolt run -- args for app arguments)
 kolt test              Build and run tests (kolt test -- args for JUnit Platform arguments)
 kolt check             Type-check without producing artifacts
@@ -93,6 +94,7 @@ kolt --version         Show version
 |------|-------------|
 | `--watch` | Watch source files and re-run the command on change (build/check/test/run) |
 | `--no-daemon` | Skip the warm compiler daemon for this invocation. Always available, including on Kotlin versions outside the daemon's supported range (ADR 0022). |
+| `--release` | Build under the release profile. Native: enables `-opt`, omits `-g`, writes artifacts to `build/release/`. JVM: declared no-op (same kotlinc args, same daemon IC path) — the artifact still moves to `build/release/<name>.jar` so the two profiles' outputs do not overwrite each other. Default profile is `debug`; both profiles' artifacts coexist on disk so switching between them does not invalidate the other. See [ADR 0030](docs/adr/0030-build-profiles.md). |
 
 ## Configuration
 

@@ -117,7 +117,7 @@ for project in "." "kolt-jvm-compiler-daemon" "kolt-native-compiler-daemon"; do
   echo "assemble-dist: building $project"
   (
     cd "$project"
-    "$KOLT" build
+    "$KOLT" build --release
   )
 done
 
@@ -212,10 +212,11 @@ write_argfile() {
 # clean-slate idempotency).
 mkdir -p "$DIST_ROOT/bin" "$DIST_ROOT/libexec/classpath"
 
-# `bin/kolt` is the kolt.kexe produced by the root `kolt build` above
-# (self-hosted). `KOLT` (used to drive the three builds) may point at the
-# Gradle-built binary; `./build/kolt.kexe` is always the self-host output.
-ROOT_KEXE="$ROOT_DIR/build/kolt.kexe"
+# `bin/kolt` is the kolt.kexe produced by the root `kolt build --release`
+# above (self-hosted). `KOLT` (used to drive the three builds) may point at
+# the Gradle-built binary; `./build/release/kolt.kexe` is always the
+# self-host release-profile output.
+ROOT_KEXE="$ROOT_DIR/build/release/kolt.kexe"
 if [[ ! -x "$ROOT_KEXE" ]]; then
   echo "assemble-dist: root kolt.kexe not found at $ROOT_KEXE" >&2
   exit 1
@@ -225,8 +226,8 @@ chmod +x "$DIST_ROOT/bin/kolt"
 
 for entry in "${DAEMONS[@]}"; do
   IFS=':' read -r daemon main_class <<< "$entry"
-  daemon_jar="$ROOT_DIR/$daemon/build/${daemon}.jar"
-  manifest="$ROOT_DIR/$daemon/build/${daemon}-runtime.classpath"
+  daemon_jar="$ROOT_DIR/$daemon/build/release/${daemon}.jar"
+  manifest="$ROOT_DIR/$daemon/build/release/${daemon}-runtime.classpath"
   if [[ ! -f "$daemon_jar" ]]; then
     echo "assemble-dist: missing daemon jar: $daemon_jar" >&2
     exit 1

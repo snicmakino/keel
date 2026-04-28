@@ -13,6 +13,7 @@ import kolt.build.daemon.DaemonSetup
 import kolt.build.daemon.cleanDaemonIcStateForProject
 import kolt.build.daemon.formatDaemonPreconditionWarning
 import kolt.build.daemon.resolveDaemonPreconditions
+import kolt.build.daemon.wipeNativeIcCache
 import kolt.build.nativedaemon.NativeDaemonBackend
 import kolt.build.nativedaemon.NativeDaemonPreconditionError
 import kolt.build.nativedaemon.NativeDaemonSetup
@@ -53,12 +54,13 @@ internal data class BuildResult(
 internal fun handleRuntimeClasspathManifest(
   config: KoltConfig,
   resolvedJars: List<ResolvedJar>,
+  profile: Profile = Profile.Debug,
 ): Result<Unit, ManifestWriteError> {
   val shouldEmit = config.build.target == "jvm" && !config.isLibrary()
   if (shouldEmit) {
-    return writeRuntimeClasspathManifest(config, resolvedJars)
+    return writeRuntimeClasspathManifest(config, resolvedJars, profile)
   }
-  val manifestPath = outputRuntimeClasspathPath(config)
+  val manifestPath = outputRuntimeClasspathPath(config, profile)
   if (fileExists(manifestPath)) deleteFile(manifestPath)
   return Ok(Unit)
 }
@@ -75,13 +77,16 @@ internal data class NativeStagePlan(
 // ADR 0023 §1: library kind has no entry point; app kind must carry one
 // (parser invariant). The `?: return` keeps ADR 0001 safe without `!!`;
 // it is unreachable for apps produced by `parseConfig`.
-internal fun nativeStagePlan(config: KoltConfig): Result<NativeStagePlan, Int> {
+internal fun nativeStagePlan(
+  config: KoltConfig,
+  profile: Profile = Profile.Debug,
+): Result<NativeStagePlan, Int> {
   if (config.isLibrary()) {
     return Ok(
       NativeStagePlan(
         linkMain = null,
         artifactKind = "library",
-        artifactPath = outputNativeKlibPath(config),
+        artifactPath = outputNativeKlibPath(config, profile),
       )
     )
   }
@@ -90,7 +95,7 @@ internal fun nativeStagePlan(config: KoltConfig): Result<NativeStagePlan, Int> {
     NativeStagePlan(
       linkMain = main,
       artifactKind = "executable",
-      artifactPath = outputKexePath(config),
+      artifactPath = outputKexePath(config, profile),
     )
   )
 }
@@ -124,11 +129,12 @@ internal fun loadProjectConfig(): Result<KoltConfig, Int> {
     .let { Ok(it) }
 }
 
-internal fun doCheck(useDaemon: Boolean = true): Result<Unit, Int> = withProjectLock {
-  doCheckInner(useDaemon)
-}
+internal fun doCheck(
+  useDaemon: Boolean = true,
+  profile: Profile = Profile.Debug,
+): Result<Unit, Int> = withProjectLock { doCheckInner(useDaemon, profile) }
 
-private fun doCheckInner(useDaemon: Boolean): Result<Unit, Int> {
+private fun doCheckInner(useDaemon: Boolean, profile: Profile): Result<Unit, Int> {
   val startMark = TimeSource.Monotonic.markNow()
   val config =
     loadProjectConfig().getOrElse {
@@ -137,7 +143,7 @@ private fun doCheckInner(useDaemon: Boolean): Result<Unit, Int> {
   // konanc has no syntax-only mode; a full build is the only option.
   // doBuildInner skips the outer lock acquire — doCheck already holds it.
   if (config.build.target in NATIVE_TARGETS) {
-    doBuildInner(useDaemon = useDaemon).getOrElse {
+    doBuildInner(useDaemon = useDaemon, profile = profile).getOrElse {
       return Err(it)
     }
     return Ok(Unit)
@@ -203,11 +209,12 @@ internal fun doClean(): Result<Unit, Int> {
   return Ok(Unit)
 }
 
-internal fun doBuild(useDaemon: Boolean = true): Result<BuildResult, Int> = withProjectLock {
-  doBuildInner(useDaemon)
-}
+internal fun doBuild(
+  useDaemon: Boolean = true,
+  profile: Profile = Profile.Debug,
+): Result<BuildResult, Int> = withProjectLock { doBuildInner(useDaemon, profile) }
 
-private fun doBuildInner(useDaemon: Boolean): Result<BuildResult, Int> {
+private fun doBuildInner(useDaemon: Boolean, profile: Profile): Result<BuildResult, Int> {
   val startMark = TimeSource.Monotonic.markNow()
   val config =
     loadProjectConfig().getOrElse {
@@ -215,7 +222,7 @@ private fun doBuildInner(useDaemon: Boolean): Result<BuildResult, Int> {
     }
 
   if (config.build.target in NATIVE_TARGETS) {
-    return doNativeBuildInner(config, useDaemon)
+    return doNativeBuildInner(config, useDaemon, profile)
   }
 
   val currentState =
@@ -346,7 +353,11 @@ private fun doBuildInner(useDaemon: Boolean): Result<BuildResult, Int> {
     }
   }
 
-  val jarCmd = jarCommand(config, jarPath = managedJarBin)
+  val jarCmd = jarCommand(config, jarPath = managedJarBin, profile = profile)
+  ensureDirectoryRecursive(jarCmd.outputPath.substringBeforeLast('/')).getOrElse { error ->
+    eprintln("error: could not create directory ${error.path}")
+    return Err(EXIT_BUILD_ERROR)
+  }
   executeCommand(jarCmd.args).getOrElse { error ->
     eprintln("error: " + formatProcessError(error, "jar packaging"))
     return Err(EXIT_BUILD_ERROR)
@@ -358,7 +369,7 @@ private fun doBuildInner(useDaemon: Boolean): Result<BuildResult, Int> {
   // previous kind=app build. Manifest write failure is treated as a
   // build failure (ADR 0001: Err propagates, jar artifact is left on
   // disk mirroring the existing jarCmd failure semantics).
-  handleRuntimeClasspathManifest(config, resolutionOutcome.mainJars).getOrElse { err ->
+  handleRuntimeClasspathManifest(config, resolutionOutcome.mainJars, profile).getOrElse { err ->
     val failure = err as ManifestWriteError.WriteFailed
     eprintln(
       "error: could not write runtime classpath manifest at ${failure.path}: ${failure.reason}"
@@ -389,7 +400,11 @@ private fun doBuildInner(useDaemon: Boolean): Result<BuildResult, Int> {
   )
 }
 
-private fun doNativeBuildInner(config: KoltConfig, useDaemon: Boolean): Result<BuildResult, Int> {
+private fun doNativeBuildInner(
+  config: KoltConfig,
+  useDaemon: Boolean,
+  profile: Profile,
+): Result<BuildResult, Int> {
   val startMark = TimeSource.Monotonic.markNow()
 
   val paths =
@@ -409,7 +424,7 @@ private fun doNativeBuildInner(config: KoltConfig, useDaemon: Boolean): Result<B
   // check and the success message so lib builds don't chase a missing
   // `.kexe`.
   val stagePlan =
-    nativeStagePlan(config).getOrElse {
+    nativeStagePlan(config, profile).getOrElse {
       return Err(it)
     }
   val artifactPath = stagePlan.artifactPath
@@ -481,7 +496,12 @@ private fun doNativeBuildInner(config: KoltConfig, useDaemon: Boolean): Result<B
       pluginArgs = nativePluginArgs,
       konancPath = managedKonancBin,
       klibs = klibs,
+      profile = profile,
     )
+  ensureDirectoryRecursive(libraryCmd.outputPath.substringBeforeLast('/')).getOrElse { error ->
+    eprintln("error: could not create directory ${error.path}")
+    return Err(EXIT_BUILD_ERROR)
+  }
   println("compiling ${config.name} (native)...")
   // ADR 0024 §4: backend.compile takes konanc args *after* the binary.
   // `nativeLibraryCommand` / `nativeLinkCommand` put the binary at [0]
@@ -495,7 +515,7 @@ private fun doNativeBuildInner(config: KoltConfig, useDaemon: Boolean): Result<B
   // ADR 0014 stage 2 × ADR 0023 §1: skip the native link step for library
   // kind; stage 1 already produced the `.klib` artifact.
   if (stagePlan.linkMain != null) {
-    ensureDirectoryRecursive(NATIVE_IC_CACHE_DIR).getOrElse { error ->
+    ensureDirectoryRecursive(nativeIcCacheDir(profile)).getOrElse { error ->
       eprintln("error: could not create directory ${error.path}")
       return Err(EXIT_BUILD_ERROR)
     }
@@ -506,12 +526,14 @@ private fun doNativeBuildInner(config: KoltConfig, useDaemon: Boolean): Result<B
         main = stagePlan.linkMain,
         konancPath = managedKonancBin,
         klibs = klibs,
+        profile = profile,
       )
     println("linking ${config.name} (native)...")
-    runNativeLinkWithIcFallback(backend, linkCmd.args.drop(1)).getOrElse { error ->
-      reportNativeCompileError(error, "linking")
-      return Err(EXIT_BUILD_ERROR)
-    }
+    runNativeLinkWithIcFallback(backend, linkCmd.args.drop(1)) { wipeNativeIcCache(profile) }
+      .getOrElse { error ->
+        reportNativeCompileError(error, "linking")
+        return Err(EXIT_BUILD_ERROR)
+      }
   }
 
   if (!fileExists(artifactPath)) {
@@ -525,7 +547,7 @@ private fun doNativeBuildInner(config: KoltConfig, useDaemon: Boolean): Result<B
   // cannot pick up a mismatched artifact after a retarget. The helper
   // takes the "cleanup" arm for every non-jvm-app config and only ever
   // returns Ok, so discarding the Result here is safe by construction.
-  handleRuntimeClasspathManifest(config, emptyList())
+  handleRuntimeClasspathManifest(config, emptyList(), profile)
 
   val newState = currentState.copy(classesDirMtime = fileMtime(artifactPath))
   writeFileAsString(BUILD_STATE_FILE, serializeBuildState(newState)).getOrElse {
@@ -564,22 +586,13 @@ private fun reportNativeCompileError(error: NativeCompileError, context: String)
 internal fun runNativeLinkWithIcFallback(
   backend: NativeCompilerBackend,
   args: List<String>,
-  wipeCache: () -> Boolean = ::wipeNativeIcCache,
+  wipeCache: () -> Boolean,
 ): Result<NativeCompileOutcome, NativeCompileError> {
   val first = backend.compile(args)
   val firstError = first.getError() ?: return first
   if (firstError !is NativeCompileError.CompilationFailed) return first
   if (!wipeCache()) return first
   return backend.compile(args)
-}
-
-private fun wipeNativeIcCache(): Boolean {
-  if (!fileExists(NATIVE_IC_CACHE_DIR)) return true
-  val result = removeDirectoryRecursive(NATIVE_IC_CACHE_DIR)
-  if (result.isOk) return true
-  val error = result.getError()!!
-  eprintln("warning: could not remove ${error.path}")
-  return false
 }
 
 private fun newestDefMtime(config: KoltConfig): Long? {
@@ -646,13 +659,15 @@ internal fun doRun(
   classpath: String?,
   appArgs: List<String> = emptyList(),
   javaPath: String? = null,
-): Result<Unit, Int> = withProjectLock { doRunInner(config, classpath, appArgs, javaPath) }
+  profile: Profile = Profile.Debug,
+): Result<Unit, Int> = withProjectLock { doRunInner(config, classpath, appArgs, javaPath, profile) }
 
 private fun doRunInner(
   config: KoltConfig,
   classpath: String?,
   appArgs: List<String>,
   javaPath: String?,
+  profile: Profile,
 ): Result<Unit, Int> {
   // ADR 0023 §1 kind gate: reject libraries before any artifact lookup
   // or process launch. Target-agnostic by design (R4.3).
@@ -661,12 +676,12 @@ private fun doRunInner(
   }
 
   if (config.build.target in NATIVE_TARGETS) {
-    val kexePath = outputKexePath(config)
+    val kexePath = outputKexePath(config, profile)
     if (!fileExists(kexePath)) {
       eprintln("error: $kexePath not found. Run 'kolt build' first.")
       return Err(EXIT_BUILD_ERROR)
     }
-    val cmd = nativeRunCommand(config, appArgs)
+    val cmd = nativeRunCommand(config, appArgs, profile)
     executeCommand(cmd.args).getOrElse { error ->
       return Err(
         when (error) {
@@ -693,6 +708,7 @@ private fun doRunInner(
       classpath = classpath,
       appArgs = appArgs,
       javaPath = javaPath,
+      profile = profile,
     )
   executeCommand(cmd.args).getOrElse { error ->
     return Err(
@@ -708,21 +724,26 @@ private fun doRunInner(
 internal fun doTest(
   testArgs: List<String> = emptyList(),
   useDaemon: Boolean = true,
-): Result<Unit, Int> = withProjectLock { doTestInner(testArgs, useDaemon) }
+  profile: Profile = Profile.Debug,
+): Result<Unit, Int> = withProjectLock { doTestInner(testArgs, useDaemon, profile) }
 
-private fun doTestInner(testArgs: List<String>, useDaemon: Boolean): Result<Unit, Int> {
+private fun doTestInner(
+  testArgs: List<String>,
+  useDaemon: Boolean,
+  profile: Profile,
+): Result<Unit, Int> {
   val config =
     loadProjectConfig().getOrElse {
       return Err(it)
     }
   if (config.build.target in NATIVE_TARGETS) {
-    return doNativeTest(config, testArgs)
+    return doNativeTest(config, testArgs, profile)
   }
   // doBuildInner (not doBuild) — the outer lock acquired by doTest
   // already covers the build; calling doBuild would attempt a second
   // flock(2) acquire on a fresh OFD and deadlock against ourselves.
   val buildResult =
-    doBuildInner(useDaemon = useDaemon).getOrElse {
+    doBuildInner(useDaemon = useDaemon, profile = profile).getOrElse {
       return Err(it)
     }
   // R4.1: test compile/run classpath is main ∪ test. Fall through to the
@@ -763,7 +784,14 @@ private fun doTestInner(testArgs: List<String>, useDaemon: Boolean): Result<Unit
 
   val testConfig = config.copy(build = config.build.copy(testSources = existingTestSources))
   val testCmd =
-    testBuildCommand(testConfig, CLASSES_DIR, testClasspath, pArgs, kotlincPath = managedKotlincBin)
+    testBuildCommand(
+      testConfig,
+      CLASSES_DIR,
+      testClasspath,
+      pArgs,
+      kotlincPath = managedKotlincBin,
+      profile = profile,
+    )
   println("compiling tests...")
   executeCommand(testCmd.args).getOrElse { error ->
     eprintln("error: " + formatProcessError(error, "test compilation"))
@@ -797,7 +825,11 @@ private fun doTestInner(testArgs: List<String>, useDaemon: Boolean): Result<Unit
   return Ok(Unit)
 }
 
-private fun doNativeTest(config: KoltConfig, testArgs: List<String>): Result<Unit, Int> {
+private fun doNativeTest(
+  config: KoltConfig,
+  testArgs: List<String>,
+  profile: Profile,
+): Result<Unit, Int> {
   val existingTestSources = filterExistingDirs(config.build.testSources, "test source")
   if (existingTestSources.isEmpty()) {
     eprintln("error: no test sources found in ${config.build.testSources}")
@@ -806,7 +838,7 @@ private fun doNativeTest(config: KoltConfig, testArgs: List<String>): Result<Uni
 
   val testStartMark = TimeSource.Monotonic.markNow()
   val testConfig = config.copy(build = config.build.copy(testSources = existingTestSources))
-  val testKexePath = outputNativeTestKexePath(testConfig)
+  val testKexePath = outputNativeTestKexePath(testConfig, profile)
 
   val currentState =
     TestBuildState(
@@ -862,14 +894,25 @@ private fun doNativeTest(config: KoltConfig, testArgs: List<String>): Result<Uni
         pluginArgs = nativePluginArgs,
         konancPath = managedKonancBin,
         klibs = klibs,
+        profile = profile,
       )
+    ensureDirectoryRecursive(libraryCmd.outputPath.substringBeforeLast('/')).getOrElse { error ->
+      eprintln("error: could not create directory ${error.path}")
+      return Err(EXIT_BUILD_ERROR)
+    }
     println("compiling tests (native)...")
     executeCommand(libraryCmd.args).getOrElse { error ->
       eprintln("error: " + formatProcessError(error, "test compilation"))
       return Err(EXIT_BUILD_ERROR)
     }
 
-    val linkCmd = nativeTestLinkCommand(testConfig, konancPath = managedKonancBin, klibs = klibs)
+    val linkCmd =
+      nativeTestLinkCommand(
+        testConfig,
+        konancPath = managedKonancBin,
+        klibs = klibs,
+        profile = profile,
+      )
     println("linking tests (native)...")
     executeCommand(linkCmd.args).getOrElse { error ->
       eprintln("error: " + formatProcessError(error, "test linking"))
@@ -887,7 +930,7 @@ private fun doNativeTest(config: KoltConfig, testArgs: List<String>): Result<Uni
     }
   }
 
-  val runCmd = nativeTestRunCommand(testConfig, testArgs)
+  val runCmd = nativeTestRunCommand(testConfig, testArgs, profile)
   println("running tests...")
   executeCommand(runCmd.args).getOrElse { error ->
     when (error) {

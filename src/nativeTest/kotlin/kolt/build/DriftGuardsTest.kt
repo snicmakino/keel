@@ -5,6 +5,7 @@ import kolt.infra.currentWorkingDirectory
 import kolt.infra.fileExists
 import kolt.infra.readFileAsString
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.fail
 
 // Test-side mirror of the Gradle `verifyDaemon*` drift guards. Migrating
@@ -81,6 +82,37 @@ class DriftGuardsTest {
         tomlPath = "$root/kolt-native-compiler-daemon/kolt.toml",
       ),
     )
+  }
+
+  // The Profile.dirName ↔ assemble-dist.sh `kolt build --release`
+  // triangle: a rename of either `dirName` literal in Profile.kt or a
+  // removal of the `--release` flag from the dist script would silently
+  // break tarball assembly (root binary at `build/release/kolt.kexe`
+  // would not exist after the build). This test pins both ends.
+  @Test
+  fun profileLiteralsAndDistScriptAreInSync() {
+    val root = projectRoot()
+    val script = "$root/scripts/assemble-dist.sh"
+    val text = readFileAsString(script).getOrElse { fail("missing $script") }
+
+    assertEquals("debug", Profile.Debug.dirName)
+    assertEquals("release", Profile.Release.dirName)
+
+    if (!text.contains("\"\$KOLT\" build --release")) {
+      fail(
+        "scripts/assemble-dist.sh must invoke \"\$KOLT\" build --release; " +
+          "Profile.Release.dirName=\"${Profile.Release.dirName}\" expects the dist " +
+          "script to opt into the release profile."
+      )
+    }
+    val expectedRootKexe = "build/${Profile.Release.dirName}/kolt.kexe"
+    if (!text.contains(expectedRootKexe)) {
+      fail(
+        "scripts/assemble-dist.sh must reference the release-profile root binary " +
+          "at \"$expectedRootKexe\"; renaming Profile.Release.dirName requires " +
+          "updating the dist script in lockstep."
+      )
+    }
   }
 
   // The triangle BOOTSTRAP_JDK_VERSION <-> daemon `kolt.toml`

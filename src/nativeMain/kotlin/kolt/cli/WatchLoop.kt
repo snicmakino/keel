@@ -3,6 +3,7 @@ package kolt.cli
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
+import kolt.build.Profile
 import kolt.build.nativeRunCommand
 import kolt.build.runCommand
 import kolt.config.KoltConfig
@@ -165,12 +166,13 @@ internal fun watchCommandLoop(
   command: String,
   useDaemon: Boolean,
   testArgs: List<String> = emptyList(),
+  profile: Profile = Profile.Debug,
   commandRunner: (String, Boolean, List<String>) -> Result<*, Int> = { cmd, daemon, args ->
     when (cmd) {
-      "build" -> doBuild(useDaemon = daemon)
-      "check" -> doCheck(useDaemon = daemon)
-      "test" -> doTest(testArgs = args, useDaemon = daemon)
-      else -> doBuild(useDaemon = daemon)
+      "build" -> doBuild(useDaemon = daemon, profile = profile)
+      "check" -> doCheck(useDaemon = daemon, profile = profile)
+      "test" -> doTest(testArgs = args, useDaemon = daemon, profile = profile)
+      else -> doBuild(useDaemon = daemon, profile = profile)
     }
   },
 ) {
@@ -275,6 +277,7 @@ private fun reapChild(pid: Int): Boolean {
 internal fun watchRunLoop(
   useDaemon: Boolean,
   appArgs: List<String> = emptyList(),
+  profile: Profile = Profile.Debug,
   eprint: (String) -> Unit = ::eprintln,
 ) {
   val config =
@@ -297,7 +300,7 @@ internal fun watchRunLoop(
 
   while (!shouldExit()) {
     val buildResult =
-      doBuild(useDaemon = useDaemon).getOrElse {
+      doBuild(useDaemon = useDaemon, profile = profile).getOrElse {
         eprintln("build failed, waiting for changes...")
         waitForRelevantChange(watcher, wdKinds)
         continue
@@ -305,7 +308,7 @@ internal fun watchRunLoop(
 
     val runCmd =
       if (buildResult.config.build.target in NATIVE_TARGETS) {
-        nativeRunCommand(buildResult.config, appArgs)
+        nativeRunCommand(buildResult.config, appArgs, profile)
       } else {
         // Parser invariant `kind == "app" ⇒ main != null` guarantees
         // non-null; the lib kind gate at loop entry pre-empts libraries,
@@ -323,6 +326,7 @@ internal fun watchRunLoop(
           classpath = buildResult.classpath,
           appArgs = appArgs,
           javaPath = buildResult.javaPath,
+          profile = profile,
         )
       }
     val childPid = spawnInProcessGroup(runCmd.args)

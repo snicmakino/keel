@@ -49,7 +49,8 @@ Generated files for `kolt init`/`kolt new myapp` with no flags:
 ```
 kolt init [name]            Create a new project in the current directory
 kolt new <name>             Create a new project in <name>/ (same flags as init)
-kolt build                  Compile the project
+kolt build                  Compile the project (debug profile by default)
+kolt build --release        Compile under the release profile
 kolt run                    Build and run (kolt run -- args for app arguments)
 kolt test                   Build and run tests (kolt test -- args for JUnit Platform)
 kolt check                  Type-check without producing artifacts
@@ -81,6 +82,34 @@ kolt --version              Show version
 |------|-------------|
 | `--watch` | Watch source files and re-run on change (build/check/test/run) |
 | `--no-daemon` | Skip the warm compiler daemon for this invocation. Always available, even on Kotlin versions outside the daemon's supported range (ADR 0022). |
+| `--release` | Build under the release profile. Native: enables `-opt`, omits `-g`, writes artifacts to `build/release/`. JVM: declared no-op; the artifact still moves to `build/release/<name>.jar`. Debug remains the default. |
+
+### Build Profiles
+
+kolt has a Cargo-style profile model: debug is the default, `--release`
+is opt-in. Both profiles' artifacts coexist on disk so switching between
+them does not invalidate the other's incremental cache.
+
+```sh
+kolt build                  # build/debug/<name>.kexe (or .jar)
+kolt build --release        # build/release/<name>.kexe (or .jar)
+kolt test --release         # release-profile test executable
+kolt run  --release         # run the release-profile artifact
+```
+
+- **Native** (`target = "linuxX64"` etc.): debug omits `-opt` and adds
+  `-g`; release adds `-opt` and omits `-g`. The project-local
+  incremental-compile cache lives at `build/<profile>/.ic-cache`, so
+  alternating profiles preserves both caches.
+- **JVM** (`target = "jvm"`): `--release` is a declared no-op for
+  compile arg shape and for the daemon IC store at
+  `~/.kolt/daemon/ic/`. The jar still partitions under
+  `build/<profile>/<name>.jar` so the two profiles' artifacts do not
+  overwrite each other.
+
+`kolt.toml` has no `[profile]` section; the active profile is
+determined solely by the presence or absence of `--release` on the
+command line. See ADR 0030 for the full policy.
 
 ### Watch Mode
 
