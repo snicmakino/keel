@@ -94,7 +94,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.6_
   - _Boundary: install.sh_
 
-- [ ] 2.8 print_path_hint + main flow 完成 + 成功メッセージ
+- [x] 2.8 print_path_hint + main flow 完成 + 成功メッセージ
   - `print_path_hint`: `case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo hint to stderr ;;` (literal `$HOME` のみ check、tilde `~` は見ない)
   - main flow: stub を全部実装関数の呼び出しに置換、各関数の stdout を変数 capture して順送り
   - 成功時 stdout に "kolt <version> installed at ~/.local/bin/kolt" を 1 行出力

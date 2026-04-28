@@ -219,8 +219,15 @@ extract_and_link() {
 }
 
 print_path_hint() {
-    echo "TODO: print_path_hint" >&2
-    exit 1
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*)
+            ;;
+        *)
+            echo "$HOME/.local/bin is not in your PATH" >&2
+            echo "add this line to your shell startup file:" >&2
+            echo "  export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
+            ;;
+    esac
 }
 
 main() {
