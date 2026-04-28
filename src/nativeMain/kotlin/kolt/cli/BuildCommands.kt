@@ -248,7 +248,12 @@ private fun doBuildInner(useDaemon: Boolean, profile: Profile): Result<BuildResu
       return Err(it)
     }
 
-  if (isBuildUpToDate(current = currentState, cached = cachedState)) {
+  // BuildState.classesDirMtime tracks `build/classes/` (profile-naive on JVM
+  // because kotlinc args are profile-independent). The active profile's jar
+  // may still be missing if the previous build wrote a different profile's
+  // jar, so the artifact existence check is the per-profile gate.
+  val jarPath = outputJarPath(config, profile)
+  if (isBuildUpToDate(current = currentState, cached = cachedState) && fileExists(jarPath)) {
     val elapsed = startMark.elapsedNow()
     println("${config.name} is up to date (${formatDuration(elapsed)})")
     // Invariant: the up-to-date path must stay a pure mtime compare —
