@@ -181,7 +181,7 @@
 
 ## 5. (P) README Installation セクション書き換え
 
-- [ ] 5. README.md の Installation section を curl|sh コマンドに書き換え
+- [x] 5. README.md の Installation section を curl|sh コマンドに書き換え
   - 既存 lines 14-30 (Build from source 手順 + #97 言及) を削除
   - 新セクション冒頭: copy-paste-able code block で `curl -fsSL https://raw.githubusercontent.com/snicmakino/kolt/main/install.sh | sh`
   - 環境変数解説 (1-2 行ずつ): `KOLT_VERSION=<v>` で特定 version 指定、`KOLT_ALLOW_YANKED=1` で yanked 強制 install
