@@ -194,7 +194,7 @@
 
 ## 6. End-to-end validation
 
-- [ ] 6.1 PR-time CI が green になることを確認
+- [x] 6.1 PR-time CI が green になることを確認
   - 4.1 + 4.2 + 4.3 の 3 step を含む self-host-smoke.yml が PR 上で全て pass
   - 既存 jobs (self-host bootstrap、unit-tests) も regression なく pass
   - `unit-tests.yml` の linuxX64Test も従来通り green
