@@ -1,6 +1,8 @@
 package kolt.build.daemon
 
 import com.github.michaelbull.result.getError
+import kolt.build.Profile
+import kolt.build.nativeIcCacheDir
 import kolt.config.KoltPaths
 import kolt.infra.ensureDirectoryRecursive
 import kolt.infra.fileExists
@@ -12,6 +14,17 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.allocArray
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.toKString
+import kotlinx.cinterop.usePinned
+import platform.posix.PATH_MAX
+import platform.posix.chdir
+import platform.posix.getcwd
+import platform.posix.mkdtemp
 
 class IcStateCleanupTest {
   private val homeDir = "build_test_ic_cleanup_home"
@@ -63,5 +76,78 @@ class IcStateCleanupTest {
 
     assertNull(result.getError())
     assertFalse(fileExists(paths.daemonIcDir))
+  }
+}
+
+@OptIn(ExperimentalForeignApi::class)
+class WipeNativeIcCacheTest {
+
+  private var originalCwd: String = ""
+  private var tmpDir: String = ""
+
+  @kotlin.test.BeforeTest
+  fun setUp() {
+    originalCwd = memScoped {
+      val buf = allocArray<ByteVar>(PATH_MAX)
+      getcwd(buf, PATH_MAX.toULong())?.toKString() ?: error("getcwd failed")
+    }
+    tmpDir = createTempDir("kolt-wipe-native-ic-")
+    check(chdir(tmpDir) == 0) { "chdir to $tmpDir failed" }
+  }
+
+  @AfterTest
+  fun tearDown() {
+    chdir(originalCwd)
+    if (tmpDir.isNotEmpty() && fileExists(tmpDir)) {
+      removeDirectoryRecursive(tmpDir)
+    }
+  }
+
+  @Test
+  fun wipingDebugLeavesReleaseUntouched() {
+    val debugDir = nativeIcCacheDir(Profile.Debug)
+    val releaseDir = nativeIcCacheDir(Profile.Release)
+    ensureDirectoryRecursive(debugDir)
+    ensureDirectoryRecursive(releaseDir)
+    writeFileAsString("$debugDir/marker", "debug")
+    writeFileAsString("$releaseDir/marker", "release")
+
+    val ok = wipeNativeIcCache(Profile.Debug)
+
+    assertTrue(ok, "wipe must report success")
+    assertFalse(fileExists(debugDir), "debug IC must be removed")
+    assertTrue(fileExists(releaseDir), "release IC must survive a debug wipe")
+  }
+
+  @Test
+  fun wipingReleaseLeavesDebugUntouched() {
+    val debugDir = nativeIcCacheDir(Profile.Debug)
+    val releaseDir = nativeIcCacheDir(Profile.Release)
+    ensureDirectoryRecursive(debugDir)
+    ensureDirectoryRecursive(releaseDir)
+    writeFileAsString("$debugDir/marker", "debug")
+    writeFileAsString("$releaseDir/marker", "release")
+
+    val ok = wipeNativeIcCache(Profile.Release)
+
+    assertTrue(ok)
+    assertTrue(fileExists(debugDir))
+    assertFalse(fileExists(releaseDir))
+  }
+
+  @Test
+  fun wipingNonExistentCacheIsNoOpReturnsTrue() {
+    val ok = wipeNativeIcCache(Profile.Debug)
+
+    assertTrue(ok, "missing cache must report success")
+  }
+
+  private fun createTempDir(prefix: String): String {
+    val template = "/tmp/${prefix}XXXXXX"
+    val buf = template.encodeToByteArray().copyOf(template.length + 1)
+    buf.usePinned { pinned ->
+      val result = mkdtemp(pinned.addressOf(0)) ?: error("mkdtemp failed")
+      return result.toKString()
+    }
   }
 }

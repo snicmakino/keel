@@ -3,9 +3,13 @@ package kolt.build.daemon
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
+import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
+import kolt.build.Profile
+import kolt.build.nativeIcCacheDir
 import kolt.config.KoltPaths
 import kolt.infra.RemoveFailed
+import kolt.infra.eprintln
 import kolt.infra.fileExists
 import kolt.infra.listSubdirectories
 import kolt.infra.removeDirectoryRecursive
@@ -43,4 +47,18 @@ internal fun cleanDaemonIcStateForProject(
     }
   }
   return Ok(Unit)
+}
+
+// Wipes the project-local Native incremental-compile cache for the given
+// profile only; the inactive profile's cache is preserved. Used by the
+// link-stage retry path when konanc returns a non-zero exit code (which
+// can be cache corruption indistinguishable from a real source error).
+internal fun wipeNativeIcCache(profile: Profile): Boolean {
+  val cacheDir = nativeIcCacheDir(profile)
+  if (!fileExists(cacheDir)) return true
+  val result = removeDirectoryRecursive(cacheDir)
+  if (result.isOk) return true
+  val error = result.getError()!!
+  eprintln("warning: could not remove ${error.path}")
+  return false
 }

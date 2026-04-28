@@ -12,6 +12,7 @@ fun testBuildCommand(
   classpath: String? = null,
   pluginArgs: List<String> = emptyList(),
   kotlincPath: String? = null,
+  @Suppress("UNUSED_PARAMETER") profile: Profile = Profile.Debug,
 ): TestBuildCommand {
   val cp =
     buildList {

@@ -14,13 +14,20 @@ fun runCommand(
   classpath: String? = null,
   appArgs: List<String> = emptyList(),
   javaPath: String? = null,
+  @Suppress("UNUSED_PARAMETER") profile: Profile = Profile.Debug,
 ): RunCommand {
   val cp = if (!classpath.isNullOrEmpty()) "$CLASSES_DIR:$classpath" else CLASSES_DIR
   return RunCommand(args = listOf(javaPath ?: "java", "-cp", cp, jvmMainClass(main)) + appArgs)
 }
 
-fun nativeRunCommand(config: KoltConfig, appArgs: List<String> = emptyList()): RunCommand =
-  RunCommand(args = listOf(outputKexePath(config)) + appArgs)
+fun nativeRunCommand(
+  config: KoltConfig,
+  appArgs: List<String> = emptyList(),
+  profile: Profile = Profile.Debug,
+): RunCommand = RunCommand(args = listOf(outputKexePath(config, profile)) + appArgs)
 
-fun nativeTestRunCommand(config: KoltConfig, testArgs: List<String> = emptyList()): RunCommand =
-  RunCommand(args = listOf(outputNativeTestKexePath(config)) + testArgs)
+fun nativeTestRunCommand(
+  config: KoltConfig,
+  testArgs: List<String> = emptyList(),
+  profile: Profile = Profile.Debug,
+): RunCommand = RunCommand(args = listOf(outputNativeTestKexePath(config, profile)) + testArgs)

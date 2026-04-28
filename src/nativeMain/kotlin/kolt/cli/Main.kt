@@ -1,6 +1,7 @@
 package kolt.cli
 
 import com.github.michaelbull.result.getOrElse
+import kolt.build.Profile
 import kolt.config.versionString
 import kolt.infra.eprintln
 import kotlin.system.exitProcess
@@ -11,14 +12,11 @@ fun main(args: Array<String>) {
     return
   }
 
-  val argList = args.toList()
-  val passthroughStart = argList.indexOf("--")
-  val koltLevel = if (passthroughStart >= 0) argList.subList(0, passthroughStart) else argList
-  val passthrough =
-    if (passthroughStart >= 0) argList.subList(passthroughStart, argList.size) else emptyList()
-  val useDaemon = !koltLevel.contains(NO_DAEMON_FLAG)
-  val watch = koltLevel.contains(WATCH_FLAG)
-  val filteredArgs = koltLevel.filter { it != NO_DAEMON_FLAG && it != WATCH_FLAG } + passthrough
+  val parsed = parseKoltArgs(args.toList())
+  val useDaemon = parsed.useDaemon
+  val watch = parsed.watch
+  val profile = parsed.profile
+  val filteredArgs = parsed.filteredArgs
   if (filteredArgs.isEmpty()) {
     printUsage()
     return
@@ -28,11 +26,11 @@ fun main(args: Array<String>) {
     "init" -> doInit(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
     "new" -> doNew(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
     "build" ->
-      if (watch) watchCommandLoop("build", useDaemon)
-      else doBuild(useDaemon = useDaemon).getOrElse { exitProcess(it) }
+      if (watch) watchCommandLoop("build", useDaemon, profile = profile)
+      else doBuild(useDaemon = useDaemon, profile = profile).getOrElse { exitProcess(it) }
     "check" ->
-      if (watch) watchCommandLoop("check", useDaemon)
-      else doCheck(useDaemon = useDaemon).getOrElse { exitProcess(it) }
+      if (watch) watchCommandLoop("check", useDaemon, profile = profile)
+      else doCheck(useDaemon = useDaemon, profile = profile).getOrElse { exitProcess(it) }
     "run" -> {
       val appArgs =
         filteredArgs.let { all ->
@@ -40,7 +38,7 @@ fun main(args: Array<String>) {
           if (sep >= 0) all.subList(sep + 1, all.size) else emptyList()
         }
       if (watch) {
-        watchRunLoop(useDaemon, appArgs)
+        watchRunLoop(useDaemon, appArgs, profile = profile)
       } else {
         // ADR 0023 §1 kind gate: reject libraries before the
         // build pipeline runs (R4.2). doRun has the same guard
@@ -48,12 +46,12 @@ fun main(args: Array<String>) {
         val parsed = loadProjectConfig().getOrElse { exitProcess(it) }
         rejectIfLibrary(parsed).getOrElse { exitProcess(it) }
         val (config, classpath, javaPath) =
-          doBuild(useDaemon = useDaemon).getOrElse { exitProcess(it) }
+          doBuild(useDaemon = useDaemon, profile = profile).getOrElse { exitProcess(it) }
         // The build lock is released between doBuild and doRun. Safe today
         // because classpath is in-memory; if doRun ever re-reads
         // build/<name>-runtime.classpath, fold the doRun acquire into
         // doBuild or hold the lock across both calls.
-        doRun(config, classpath, appArgs, javaPath).getOrElse { exitProcess(it) }
+        doRun(config, classpath, appArgs, javaPath, profile = profile).getOrElse { exitProcess(it) }
       }
     }
     "test" -> {
@@ -62,8 +60,8 @@ fun main(args: Array<String>) {
           val sep = all.indexOf("--")
           if (sep >= 0) all.subList(sep + 1, all.size) else emptyList()
         }
-      if (watch) watchCommandLoop("test", useDaemon, testArgs)
-      else doTest(testArgs, useDaemon = useDaemon).getOrElse { exitProcess(it) }
+      if (watch) watchCommandLoop("test", useDaemon, testArgs, profile = profile)
+      else doTest(testArgs, useDaemon = useDaemon, profile = profile).getOrElse { exitProcess(it) }
     }
     "fmt" -> doFmt(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
     "clean" -> doClean().getOrElse { exitProcess(it) }
@@ -86,8 +84,35 @@ fun main(args: Array<String>) {
   }
 }
 
-private const val NO_DAEMON_FLAG = "--no-daemon"
-private const val WATCH_FLAG = "--watch"
+internal const val NO_DAEMON_FLAG = "--no-daemon"
+internal const val WATCH_FLAG = "--watch"
+internal const val RELEASE_FLAG = "--release"
+
+internal data class KoltArgs(
+  val useDaemon: Boolean,
+  val watch: Boolean,
+  val profile: Profile,
+  val filteredArgs: List<String>,
+)
+
+// Splits the kolt-level flags from the subcommand and from any `--`
+// passthrough segment. The kolt-level flags (--no-daemon, --watch,
+// --release) are extracted into typed fields and stripped from
+// `filteredArgs`; the passthrough block (after `--`) is appended verbatim
+// so `kolt run -- --foo` still passes `-- --foo` to the subcommand parser.
+internal fun parseKoltArgs(argList: List<String>): KoltArgs {
+  val passthroughStart = argList.indexOf("--")
+  val koltLevel = if (passthroughStart >= 0) argList.subList(0, passthroughStart) else argList
+  val passthrough =
+    if (passthroughStart >= 0) argList.subList(passthroughStart, argList.size) else emptyList()
+  val useDaemon = !koltLevel.contains(NO_DAEMON_FLAG)
+  val watch = koltLevel.contains(WATCH_FLAG)
+  val profile = if (koltLevel.contains(RELEASE_FLAG)) Profile.Release else Profile.Debug
+  val filteredArgs =
+    koltLevel.filter { it != NO_DAEMON_FLAG && it != WATCH_FLAG && it != RELEASE_FLAG } +
+      passthrough
+  return KoltArgs(useDaemon, watch, profile, filteredArgs)
+}
 
 private fun printUsage() {
   eprintln("usage: kolt <command>")
@@ -114,4 +139,5 @@ private fun printUsage() {
   eprintln("flags:")
   eprintln("  --watch      Watch source files and re-run on change")
   eprintln("  --no-daemon  Skip the warm compiler daemon for this invocation")
+  eprintln("  --release    Build under the release profile (Native: -opt; JVM: no-op)")
 }
