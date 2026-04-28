@@ -25,12 +25,17 @@ set -euo pipefail
 # `kotlin-build-tools-impl:2.3.20` transitive closure; update the sha256s in
 # lockstep when bumping the bundled Kotlin version.
 #
-# Exclusions vs the staged set: the daemon's `kolt.toml` [dependencies] declares
-# `org.jetbrains.kotlin:kotlin-build-tools-api = 2.3.20`, whose resolver closure
-# already emits `kotlin-build-tools-api`, `kotlin-stdlib`, and `annotations-13.0`
-# into `libexec/<daemon>/deps/`. Shipping those three a second time here would
-# duplicate jars on the runtime classpath; we keep only what `-impl` brings in
-# addition to the api closure.
+# kotlin-stdlib + annotations are shipped in this directory even though the
+# daemon's `[dependencies]` resolver closure already drops a stdlib jar into
+# `libexec/<daemon>/deps/`. SharedApiClassesClassLoader is a sealed surface:
+# it only exposes `kotlin.buildtools.api.*` upward, so the `-impl` child
+# cannot reach the daemon-main `kotlin.*` classes through the parent chain.
+# Issue #287: missing here, the impl child crashes at first compile with
+# `NoClassDefFoundError: kotlin/jvm/internal/Intrinsics`. Pinning to 2.3.20
+# matches the version that `kotlin-build-tools-impl-2.3.20.pom` declares
+# directly. `kotlin-build-tools-api-2.3.20` is **not** shipped here on
+# purpose — it IS exposed through SharedApiClassesClassLoader (that is the
+# loader's whole point) and the daemon's own deps/ already carries it.
 #
 # Format: "group:artifact:version:filename" (:-separated; filename is the
 # exact Maven Central artifact name, including `-jvm` / version variants).
@@ -43,7 +48,9 @@ BTA_IMPL_JARS=(
   "org.jetbrains.kotlin:kotlin-daemon-embeddable:2.3.20:kotlin-daemon-embeddable-2.3.20.jar"
   "org.jetbrains.kotlin:kotlin-reflect:1.6.10:kotlin-reflect-1.6.10.jar"
   "org.jetbrains.kotlin:kotlin-script-runtime:2.3.20:kotlin-script-runtime-2.3.20.jar"
+  "org.jetbrains.kotlin:kotlin-stdlib:2.3.20:kotlin-stdlib-2.3.20.jar"
   "org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.8.0:kotlinx-coroutines-core-jvm-1.8.0.jar"
+  "org.jetbrains:annotations:13.0:annotations-13.0.jar"
 )
 
 # SHA-256 digests in `sha256sum -c` input format: "<digest>  <filename>".
@@ -57,7 +64,9 @@ BTA_IMPL_SHA256=(
   "8870bab840b8087c96c4ddc06088b4aedf5131c408af3674306304f1f96af3f4  kotlin-daemon-embeddable-2.3.20.jar"
   "3277ac102ae17aad10a55abec75ff5696c8d109790396434b496e75087854203  kotlin-reflect-1.6.10.jar"
   "6fcdb7da6e65cf8cc43e5aabab94bdcc48825e7933686f8a1bf694eb88f8e00e  kotlin-script-runtime-2.3.20.jar"
+  "0ae12504a5040ebaf37703908483420d1a5624dd1d93f357665f8c77c848a01e  kotlin-stdlib-2.3.20.jar"
   "9860906a1937490bf5f3b06d2f0e10ef451e65b95b269f22daf68a3d1f5065c5  kotlinx-coroutines-core-jvm-1.8.0.jar"
+  "ace2a10dc8e2d5fd34925ecac03e4988b2c0f851650c94b8cef49ba1bd111478  annotations-13.0.jar"
 )
 
 MAVEN_CENTRAL_BASE="https://repo1.maven.org/maven2"
