@@ -82,10 +82,10 @@ the repo is English-first.
 User-facing CLI:
 ```
 kolt init [name]                  # create project
-kolt build    [--watch]           # compile
-kolt run      [--watch]           # build + run
-kolt test     [--watch]           # build + run tests
-kolt check    [--watch]           # type-check only
+kolt build    [--watch] [--release]   # compile (debug default; --release writes build/release/)
+kolt run      [--watch] [--release]   # build + run
+kolt test     [--watch] [--release]   # build + run tests
+kolt check    [--watch] [--release]   # type-check only
 kolt fmt      [--check]           # ktfmt format (or verify in CI)
 kolt add <dep>                    # add dependency to kolt.toml
 kolt deps [install|update|tree]   # resolve / inspect deps
@@ -93,6 +93,11 @@ kolt toolchain install            # provision kotlinc for pinned version
 kolt daemon stop [--all]          # stop warm daemon
 kolt daemon reap                  # clean stale sockets
 ```
+
+`--release` is a Cargo-style opt-in profile: Native adds `-opt` and omits
+`-g`; JVM is a declared no-op (same kotlinc args, same daemon IC path)
+with the artifact moved to `build/release/<name>.jar`. Both profiles'
+artifacts coexist on disk. See ADR 0030.
 
 Development (for working on kolt itself):
 ```
@@ -112,6 +117,7 @@ Authoritative ADRs live in `docs/adr/`. The load-bearing ones:
 - **ADR 0019** — Incremental JVM compilation via kotlin-build-tools-api (BTA).
 - **ADR 0018** — Distribution layout and self-host path.
 - **ADR 0024** — Native compiler daemon (proposed) for konanc warm path.
+- **ADR 0030** — Build profiles: Cargo-style `--release` opt-in; debug default; Native routes `-opt` / `-g`; JVM no-op; `build/<profile>/` partition.
 
 When changing code that encodes one of these decisions, update the ADR in the same
 commit.

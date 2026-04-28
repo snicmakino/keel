@@ -56,7 +56,8 @@ kolt init custom-name
 
 ```
 kolt init [name]       新しいプロジェクトを作成
-kolt build             プロジェクトをコンパイル
+kolt build             プロジェクトをコンパイル（デフォルトは debug プロファイル）
+kolt build --release   release プロファイルでコンパイル
 kolt run               ビルドして実行（kolt run -- args でアプリ引数を渡す）
 kolt test              ビルドしてテスト実行（kolt test -- args で JUnit Platform 引数を渡す）
 kolt check             成果物を生成せずに型チェック
@@ -93,6 +94,7 @@ kolt --version         バージョンを表示
 |--------|------|
 | `--watch` | ソースファイルを監視し、変更時にコマンドを再実行（build/check/test/run） |
 | `--no-daemon` | この実行でウォームコンパイラデーモンをスキップ。daemon サポート対象外の Kotlin バージョン (ADR 0022) でも常に利用可能。 |
+| `--release` | release プロファイルでビルドする。Native は `-opt` を有効化し `-g` を外して `build/release/` に出力。JVM では宣言上 no-op（kotlinc 引数も daemon IC パスも変わらない）だが、両プロファイル成果物を相互に上書きしないよう成果物パスは `build/release/<name>.jar` に切り替わる。デフォルトは `debug` プロファイルで、両プロファイルの成果物はディスク上に共存するためプロファイルを切り替えても他方の IC が無効化されることはない。詳細は [ADR 0030](docs/adr/0030-build-profiles.md) を参照。 |
 
 ## 設定
 

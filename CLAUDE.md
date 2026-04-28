@@ -18,6 +18,7 @@ Reads `kolt.toml`, compiles with `kotlinc`, and runs with `java -jar`.
 - **No backward compatibility until v1.0** — kolt is pre-v1. Do not add migration shims, legacy-layout probes, or deprecation warnings for older kolt versions. Cut breaking changes cleanly; document upgrade steps in the release note and expect users to run them (e.g. `rm -rf ~/.kolt/daemon/`). Cross-version-of-external-tools compat (Kotlin compiler family, Gradle metadata) is different and still required.
 - **Comments default to deletion** — keep only design invariants, "why-not" decisions, and anchored external-tool gotchas. See `/kolt-dev`.
 - **Write all code, comments, documentation, and commit messages in English**
+- **Profiles** — `kolt build [--release]` is Cargo-style: debug default, `--release` opt-in. JVM is declared no-op; Native routes `-opt` / `-g` and partitions output under `build/<profile>/`. Single source of truth: `kolt.build.Profile`. See ADR 0030.
 - Place test files in `src/nativeTest/kotlin/kolt/<package>/XxxTest.kt` mirroring main source structure
 - Annotate POSIX API usage with `@OptIn(ExperimentalForeignApi::class)` at function level
 
