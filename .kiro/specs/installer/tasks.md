@@ -159,7 +159,7 @@
   - _Boundary: self-host-smoke.yml_
   - _Depends: 2.8_
 
-- [ ] 4.2 yank refuse + override smoke step を追加
+- [x] 4.2 yank refuse + override smoke step を追加
   - 同 HTTP server の serve directory に `YANKED-with-yank` を生成 (1 行: `<kolt.toml-version>\treplacement-test\ttest yank entry`)
   - `KOLT_TEST_YANKED_URL=http://127.0.0.1:8000/YANKED-with-yank KOLT_VERSION=<v>` で install.sh を起動 (set +e でくくって exit code を捕まえる)
   - exit code が 3 であること、replacement version 文字列 (`replacement-test`) が stderr に含まれることを assert

@@ -183,6 +183,10 @@ jobs:
           cp "dist/kolt-${KOLT_TOML_VERSION}-linux-x64.tar.gz" "$SERVE_DIR/"
           cp "dist/kolt-${KOLT_TOML_VERSION}-linux-x64.tar.gz.sha256" "$SERVE_DIR/"
           : > "$SERVE_DIR/YANKED"
+          # Synthetic YANKED for refuse / override tests (entry yanks the
+          # current kolt.toml version with replacement-test as the alias).
+          printf '%s\treplacement-test\ttest yank entry\n' \
+            "$KOLT_TOML_VERSION" > "$SERVE_DIR/YANKED-with-yank"
           echo "SERVE_DIR=$SERVE_DIR" >> "$GITHUB_ENV"
 
       - name: Start local HTTP server
@@ -210,6 +214,49 @@ jobs:
             exit 1
           fi
           echo "Happy path OK: $OUTPUT"
+
+      - name: Yank refuse smoke (KOLT_ALLOW_YANKED unset)
+        env:
+          KOLT_TEST_BASE_URL: http://127.0.0.1:8000
+          KOLT_TEST_YANKED_URL: http://127.0.0.1:8000/YANKED-with-yank
+        run: |
+          set +e
+          OUTPUT=$(KOLT_VERSION="$KOLT_TOML_VERSION" sh ./install.sh 2>&1)
+          EXIT=$?
+          set -e
+          if [ "$EXIT" != "3" ]; then
+            echo "Yank refuse failed: expected exit 3, got $EXIT" >&2
+            echo "$OUTPUT" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$OUTPUT" | grep -q "replacement-test"; then
+            echo "Yank refuse failed: 'replacement-test' not in stderr" >&2
+            echo "$OUTPUT" >&2
+            exit 1
+          fi
+          echo "Yank refuse OK (exit 3, replacement surfaced)"
+
+      - name: Yank override smoke (KOLT_ALLOW_YANKED=1)
+        env:
+          KOLT_TEST_BASE_URL: http://127.0.0.1:8000
+          KOLT_TEST_YANKED_URL: http://127.0.0.1:8000/YANKED-with-yank
+          KOLT_ALLOW_YANKED: "1"
+        run: |
+          set +e
+          OUTPUT=$(KOLT_VERSION="$KOLT_TOML_VERSION" sh ./install.sh 2>&1)
+          EXIT=$?
+          set -e
+          if [ "$EXIT" != "0" ]; then
+            echo "Yank override failed: expected exit 0, got $EXIT" >&2
+            echo "$OUTPUT" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$OUTPUT" | grep -q "warning"; then
+            echo "Yank override failed: warning not in stderr" >&2
+            echo "$OUTPUT" >&2
+            exit 1
+          fi
+          echo "Yank override OK (exit 0, warning emitted)"
 
       # Fixture smoke: drive `<install>/bin/kolt build` on a minimal JVM
       # app via the installer-managed dir, end-to-end signal that the 3 ×
