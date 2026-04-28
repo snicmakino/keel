@@ -50,7 +50,7 @@
   - _Requirements: 3.5, 3.6, 6.3, 6.4, 6.6, 6.7_
   - _Boundary: install.sh_
 
-- [ ] 2.4 is_yanked + yank_check 関数の実装
+- [x] 2.4 is_yanked + yank_check 関数の実装
   - `is_yanked(manifest, version)`: validated manifest を逐行読み、第 1 field が version と一致すれば exit 0 + `<replacement>\t<reason>` を stdout、無ければ exit 1。format validation は再実施しない (caller が事前 validate 済み前提)
   - `yank_check(manifest, version)`: `is_yanked` を呼び、(a) yanked かつ `KOLT_ALLOW_YANKED!=1` → exit 3 + replacement と reason を stderr、(b) yanked かつ `=1` → "warning: <v> is yanked, replacement is <r>" を stderr 出力後 return、(c) non-yanked → silent return
   - `set -e` 干渉対策として sub-shell capture (`result=$(is_yanked ...)`) を使う場合は `|| true` パターンを併用

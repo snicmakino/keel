@@ -74,8 +74,12 @@ fetch_yanked_and_validate() {
 }
 
 is_yanked() {
-    echo "TODO: is_yanked" >&2
-    exit 1
+    iy_manifest="$1"
+    iy_version="$2"
+    awk -F'\t' -v v="$iy_version" '
+        $1 == v { print $2 "\t" $3; found = 1; exit }
+        END { if (!found) exit 1 }
+    ' "$iy_manifest"
 }
 
 select_version() {
@@ -84,8 +88,19 @@ select_version() {
 }
 
 yank_check() {
-    echo "TODO: yank_check" >&2
-    exit 1
+    yc_manifest="$1"
+    yc_version="$2"
+    if result=$(is_yanked "$yc_manifest" "$yc_version"); then
+        yc_replacement=$(printf '%s' "$result" | cut -f1)
+        yc_reason=$(printf '%s' "$result" | cut -f2)
+        if [ "$KOLT_ALLOW_YANKED" = "1" ]; then
+            echo "warning: $yc_version is yanked, replacement is $yc_replacement ($yc_reason)" >&2
+            return
+        fi
+        echo "version $yc_version is yanked, replacement is $yc_replacement ($yc_reason)" >&2
+        echo "set KOLT_ALLOW_YANKED=1 to install anyway" >&2
+        exit 3
+    fi
 }
 
 download_and_verify() {
