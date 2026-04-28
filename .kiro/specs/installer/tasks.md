@@ -169,7 +169,7 @@
   - _Boundary: self-host-smoke.yml_
   - _Depends: 2.8_
 
-- [ ] 4.3 install.sh の edge case smokes (parse error / non-symlink / SHA mismatch)
+- [x] 4.3 install.sh の edge case smokes (parse error / non-symlink / SHA mismatch)
   - parse error: serve directory に `YANKED-bad` (例: 2 fields のみの行) を置き、`KOLT_TEST_YANKED_URL=...YANKED-bad` で install.sh を呼んで exit 2 + 違反行番号が stderr に出ることを assert
   - non-symlink refuse: `touch ~/.local/bin/kolt` (regular file) を作って install.sh を呼び、exit 8 + 「remove this file manually」を stderr で assert。後始末で `rm ~/.local/bin/kolt`
   - SHA-256 mismatch: serve directory の `kolt-<v>-linux-x64.tar.gz.sha256` の digest を 1 文字書き換え、install.sh を呼んで exit 5 + 期待・実 digest 両方が stderr に出ることを assert
