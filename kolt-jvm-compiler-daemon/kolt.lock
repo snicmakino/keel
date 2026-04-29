@@ -1,7 +1,7 @@
 {
   "version": 3,
   "kotlin": "2.3.20",
-  "jvm_target": "21",
+  "jvm_target": "25",
   "dependencies": {
     "com.akuleshov7:ktoml-core": {
       "version": "0.7.1",
@@ -16,9 +16,8 @@
       "sha256": "22f1ab223854b949099f6b259cef541d5b58a3643df9a49c4577c63c416e843b"
     },
     "org.jetbrains.kotlin:kotlin-stdlib": {
-      "version": "2.3.10",
-      "sha256": "f61662c6d3a2f8ef5bd34362a02d877772c39f393cd394feb259dfaf7f4d8437",
-      "transitive": true
+      "version": "2.3.20",
+      "sha256": "0ae12504a5040ebaf37703908483420d1a5624dd1d93f357665f8c77c848a01e"
     },
     "org.jetbrains.kotlinx:kotlinx-datetime-jvm": {
       "version": "0.7.1-0.6.x-compat",

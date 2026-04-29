@@ -120,10 +120,19 @@ fun resolve(
   existingLock: Lockfile?,
   cacheBase: String,
   deps: ResolverDeps,
+  mainSeeds: Map<String, String> = config.dependencies,
   testSeeds: Map<String, String> = emptyMap(),
 ): Result<ResolveResult, ResolveError> =
   if (config.build.target in NATIVE_TARGETS) resolveNative(config, cacheBase, deps)
-  else resolveTransitive(config, existingLock, cacheBase, deps, testSeeds = testSeeds)
+  else
+    resolveTransitive(
+      config,
+      existingLock,
+      cacheBase,
+      deps,
+      mainSeeds = mainSeeds,
+      testSeeds = testSeeds,
+    )
 
 fun buildLockfileFromResolved(config: KoltConfig, deps: List<ResolvedDep>): Lockfile {
   return Lockfile(
