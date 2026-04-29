@@ -2,7 +2,7 @@
 
 - [ ] 1. Foundation: build / CI wiring for libarchive
 
-- [ ] 1.1 (P) Add libarchive cinterop binding and register in build configuration
+- [x] 1.1 (P) Add libarchive cinterop binding and register in build configuration
   - `src/nativeInterop/cinterop/libarchive.def` を新規作成 (`headers = archive.h archive_entry.h`、`compilerOpts.linux = -I/usr/include`、`linkerOpts.linux = -L/usr/lib/x86_64-linux-gnu -larchive`、`linkerOpts.osx = -larchive` を予約として含める)
   - `build.gradle.kts` の `cinterops { val libcurl by creating }` ブロックに並べて `val libarchive by creating` を追加
   - `kolt.toml` に `[[cinterop]] name = "libarchive"` ブロックを追加して self-host も新 cinterop を認識できるようにする
