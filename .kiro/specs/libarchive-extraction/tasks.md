@@ -27,7 +27,7 @@
   - _Requirements: 2.1, 2.2, 4.6, 4.7_
   - _Boundary: nativeTest resources_
 
-- [ ] 2.2 Implement extractArchive happy path with unit tests
+- [x] 2.2 Implement extractArchive happy path with unit tests
   - `kolt.infra.ArchiveExtraction.kt` (新規) に `extractArchive(archivePath, destDir): Result<Unit, ExtractError>` と sealed `ExtractError` (`ArchiveNotFound` / `OpenFailed` / `ReadFailed` / `WriteFailed` / `SecurityViolation`) を実装
   - libarchive lifecycle を `memScoped` 内で完結、必須フラグ `ARCHIVE_EXTRACT_PERM | _TIME | _SECURE_SYMLINKS | _SECURE_NODOTDOT | _SECURE_NOABSOLUTEPATHS` を `archive_write_disk_set_options` に設定、`archive_read_extract2` でエントリ書き出し
   - 関数レベルで `@OptIn(ExperimentalForeignApi::class)` を付与
@@ -100,3 +100,6 @@
 
 ## Implementation Notes
 - happy.zip は Info-ZIP 由来の bare `subdir/` ディレクトリエントリを含むので 5 件 (regular.txt / executable.sh / subdir/ / subdir/nested.txt / link-to-regular)。2.2 テストでエントリ件数を assert する場合は 5 を使う。
+- `extractArchive` は process-global な `chdir(destDir)` を使う (libarchive の `ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS` が rewritten absolute path も拒否するため)。kolt の bootstrap install シーケンスは sequential なので現状安全だが、並行 toolchain install を導入する際は再設計が必要。
+- ADR 0031 citation コメントは task 4.1 で ADR が書かれた後に `extractArchive` の cinterop lifecycle ブロックへ追加する。
+- libarchive.def に Ubuntu 24.04 multiarch include path (`-I/usr/include/x86_64-linux-gnu`) が必要。`bits/timesize.h` 経路で libcurl.def と同じ修正パターン。
