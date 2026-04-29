@@ -19,7 +19,7 @@
 
 - [ ] 2. Core: ArchiveExtraction implementation with tests
 
-- [ ] 2.1 Prepare archive test fixtures
+- [x] 2.1 Prepare archive test fixtures
   - `src/nativeTest/resources/archive-fixtures/` を作成し、最小サイズの zip 1 個と tar.gz 1 個 (通常ファイル + 実行ビット付きファイル + サブディレクトリ + 内部 symlink を含む) を配置
   - セキュリティ系フィクスチャを別に用意: パストラバーサル (`../escape.txt`) を含む zip、絶対パス (`/etc/passwd`) を含む zip、外部 symlink (ターゲット `../outside`) を含む tar.gz、途中切り詰めの破損 zip
   - 再生成手順を `scripts/regen-archive-fixtures.sh` (POSIX sh) に残し、`zip` / `tar` / `ln` で生成する
@@ -97,3 +97,6 @@
   - 観測条件: PR 上の 3 CI workflow すべて success、特に `self-host-smoke` の installer-managed dir build とfixture smoke が緑
   - _Requirements: 1.4, 3.4_
   - _Depends: 5.1_
+
+## Implementation Notes
+- happy.zip は Info-ZIP 由来の bare `subdir/` ディレクトリエントリを含むので 5 件 (regular.txt / executable.sh / subdir/ / subdir/nested.txt / link-to-regular)。2.2 テストでエントリ件数を assert する場合は 5 を使う。
