@@ -36,7 +36,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 2.1, 2.2, 4.4, 4.5_
   - _Boundary: kolt.infra.ArchiveExtraction_
 
-- [ ] 2.3 Add security and failure-path tests for extractArchive
+- [x] 2.3 Add security and failure-path tests for extractArchive
   - パストラバーサル / 絶対パス / 外部 symlink フィクスチャに対して `extractArchive` が `Err(SecurityViolation)` を返し、destDir に該当エントリが書き出されないことを検証
   - 存在しないアーカイブで `Err(OpenFailed)`、破損アーカイブで `Err(ReadFailed)` が返ることを検証
   - エラーメッセージに libarchive の `archive_error_string` 由来の文字列が含まれることを検証
@@ -103,3 +103,4 @@
 - `extractArchive` は process-global な `chdir(destDir)` を使う (libarchive の `ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS` が rewritten absolute path も拒否するため)。kolt の bootstrap install シーケンスは sequential なので現状安全だが、並行 toolchain install を導入する際は再設計が必要。
 - ADR 0031 citation コメントは task 4.1 で ADR が書かれた後に `extractArchive` の cinterop lifecycle ブロックへ追加する。
 - libarchive.def に Ubuntu 24.04 multiarch include path (`-I/usr/include/x86_64-linux-gnu`) が必要。`bits/timesize.h` 経路で libcurl.def と同じ修正パターン。
+- libarchive の `ARCHIVE_EXTRACT_SECURE_SYMLINKS` は新規 symlink エントリの **target 文字列** を検証しない。`archive_write_disk_posix.c:2388` の `symlink(linkname, a->name)` は target 検証なしで呼ばれる。Req 4.7 を満たすために `extractArchive` 側で entry-depth-aware な `symlinkTargetEscapes` 検査を `archive_write_header` の前に行う実装を入れている (タスク 2.3 で追加)。design.md の "外部 symlink 拒否は libarchive のフラグに完全委譲" は不正確で、実際は kolt 側に手書きチェックが必要。

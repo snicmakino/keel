@@ -15,6 +15,7 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
+import libarchive.AE_IFLNK
 import libarchive.ARCHIVE_EOF
 import libarchive.ARCHIVE_EXTRACT_PERM
 import libarchive.ARCHIVE_EXTRACT_SECURE_NOABSOLUTEPATHS
@@ -23,8 +24,10 @@ import libarchive.ARCHIVE_EXTRACT_SECURE_SYMLINKS
 import libarchive.ARCHIVE_EXTRACT_TIME
 import libarchive.ARCHIVE_FAILED
 import libarchive.ARCHIVE_OK
+import libarchive.archive_entry_filetype
 import libarchive.archive_entry_pathname
 import libarchive.archive_entry_size
+import libarchive.archive_entry_symlink
 import libarchive.archive_error_string
 import libarchive.archive_read_close
 import libarchive.archive_read_data_block
@@ -151,6 +154,21 @@ private fun extractEntries(
 
     val originalPath = archive_entry_pathname(entry)?.toKString().orEmpty()
 
+    // libarchive's SECURE_SYMLINKS only blocks writes through symlink path
+    // components already on disk; it does not validate the target string of
+    // a symlink entry being created, so we inspect targets ourselves to
+    // reject ones that escape destDir.
+    if (archive_entry_filetype(entry).toInt() and AE_IFLNK.toInt() == AE_IFLNK.toInt()) {
+      val target = archive_entry_symlink(entry)?.toKString().orEmpty()
+      if (symlinkTargetEscapes(originalPath, target)) {
+        return@memScoped Err(
+          ExtractError.SecurityViolation(
+            "symlink '$originalPath' targets '$target' which escapes destDir"
+          )
+        )
+      }
+    }
+
     val headerRc = archive_write_header(writer, entry)
     when {
       headerRc == ARCHIVE_FAILED ->
@@ -200,6 +218,31 @@ private fun copyEntryData(
     }
   }
   @Suppress("UNREACHABLE_CODE") null
+}
+
+// Resolve `target` as if it were a symlink at `entryPath` (relative to
+// destDir) and return true when the resulting path escapes destDir.
+// Absolute targets always escape; relative targets escape when their depth
+// counter goes negative while walking from the entry's parent directory.
+private fun symlinkTargetEscapes(entryPath: String, target: String): Boolean {
+  if (target.isEmpty()) return false
+  if (target.startsWith("/")) return true
+
+  val parentSegments = entryPath.split("/").filter { it.isNotEmpty() && it != "." }
+  var depth = (parentSegments.size - 1).coerceAtLeast(0)
+
+  for (segment in target.split("/")) {
+    when (segment) {
+      "",
+      "." -> Unit
+      ".." -> {
+        if (depth == 0) return true
+        depth--
+      }
+      else -> depth++
+    }
+  }
+  return false
 }
 
 @OptIn(ExperimentalForeignApi::class)

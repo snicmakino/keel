@@ -101,6 +101,96 @@ class ArchiveExtractionTest {
     }
   }
 
+  @Test
+  fun rejectsPathTraversalEntryWithSecurityViolation() {
+    val archive = fixturePath("path-traversal.zip")
+    val (grandparent, destDir) = createNestedDestDir("kolt_extract_traversal_")
+    try {
+      val result = extractArchive(archive, destDir)
+
+      val error = result.getError()
+      assertIs<ExtractError.SecurityViolation>(error)
+      assertTrue(error.message.isNotEmpty(), "SecurityViolation message should be non-empty")
+
+      assertTrue(
+        !fileExists("$grandparent/escape.txt"),
+        "../escape.txt must not be written outside destDir",
+      )
+      assertEquals(
+        emptyList(),
+        listFiles(destDir).get() ?: error("listFiles failed"),
+        "destDir must be empty after rejected extraction",
+      )
+    } finally {
+      removeDirectoryRecursive(grandparent)
+    }
+  }
+
+  @Test
+  fun rejectsAbsolutePathEntryWithSecurityViolation() {
+    val archive = fixturePath("absolute-path.zip")
+    val (grandparent, destDir) = createNestedDestDir("kolt_extract_absolute_")
+    try {
+      val result = extractArchive(archive, destDir)
+
+      val error = result.getError()
+      assertIs<ExtractError.SecurityViolation>(error)
+      assertTrue(error.message.isNotEmpty(), "SecurityViolation message should be non-empty")
+
+      assertEquals(
+        emptyList(),
+        listFiles(destDir).get() ?: error("listFiles failed"),
+        "destDir must be empty after rejected extraction",
+      )
+    } finally {
+      removeDirectoryRecursive(grandparent)
+    }
+  }
+
+  @Test
+  fun rejectsExternalSymlinkEntryWithSecurityViolation() {
+    val archive = fixturePath("external-symlink.tar.gz")
+    val (grandparent, destDir) = createNestedDestDir("kolt_extract_extsymlink_")
+    try {
+      val result = extractArchive(archive, destDir)
+
+      val error = result.getError()
+      assertIs<ExtractError.SecurityViolation>(error)
+      assertTrue(error.message.isNotEmpty(), "SecurityViolation message should be non-empty")
+
+      assertTrue(
+        !fileExists("$grandparent/outside"),
+        "external symlink target must not be reachable above destDir",
+      )
+      assertTrue(!isSymlink("$destDir/escape-link"), "external symlink must not be written")
+    } finally {
+      removeDirectoryRecursive(grandparent)
+    }
+  }
+
+  @Test
+  fun returnsReadFailedForCorruptArchive() {
+    val archive = fixturePath("corrupt.zip")
+    val tempDir = createTempDir("kolt_extract_corrupt_")
+    try {
+      val result = extractArchive(archive, tempDir)
+
+      val error = result.getError()
+      assertIs<ExtractError.ReadFailed>(error)
+      assertTrue(error.message.isNotEmpty(), "ReadFailed message should be non-empty")
+    } finally {
+      removeDirectoryRecursive(tempDir)
+    }
+  }
+
+  private fun createNestedDestDir(prefix: String): Pair<String, String> {
+    val grandparent = createTempDir(prefix)
+    val dest = "$grandparent/dest"
+    val r = ensureDirectoryRecursive(dest)
+    if (r.getError() != null) error("ensureDirectoryRecursive failed: ${r.getError()}")
+    return grandparent to dest
+  }
+
   private fun fixturePath(name: String): String {
     val root = projectRoot()
     return "$root/src/nativeTest/resources/archive-fixtures/$name"
