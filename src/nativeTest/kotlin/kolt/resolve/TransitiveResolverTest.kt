@@ -304,6 +304,43 @@ class TransitiveResolverTest {
     assertEquals(Origin.TEST, testChild.origin)
   }
 
+  // Pins the `mainSeeds` plumbing: `resolveTransitive` previously hard-coded
+  // `mainSeeds = config.dependencies`, silently dropping any caller-provided
+  // seeds (issue #287 follow-on — auto-inject of `kotlin-stdlib` was computed
+  // upstream but ignored here). A regression would resolve zero deps when
+  // `config.dependencies` is empty regardless of the explicit `mainSeeds`.
+  @Test
+  fun explicitMainSeedsOverrideEmptyConfigDependencies() {
+    val config = testConfig().copy(dependencies = emptyMap())
+    val seedPom =
+      """
+            <project><groupId>com.example</groupId><artifactId>seed-only</artifactId><version>1.0.0</version></project>
+        """
+        .trimIndent()
+
+    val deps =
+      fakeTransitiveDeps(
+        sha256Results =
+          mapOf("/cache/com/example/seed-only/1.0.0/seed-only-1.0.0.jar" to "hashSeed"),
+        pomContents = mapOf("/cache/com/example/seed-only/1.0.0/seed-only-1.0.0.pom" to seedPom),
+      )
+    val result =
+      resolveTransitive(
+        config,
+        existingLock = null,
+        cacheBase = "/cache",
+        deps = deps,
+        mainSeeds = mapOf("com.example:seed-only" to "1.0.0"),
+      )
+    val resolved = assertNotNull(result.get())
+    assertEquals(1, resolved.deps.size)
+    val seed = resolved.deps[0]
+    assertEquals("com.example:seed-only", seed.groupArtifact)
+    assertEquals("1.0.0", seed.version)
+    assertEquals(Origin.MAIN, seed.origin)
+    assertFalse(seed.transitive, "explicit main seed must materialize as a direct dep")
+  }
+
   @Test
   fun testSeedOverlappingMainIsDroppedWithMainOriginPreserved() {
     val config = testConfig().copy(dependencies = mapOf("com.example:shared" to "1.0.0"))
