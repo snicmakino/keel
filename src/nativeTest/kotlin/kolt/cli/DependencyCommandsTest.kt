@@ -25,7 +25,14 @@ class DepsTreeSeedsTest {
 
     val seeds = depsTreeSeeds(config)
 
-    assertEquals(mapOf("com.example:lib" to "1.0"), seeds.mainSeeds)
+    assertTrue(
+      "com.example:lib" in seeds.mainSeeds,
+      "main section must carry declared deps: ${seeds.mainSeeds}",
+    )
+    assertTrue(
+      "org.jetbrains.kotlin:kotlin-stdlib" in seeds.mainSeeds,
+      "JVM main section must carry the auto-injected kotlin-stdlib: ${seeds.mainSeeds}",
+    )
     assertTrue(
       "com.example:junit-ext" in seeds.testSeeds,
       "test section must carry declared test deps: ${seeds.testSeeds}",
@@ -53,7 +60,8 @@ class DepsTreeSeedsTest {
 
     val seeds = depsTreeSeeds(config)
 
-    assertEquals(mapOf("com.example:lib" to "1.0"), seeds.mainSeeds)
+    assertTrue("com.example:lib" in seeds.mainSeeds)
+    assertTrue("org.jetbrains.kotlin:kotlin-stdlib" in seeds.mainSeeds)
     assertTrue(seeds.testSeeds.isEmpty(), "test section must be empty: ${seeds.testSeeds}")
   }
 
@@ -69,7 +77,11 @@ class DepsTreeSeedsTest {
 
     val seeds = depsTreeSeeds(config)
 
-    assertTrue(seeds.mainSeeds.isEmpty())
+    assertEquals(
+      setOf("org.jetbrains.kotlin:kotlin-stdlib"),
+      seeds.mainSeeds.keys,
+      "only the auto-injected stdlib seed should remain",
+    )
     assertEquals(
       setOf("org.jetbrains.kotlin:kotlin-test-junit5"),
       seeds.testSeeds.keys,
@@ -96,8 +108,28 @@ class DepsTreeSeedsTest {
     )
   }
 
+  // On a JVM target, `mainSeeds` is never empty even when the user
+  // declares no `[dependencies]` — `autoInjectedMainDeps` adds
+  // `kotlin-stdlib` so a `kolt new` project compiles via BTA without an
+  // explicit stdlib declaration. Native targets keep the old "really
+  // empty" shape because konanc bundles stdlib (ADR 0011).
   @Test
-  fun emptyMainAndTestProducesEmptySeeds() {
+  fun nativeWithEmptyMainAndTestProducesEmptySeeds() {
+    val config =
+      testConfig(
+        target = "linuxX64",
+        dependencies = emptyMap(),
+        testDependencies = emptyMap(),
+        testSources = emptyList(),
+      )
+
+    val seeds = depsTreeSeeds(config)
+
+    assertTrue(seeds.isEmpty)
+  }
+
+  @Test
+  fun jvmWithEmptyMainAndTestStillCarriesAutoInjectedStdlib() {
     val config =
       testConfig(
         target = "jvm",
@@ -108,7 +140,13 @@ class DepsTreeSeedsTest {
 
     val seeds = depsTreeSeeds(config)
 
-    assertTrue(seeds.isEmpty)
+    assertEquals(
+      setOf("org.jetbrains.kotlin:kotlin-stdlib"),
+      seeds.mainSeeds.keys,
+      "JVM main section must carry the auto-injected stdlib seed: ${seeds.mainSeeds}",
+    )
+    assertTrue(seeds.testSeeds.isEmpty())
+    assertFalse(seeds.isEmpty)
   }
 }
 

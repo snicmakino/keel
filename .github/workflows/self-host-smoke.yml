@@ -392,15 +392,45 @@ jobs:
       # Fixture smoke: drive `<install>/bin/kolt build` on a minimal JVM
       # app via the installer-managed dir, end-to-end signal that the 3 ×
       # kolt build → assemble-dist → install.sh chain produced a working
-      # install.
+      # install. Issue #287: stderr is captured and grepped for the
+      # `FallbackReporter` warning so that a daemon that fails to bind
+      # within the connect budget is caught here rather than masquerading
+      # as a passing build via the subprocess fallback rail.
+      #
+      # `~/.kolt/daemon/` is wiped first so the smoke always exercises the
+      # cold spawn-and-bind path: `~/.kolt` is restored from the toolchain
+      # cache (line ~128) and any stale daemon state files there could let
+      # the spawn rail short-circuit before the bind path that #287 broke.
       - name: Smoke-build fixture with installed kolt
         run: |
           set -euo pipefail
           INSTALL_DIR="$HOME/.local/share/kolt/$KOLT_TOML_VERSION"
+          rm -rf "$HOME/.kolt/daemon"
           cd spike/daemon-self-host-smoke
           rm -rf build
-          "${INSTALL_DIR}/bin/kolt" build
+          BUILD_RC=0
+          "${INSTALL_DIR}/bin/kolt" build 2> kolt-build.stderr || BUILD_RC=$?
+          echo "--- kolt-build.stderr ---"
+          cat kolt-build.stderr || true
+          echo "--- end stderr ---"
+          if [ -d "$HOME/.kolt/daemon" ]; then
+            for log in "$HOME/.kolt/daemon"/*/jvm-compiler-daemon.log "$HOME/.kolt/daemon"/*/native-compiler-daemon.log; do
+              [ -f "$log" ] || continue
+              echo "--- $log ---"
+              cat "$log"
+              echo "--- end $log ---"
+            done
+          fi
+          if [ "$BUILD_RC" -ne 0 ]; then
+            echo "daemon-bind smoke: kolt build failed with exit $BUILD_RC" >&2
+            exit 1
+          fi
           test -f build/debug/smoke.jar
+          if grep -q "falling back to subprocess" kolt-build.stderr; then
+            echo "daemon-bind regression: kolt build fell back to subprocess compile" >&2
+            exit 1
+          fi
+          echo "daemon-bind smoke: kolt build went via the daemon path"
 
       - name: Stop local HTTP server
         if: always()

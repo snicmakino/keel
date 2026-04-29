@@ -13,6 +13,7 @@ fun resolveTransitive(
   existingLock: Lockfile?,
   cacheBase: String,
   deps: ResolverDeps,
+  mainSeeds: Map<String, String> = config.dependencies,
   testSeeds: Map<String, String> = emptyMap(),
 ): Result<ResolveResult, ResolveError> {
   val repos = config.repositories.values.toList()
@@ -35,7 +36,7 @@ fun resolveTransitive(
 
   val nodes =
     fixpointResolve(
-        mainSeeds = config.dependencies,
+        mainSeeds = mainSeeds,
         testSeeds = testSeeds,
         childLookup = pomChildLookup(pomLookup),
       )

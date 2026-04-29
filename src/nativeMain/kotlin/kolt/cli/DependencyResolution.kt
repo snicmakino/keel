@@ -8,6 +8,7 @@ import com.github.michaelbull.result.getOrElse
 import com.github.michaelbull.result.onErr
 import kolt.build.ResolvedJar
 import kolt.build.UserJdkError
+import kolt.build.autoInjectedMainDeps
 import kolt.build.autoInjectedTestDeps
 import kolt.build.generateWorkspaceJson
 import kolt.build.resolveUserJdkHome
@@ -54,7 +55,7 @@ internal fun resolveDependencies(config: KoltConfig): Result<JvmResolutionOutcom
     )
   }
 
-  val mainSeeds = config.dependencies
+  val mainSeeds = autoInjectedMainDeps(config) + config.dependencies
   val testSeeds = autoInjectedTestDeps(config) + config.testDependencies
   if (mainSeeds.isEmpty() && testSeeds.isEmpty()) {
     if (fileExists(LOCK_FILE)) {
@@ -92,7 +93,14 @@ internal fun resolveDependencies(config: KoltConfig): Result<JvmResolutionOutcom
 
   println("resolving dependencies...")
   val resolveResult =
-    resolve(config, existingLock, paths.cacheBase, createResolverDeps(), testSeeds = testSeeds)
+    resolve(
+        config,
+        existingLock,
+        paths.cacheBase,
+        createResolverDeps(),
+        mainSeeds = mainSeeds,
+        testSeeds = testSeeds,
+      )
       .getOrElse { error ->
         eprintln(formatResolveError(error))
         if (error is ResolveError.Sha256Mismatch) {

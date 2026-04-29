@@ -98,4 +98,48 @@ class TestDepsTest {
 
     assertEquals(emptyMap(), injected)
   }
+
+  @Test
+  fun jvmTargetInjectsKotlinStdlib() {
+    val config = testConfig()
+    val injected = autoInjectedMainDeps(config)
+
+    assertEquals(mapOf("org.jetbrains.kotlin:kotlin-stdlib" to "2.1.0"), injected)
+  }
+
+  @Test
+  fun nativeTargetSkipsAutoInjectedMainDeps() {
+    val config =
+      KoltConfig(
+        name = "my-app",
+        version = "0.1.0",
+        kotlin = KotlinSection(version = "2.1.0"),
+        build = BuildSection(target = "linuxX64", main = "main", sources = listOf("src")),
+      )
+    val injected = autoInjectedMainDeps(config)
+
+    assertEquals(emptyMap(), injected)
+  }
+
+  @Test
+  fun userExplicitStdlibSkipsAutoInjectedMainDep() {
+    val config = testConfig(dependencies = mapOf("org.jetbrains.kotlin:kotlin-stdlib" to "2.0.21"))
+    val injected = autoInjectedMainDeps(config)
+
+    assertEquals(emptyMap(), injected)
+  }
+
+  @Test
+  fun mainKotlinVersionFollowsConfig() {
+    val config =
+      KoltConfig(
+        name = "my-app",
+        version = "0.1.0",
+        kotlin = KotlinSection(version = "2.2.0"),
+        build = BuildSection(target = "jvm", main = "main", sources = listOf("src")),
+      )
+    val injected = autoInjectedMainDeps(config)
+
+    assertEquals("2.2.0", injected["org.jetbrains.kotlin:kotlin-stdlib"])
+  }
 }

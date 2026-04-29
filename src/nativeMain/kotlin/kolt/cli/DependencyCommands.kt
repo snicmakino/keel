@@ -155,7 +155,7 @@ private fun doUpdateInner(): Result<Unit, Int> {
     loadProjectConfig().getOrElse {
       return Err(it)
     }
-  val mainSeeds = config.dependencies
+  val mainSeeds = autoInjectedMainDeps(config) + config.dependencies
   val testSeeds = autoInjectedTestDeps(config) + config.testDependencies
   val allSeeds = mainSeeds + testSeeds
   if (allSeeds.isEmpty()) {
@@ -179,11 +179,18 @@ private fun doUpdateInner(): Result<Unit, Int> {
 
   println("updating dependencies...")
   val resolveResult =
-    resolve(config, null, paths.cacheBase, createResolverDeps(), testSeeds = testSeeds).getOrElse {
-      error ->
-      eprintln(formatResolveError(error))
-      return Err(EXIT_DEPENDENCY_ERROR)
-    }
+    resolve(
+        config,
+        null,
+        paths.cacheBase,
+        createResolverDeps(),
+        mainSeeds = mainSeeds,
+        testSeeds = testSeeds,
+      )
+      .getOrElse { error ->
+        eprintln(formatResolveError(error))
+        return Err(EXIT_DEPENDENCY_ERROR)
+      }
 
   val lockfile = buildLockfileFromResolved(config, resolveResult.deps)
   val lockJson = serializeLockfile(lockfile)
@@ -205,7 +212,10 @@ internal data class DepsTreeSeeds(
 
 internal fun depsTreeSeeds(config: KoltConfig): DepsTreeSeeds =
   DepsTreeSeeds(
-    mainSeeds = config.dependencies,
+    // `autoInjectedMainDeps` filters by target (JVM only); native paths
+    // see an empty injected map and the tree shape stays the same as
+    // before. Mirrors the auto-inject applied in `resolveDependencies`.
+    mainSeeds = autoInjectedMainDeps(config) + config.dependencies,
     // Native targets don't auto-inject `kotlin-test-junit5`; the
     // `autoInjectedTestDeps` helper already filters by target, so both
     // JVM and native paths share this expression.
