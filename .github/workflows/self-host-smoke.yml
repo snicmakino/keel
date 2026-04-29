@@ -403,13 +403,13 @@ jobs:
       # the spawn rail short-circuit before the bind path that #287 broke.
       - name: Smoke-build fixture with installed kolt
         run: |
-          set -uo pipefail
+          set -euo pipefail
           INSTALL_DIR="$HOME/.local/share/kolt/$KOLT_TOML_VERSION"
           rm -rf "$HOME/.kolt/daemon"
           cd spike/daemon-self-host-smoke
           rm -rf build
-          "${INSTALL_DIR}/bin/kolt" build 2> kolt-build.stderr
-          BUILD_RC=$?
+          BUILD_RC=0
+          "${INSTALL_DIR}/bin/kolt" build 2> kolt-build.stderr || BUILD_RC=$?
           echo "--- kolt-build.stderr ---"
           cat kolt-build.stderr || true
           echo "--- end stderr ---"
