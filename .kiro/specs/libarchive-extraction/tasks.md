@@ -10,7 +10,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
   - _Boundary: build configuration_
 
-- [ ] 1.2 (P) Add libarchive-dev install steps to CI workflows
+- [x] 1.2 (P) Add libarchive-dev install steps to CI workflows
   - `.github/workflows/unit-tests.yml` 既存「Install libcurl dev headers」ステップに並べて `sudo apt-get install -y --no-install-recommends libarchive-dev` を実行する step を追加
   - `.github/workflows/release.yml`、`.github/workflows/self-host-smoke.yml` も同様に追加
   - 観測条件: 各 yaml の libcurl install step 直後に libarchive install step が並んでおり、ブランチ push 時に libarchive-dev install ステップが pass する
