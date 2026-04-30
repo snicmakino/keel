@@ -38,3 +38,11 @@ test_sources = ["src/test/kotlin", "ic/src/test/kotlin"]
 [classpaths.serialization_runtime]
 "org.jetbrains.kotlin:kotlin-stdlib" = "2.3.20"
 "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm" = "1.7.3"
+
+[test.sys_props]
+"kolt.ic.btaImplClasspath" = { classpath = "bta_impl" }
+"kolt.ic.fixtureClasspath" = { classpath = "fixture" }
+"kolt.ic.serializationPluginClasspath" = { classpath = "serialization_plugin" }
+"kolt.ic.serializationRuntimeClasspath" = { classpath = "serialization_runtime" }
+"kolt.daemon.coreMainSourceRoot" = { project_dir = "src/main/kotlin" }
+"kolt.daemon.icTestSourceRoot" = { project_dir = "ic/src/test/kotlin" }

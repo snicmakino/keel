@@ -27,7 +27,7 @@
   - _Requirements: 2.1, 2.2, 2.3, 2.4_
   - _Boundary: kolt-jvm-compiler-daemon/kolt.toml_
 
-- [ ] 2.3 test sysprop 6 個を declare
+- [x] 2.3 test sysprop 6 個を declare
   - `[test.sys_props]` に classpath ref 4 個を追加: `kolt.ic.btaImplClasspath` → `bta_impl`、 `kolt.ic.fixtureClasspath` → `fixture`、 `kolt.ic.serializationPluginClasspath` → `serialization_plugin`、 `kolt.ic.serializationRuntimeClasspath` → `serialization_runtime`
   - `kolt.daemon.coreMainSourceRoot` を `{ project_dir = "src/main/kotlin" }` で declare
   - `kolt.daemon.icTestSourceRoot` を `{ project_dir = "ic/src/test/kotlin" }` で declare
@@ -106,3 +106,4 @@
 ## Implementation Notes
 
 - 2026-05-01 task 1.1: filter passthrough は JUnit Console Launcher 1.11.4 の `--scan-class-path` mutex 制約により動作不能。 #323 (`testRunCommand` の conditional `--scan-class-path` 抑止) で別途対応。 R1.2 関連 task (5.3) は deferred として close、 本 spec の DoD は filter なしの全 test 実行で完結させる。
+- 2026-05-01 task 2.1: `test_sources` を空から有効化したことで、 これまで kolt fmt の対象外だった test 配下の既存 file が ktfmt 0.54 と format 違反を持っていることが pre-commit hook で発覚。 26 ファイルを `kolt fmt` で apply して別 commit に分離。 task 3.1 (native daemon の test_sources 有効化) でも同じ現象が起きる可能性が高い、 同様に format apply を切り分ける。
