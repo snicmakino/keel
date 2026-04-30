@@ -77,7 +77,7 @@
   - _Requirements: 1.4_
   - _Boundary: docs/adr_
 
-- [ ] 4.2 (P) Update tech.md steering with libarchive entries
+- [x] 4.2 (P) Update tech.md steering with libarchive entries
   - `.kiro/steering/tech.md` の「Required Tools」セクションの libcurl 行に並べて libarchive (build) を追加
   - 「Key Libraries」セクションに「libarchive cinterop — toolchain archive extraction (ADR 0031)」を追加
   - 観測条件: tech.md の libcurl エントリと同じ表現粒度で libarchive エントリが並ぶ
