@@ -92,7 +92,7 @@
   - 観測条件: Gradle 全テスト pass + `kolt.kexe build` 完走 + `~/.kolt/toolchains/{kotlinc,jdk,konanc}/<version>/bin/<binary>` が `test -x` で実行可能、retry 用 `which unzip || true` を実行しても `command not found` 状態で `kolt build` が成功する PoC が手元で再現可能
   - _Requirements: 1.4, 2.3, 3.1, 3.2, 3.3, 3.4_
 
-- [ ] 5.2 Verify CI workflows pass on PR
+- [x] 5.2 Verify CI workflows pass on PR
   - PR を作成し、`unit-tests` / `release` / `self-host-smoke` の 3 workflow が pass することを確認
   - 観測条件: PR 上の 3 CI workflow すべて success、特に `self-host-smoke` の installer-managed dir build とfixture smoke が緑
   - _Requirements: 1.4, 3.4_
@@ -106,3 +106,4 @@
 - libarchive の `ARCHIVE_EXTRACT_SECURE_SYMLINKS` は新規 symlink エントリの **target 文字列** を検証しない。`archive_write_disk_posix.c:2388` の `symlink(linkname, a->name)` は target 検証なしで呼ばれる。Req 4.7 を満たすために `extractArchive` 側で entry-depth-aware な `symlinkTargetEscapes` 検査を `archive_write_header` の前に行う実装を入れている (タスク 2.3 で追加)。design.md の "外部 symlink 拒否は libarchive のフラグに完全委譲" は不正確で、実際は kolt 側に手書きチェックが必要。
 - 5.1 観測条件は `kolt.toml` の `target = "linuxX64"` のため kolt repo root で全 3 toolchain を install できない (kotlinc.zip 経路は走らない)。検証時は別途 `target = "jvm"` の小プロジェクトを scaffold して kotlinc 経路を駆動する。
 - 5.1 の "unzip 不在 PATH" PoC は libarchive 展開後の `mv` シェルアウトで失敗する (3 箇所、本 spec の Out of Boundary)。PoC は libarchive 展開そのものは shell tool 非依存になっていることのみ検証する。`mv` 除去は別 issue で扱う。
+- 5.2 観測条件の `release` workflow はタグ push 時のみ起動するため PR では走らない。PR で実行されるのは `unit-tests` (linuxX64Test) と `self-host-smoke` (Self-host build + Self-host post-migration path) の 2 workflow / 3 job のみ。PR #299 で全 3 job 緑。
