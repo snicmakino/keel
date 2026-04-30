@@ -12,7 +12,7 @@
 
 - `kolt-jvm-compiler-daemon/` directory での `kolt test` が root daemon test と ic test の union を Gradle 同等の verdict で実行できる (1.1, 1.4–1.6)
 - `kolt-native-compiler-daemon/` directory での `kolt test` が native daemon test を Gradle 同等の verdict で実行できる (1.3)
-- ic 単体実行は JUnit Console Launcher の filter passthrough (`kolt test -- --select-class=...`) で代替可能 (1.2)
+- ic 単体実行は **#323 lands まで一時的に DX 劣化を許容** (1.2 deferred)。 元案の filter passthrough 案は impl phase の Pre-flight Gate で動作不能を確認 (`testRunCommand` が `--scan-class-path` を固定挿入、 JUnit Console Launcher 1.11.4 が explicit selector との併用を reject)、 修正は kolt CLI 側のため別 issue #323 に分離
 - ic test が必要とする 4 classpath bundle と 5 sysprop が ADR 0032 schema で表現され、 同等の jar / path が test JVM に届く (2, 3)
 - root daemon test の `kolt.daemon.coreMainSourceRoot` sysprop が `[test.sys_props]` の `project_dir` 経由で届く (4)
 - `./gradlew check` 言及を user / developer surface から撤去 (5)
@@ -204,7 +204,7 @@ sequenceDiagram
 | Requirement | Summary | Components | Interfaces | Flows |
 |-------------|---------|------------|------------|-------|
 | 1.1 | root daemon dir で root + ic test 実行 | kolt-jvm-compiler-daemon/kolt.toml の test_sources / test-deps / classpaths / test.sys_props | 既存 jvmTestArgv | Test execution flow |
-| 1.2 | filter passthrough | 既存 testRunCommand の testArgs trailing | `kolt test -- <junit-args>` | passthrough は既存挙動 |
+| 1.2 | filter passthrough (deferred → #323) | — | — | Pre-flight Gate 結果に基づき本 spec から外す |
 | 1.3 | native daemon dir で test 実行 | kolt-native-compiler-daemon/kolt.toml の test_sources / test-deps | 既存 jvmTestArgv | Test execution flow |
 | 1.4 | 失敗時 non-zero exit | 既存 doTestInner の Result 経路 | 既存 ExitCode | Test execution flow |
 | 1.5 | 全 pass で zero exit | 同上 | 同上 | 同上 |
@@ -429,13 +429,11 @@ class IcModuleBoundaryInvariantTest {
 
 ## Testing Strategy
 
-### Pre-flight Gate (impl phase 開始時)
+### Pre-flight Gate (impl phase 実施結果: 動作不能 → #323 へ deferred)
 
-R1.2 の filter passthrough を Goals に含めている以上、 impl phase の最初に以下を gate として確認する。 動作不能と判明した場合は本 spec の前提が崩れるため、 design 側で対処方針を再確定する (Goals の 1.2 を弱めるか、 別経路を新設するか) — 確認できる前に kolt.toml 整備を進めない。
+実施結果 (2026-05-01): JUnit Platform Console Launcher 1.11.4 が `--scan-class-path` と explicit selector (`--select-class` 等) の併用を reject するため、 `kolt test -- --select-class=<FQCN>` 経由の filter は **動作不能**。 `testRunCommand` の `--scan-class-path` 固定挿入を抑止する条件分岐が必要だが、 これは kolt CLI 側の change で本 spec の Out of Boundary に該当するため、 follow-up issue **#323** に分離。
 
-- `kolt test -- --select-class=<FQCN>` 形式で JUnit Platform Console Standalone 1.11.4 が単一 class 実行に絞れることを smoke test
-- `--scan-class-path` の固定挿入と `--select-class` の併用 semantics が JUnit Console Launcher で意図通り (= 後者が前者を絞る) であることを confirm
-- 動作不能時は本 spec を一旦 stop し、 R1.2 の treatment を requirements 側で再確定 (本 spec の Out of Boundary に CLI flag 追加が含まれるため、 別 issue 化して本 spec から外す可能性あり)
+R1.2 を deferred 扱いとし、 本 spec では filter 経由の単体実行 DX を一時的に放棄する。 ic / root-only の試走は `kolt-jvm-compiler-daemon/` で全 test 実行する形で代替する。
 
 ### Smoke Tests (manual + CI)
 
@@ -481,8 +479,7 @@ flowchart LR
 
 ## Open Questions / Risks
 
-1. **filter passthrough の動作確認** (Research Item 6 from research.md)
-   - 詳細は Testing Strategy §Pre-flight Gate 参照。 impl 開始時の gate として扱う
+1. ~~**filter passthrough の動作確認**~~ — 解決済 (動作不能と確認、 #323 で別途対応)
 2. **Maven transitive 差分** (Research Item 1 from research.md)
    - Gradle と kolt resolver で transitive jar 集合が一致するか (特に `kotlin-build-tools-impl:2.3.20` の depth)
    - 差分発覚時は bundle に explicit pin を追加 (本 spec の対応範囲)

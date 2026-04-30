@@ -1,11 +1,12 @@
 # Implementation Plan
 
-- [ ] 1. Pre-flight: filter passthrough 動作確認
-- [ ] 1.1 JUnit Console Launcher の filter passthrough を smoke
-  - 任意の使い捨て kolt project (例 `spike/` 配下に簡易 JVM target project を一時的に作る) で `kolt test -- --select-class=<FQCN>` を実行
-  - JUnit Platform Console Standalone 1.11.4 が `--scan-class-path` 固定挿入と `--select-class` 併用で意図通り絞り込みできることを confirm
-  - 動作 OK なら本 spec を続行、 動作不能ならここで stop し R1.2 の treatment を再確定 (本 spec の Out of Boundary に CLI flag 追加が含まれるため follow-up issue 化を検討)
-  - 観察可能: smoke 出力で 1 クラスのみ実行され、 他クラスがスキップされた log が確認できる
+- [x] 1. Pre-flight: filter passthrough 動作確認 (結果: 動作不能 → R1.2 を #323 へ deferred)
+- [x] 1.1 JUnit Console Launcher の filter passthrough を smoke
+  - 実施: `/tmp/filter-smoke/` に簡易 JVM kolt project (Alpha/Beta 2 test class) を作成、 `kolt test -- --select-class=filtersmoke.AlphaTest` を実行
+  - 結果: JUnit Platform Console Launcher 1.11.4 が `Scanning the classpath and using explicit selectors at the same time is not supported` で reject
+  - `testRunCommand` の `--scan-class-path` 固定挿入を抑止する fix は kolt CLI 側の change で本 spec の Out of Boundary、 follow-up issue #323 に分離
+  - R1.2 を deferred 扱い、 本 spec で R1.2 関連 task (5.3) は同様に deferred
+  - dogfood log (`docs/dogfood.md`) に 1 行記録
   - _Requirements: 1.2_
 
 - [ ] 2. JVM daemon kolt.toml 整備 (root + ic 統合)
@@ -79,11 +80,9 @@
   - _Requirements: 1.3, 1.4, 1.5_
   - _Boundary: kolt-native-compiler-daemon_
 
-- [ ] 5.3 ic 単体 test の filter 経由実行 smoke
-  - `cd kolt-jvm-compiler-daemon && kolt test -- --select-class=kolt.daemon.ic.PluginTranslatorTest`
-  - 当該 1 クラスのみが実行され、 他 test がスキップされた log を確認
-  - 観察可能: stdout / stderr で実行 test 数が 1 クラス分のみ、 ic 以外の test class が起動していない
-  - _Depends: 5.1_
+- [x] 5.3 ic 単体 test の filter 経由実行 smoke (deferred → #323)
+  - 1.1 の Pre-flight Gate 結果により skip。 filter passthrough は kolt CLI 側 fix (#323) 完了まで利用不能
+  - 本 spec では ic-only DX を一時的に放棄、 maintainer は `cd kolt-jvm-compiler-daemon && kolt test` で全 test を実行する
   - _Requirements: 1.2_
 
 - [ ] 5.4 Gradle vs kolt verdict 一致 cross-check と test body 不変 verify
@@ -103,3 +102,7 @@
   - _Depends: 5.4_
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
   - _Boundary: .kiro/steering/tech.md_
+
+## Implementation Notes
+
+- 2026-05-01 task 1.1: filter passthrough は JUnit Console Launcher 1.11.4 の `--scan-class-path` mutex 制約により動作不能。 #323 (`testRunCommand` の conditional `--scan-class-path` 抑止) で別途対応。 R1.2 関連 task (5.3) は deferred として close、 本 spec の DoD は filter なしの全 test 実行で完結させる。

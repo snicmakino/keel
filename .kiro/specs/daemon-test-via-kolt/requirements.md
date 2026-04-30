@@ -23,7 +23,7 @@
   - multi-module project 機能 (#4) への統合 (Option B 採用により ic を独立 kolt project にしないため、 path-based dep schema は本 spec で導入しない)
   - kolt CLI / schema の新機能追加 (今回は ADR 0032 の適用のみ)
   - daemon 副プロジェクトの test 範囲拡張 (Gradle 集合と同一を保つ。 invariant test の新規追加は `ic test の import 制約` を assert する目的に限る)
-  - `kolt-jvm-compiler-daemon/ic/` directory 単体での `kolt test` 実行サポート (Requirement 1.2 の filter 経路で代替)
+  - `kolt-jvm-compiler-daemon/ic/` directory 単体での `kolt test` 実行サポート (本 spec の元案では Requirement 1.2 の filter 経路で代替する想定だったが、 Pre-flight Gate で filter 経路自体も動作不能と判明、 fix を #323 へ defer。 本 spec では ic-only / root-only DX 自体を一時的に犠牲にする)
 - **Adjacent expectations**:
   - ADR 0032 で定義された `[classpaths.<name>]` / `[test.sys_props]` の挙動 (resolver / lockfile / sysprop delivery) はそのまま流用する
   - `kolt test` 共通の挙動 (target / kind / build profile / exit code) はそのまま流用する
@@ -39,7 +39,7 @@
 #### Acceptance Criteria
 
 1. When the maintainer runs `kolt test` from the `kolt-jvm-compiler-daemon/` directory, the kolt test runner shall execute the union of every JUnit 5 test that `./gradlew :kolt-jvm-compiler-daemon:check` and `./gradlew :kolt-jvm-compiler-daemon:ic:check` exercise today (i.e. tests currently under `kolt-jvm-compiler-daemon/src/test/kotlin/` and `kolt-jvm-compiler-daemon/ic/src/test/kotlin/`).
-2. The kolt test runner shall accept a passthrough argument form (e.g. `kolt test -- <junit-console-launcher-args>`) that lets the maintainer narrow execution to a single class or package, so that the ic-only and root-daemon-only test runs `./gradlew :kolt-jvm-compiler-daemon:ic:test --tests <Class>` and `./gradlew :kolt-jvm-compiler-daemon:test --tests <Class>` previously offered have an equivalent way to be reproduced. The exact passthrough syntax is settled in design; this criterion only requires that *some* documented mechanism exists to filter to a subset of the suite from criterion 1.
+2. **Deferred to #323**: The kolt test runner shall accept a passthrough argument form (e.g. `kolt test -- <junit-console-launcher-args>`) that lets the maintainer narrow execution to a single class or package. Pre-flight Gate during impl confirmed this is currently impossible because `testRunCommand` injects `--scan-class-path` unconditionally and JUnit Platform Console Launcher 1.11.4 rejects scanning together with explicit selectors. The fix lives in kolt CLI (TestRunner argv builder) and is tracked in issue #323. Until #323 lands, ic-only and root-daemon-only test runs are not supported via filter; maintainers reproduce them by running the full suite from `kolt-jvm-compiler-daemon/`.
 3. When the maintainer runs `kolt test` from the `kolt-native-compiler-daemon/` directory, the kolt test runner shall execute every JUnit 5 test that `./gradlew :kolt-native-compiler-daemon:check` exercises today (i.e. tests currently under `kolt-native-compiler-daemon/src/test/kotlin/`).
 4. If any test in the suites covered by criteria 1 and 3 fails, the kolt test runner shall exit with a non-zero status code.
 5. When every test in the suites covered by criteria 1 and 3 passes, the kolt test runner shall exit with status code zero.
