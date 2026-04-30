@@ -32,7 +32,8 @@ env:
   # spawn the warm daemon. Copying the binary out (as the original
   # bootstrap step did) detached it from libexec/ and silently forced
   # subprocess compile. See #302.
-  BOOTSTRAP_KOLT: /tmp/kolt-bootstrap/bin/kolt
+  BOOTSTRAP_DIR: /tmp/kolt-bootstrap
+  BOOTSTRAP_KOLT: /tmp/kolt-bootstrap/bin/kolt   # = $BOOTSTRAP_DIR/bin/kolt; kept literal because YAML env entries cannot reference each other.
 
 jobs:
   linuxX64-test:
@@ -74,7 +75,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          BOOTSTRAP_DIR=/tmp/kolt-bootstrap
           mkdir -p "$BOOTSTRAP_DIR"
           gh release download "$KOLT_BOOTSTRAP_TAG" \
             --repo snicmakino/kolt \
@@ -102,20 +102,21 @@ jobs:
       # subproject before the smoke workflow's longer path.
       #
       # Daemon-path canary: this step builds a JVM target and therefore
-      # exercises the JVM compiler daemon. If the bootstrap kolt cannot
-      # resolve daemon jars from its sibling libexec/, every fallback path
-      # writes "falling back to subprocess" to stderr (#302). Failing the
-      # job on that string keeps a regression from silently re-introducing
-      # the ~30–60s subprocess penalty across CI.
+      # exercises the JVM compiler daemon. The pre-#302 bug surfaced as
+      # `kolt-jvm-compiler-daemon jar not found — falling back to
+      # subprocess compile`, which short-circuited before any spawn
+      # attempt. The canary requires `starting compiler daemon` in stderr
+      # — i.e. the daemon code path was reached. Whether the spawn itself
+      # connects within the 3s retry budget is orthogonal (cold-cache CI
+      # currently times out and falls back, tracked separately).
       - name: Verify daemon thin jar builds standalone
         run: |
           set -euo pipefail
           cd kolt-jvm-compiler-daemon
-          "$BOOTSTRAP_KOLT" build 2> kolt-build.stderr
-          cat kolt-build.stderr
+          "$BOOTSTRAP_KOLT" build 2> >(tee kolt-build.stderr >&2)
           test -f build/debug/kolt-jvm-compiler-daemon.jar
-          if grep -q 'falling back to subprocess' kolt-build.stderr; then
-            echo "Canary failed: bootstrap kolt fell back to subprocess compile" >&2
+          if ! grep -q 'starting compiler daemon' kolt-build.stderr; then
+            echo "Canary failed: bootstrap kolt did not reach the daemon spawn path (jar resolution likely failed)" >&2
             exit 1
           fi
-          echo "Canary OK: daemon path engaged"
+          echo "Canary OK: daemon spawn path was reached"

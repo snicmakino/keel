@@ -37,7 +37,8 @@ env:
   # spawn the warm daemon. Copying the binary out (as the original
   # bootstrap step did) detached it from libexec/ and silently forced
   # subprocess compile. See #302.
-  BOOTSTRAP_KOLT: /tmp/kolt-bootstrap/bin/kolt
+  BOOTSTRAP_DIR: /tmp/kolt-bootstrap
+  BOOTSTRAP_KOLT: /tmp/kolt-bootstrap/bin/kolt   # = $BOOTSTRAP_DIR/bin/kolt; kept literal because YAML env entries cannot reference each other.
 
 jobs:
   release:
@@ -155,7 +156,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          BOOTSTRAP_DIR=/tmp/kolt-bootstrap
           mkdir -p "$BOOTSTRAP_DIR"
           gh release download "$KOLT_BOOTSTRAP_TAG" \
             --repo snicmakino/kolt \
