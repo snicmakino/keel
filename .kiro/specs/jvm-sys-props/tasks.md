@@ -35,7 +35,7 @@
 
 ## 2. Core: resolver と runner の構成要素
 
-- [ ] 2.1 (P) BundleResolver: bundle ごとの独立 fixpointResolve pass を実装する
+- [x] 2.1 (P) BundleResolver: bundle ごとの独立 fixpointResolve pass を実装する
   - `BundleResolver.kt` に `resolveBundle(config, bundleName, bundleSeeds, existingLock, cacheBase, deps)` を新設する
   - 内部で `fixpointResolve(mainSeeds = bundleSeeds, testSeeds = emptyMap(), ...)` を呼び、 main / test / 他 bundle の state を引数として受けない関数 contract を保つ
   - `BundleResolution(jars, classpath)` を返す。jar 順序は既存 main resolver の materialize 順と同一ポリシーに従う
