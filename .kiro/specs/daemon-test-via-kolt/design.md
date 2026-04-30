@@ -17,13 +17,14 @@
 - root daemon test の `kolt.daemon.coreMainSourceRoot` sysprop が `[test.sys_props]` の `project_dir` 経由で届く (4)
 - `./gradlew check` 言及を user / developer surface から撤去 (5)
 - 既存 daemon test 本体に手を入れず、 source-static invariant test 1 つで test classpath isolation の文化的代替を確保 (6)
+- kolt CLI の JVM test compile path に `-module-name` / `-Xfriend-paths` を forward する bug fix (7)。 impl 中に発見、 Gradle parity (R1.1 / R1.4 / R1.5 / R6.4) を満たすための前提条件で本 spec の DoD と直結する
 
 ### Non-Goals
 
 - orphan な Gradle 設定ファイル (`build.gradle.kts`、 `settings.gradle.kts`、 `gradlew`、 `gradle/wrapper/`) の物理削除 — #316 で別途対応
 - `./gradlew linkDebugExecutableLinuxX64` 等価レシピの提供 — vestigial、 #316
 - multi-module project 機能 (#4) への統合 — 本 spec は ic を独立 kolt project にしないため、 path-based dep schema は導入しない
-- kolt CLI / schema の新機能追加 — 今回は ADR 0032 の適用のみ
+- kolt CLI / schema の **新機能追加** (= 新しい API / コマンド / オプション)。 既存挙動の bug fix (R7 が代表例) は本 spec で必要に応じて含める
 - daemon test 範囲拡張 — Gradle 集合と同一を保つ (新規 invariant test は ic test の import 制約 assert のみ、 source-static で flake risk なし)
 - `kolt-jvm-compiler-daemon/ic/` directory 単体での `kolt test` 実行サポート — 1.2 の filter 経路で代替
 
@@ -35,6 +36,7 @@
 - `kolt-native-compiler-daemon/kolt.toml` の test 関連セクション (`[build] test_sources`、 `[test-dependencies]`)
 - 各副プロジェクトの `kolt.lock` の test / classpaths 部分 (`kolt deps install` 再生成によって更新)
 - 1 個の新規 invariant test ファイル: ic test の import 制約 (`kolt.daemon.{Main,server,reaper,...}` を ic test source が import していないこと) を source-static に assert
+- kolt CLI の JVM test compile bug fix (R7): `src/nativeMain/kotlin/kolt/build/TestBuilder.kt` の argv に `-module-name <project-name>` と `-Xfriend-paths=<main-classes-dir>` を追加、 `src/nativeMain/kotlin/kolt/build/SubprocessCompilerBackend.kt` の subprocess 経路で `request.moduleName` を `-module-name` として forward。 関連 native test を `src/nativeTest/kotlin/kolt/build/` に追加
 - `.kiro/steering/tech.md` の `## Common Commands` にある `./gradlew check` 行とその Special-purpose 注釈の撤去
 - 本 spec の design 判断 (Option B 採用 / "from its own directory" 緩和) を PR 本文と本 design.md で明示
 
@@ -67,6 +69,7 @@
 - daemon の Kotlin / JDK pin 変更
 - `autoInjectedTestDeps` の対象 dep 変更
 - `currentWorkingDirectory()` を起点にする projectRoot の semantic 変更
+- Kotlin compiler の `-module-name` / `-Xfriend-paths` flag の名称変更や semantics 変更 (R7 が依拠する)
 
 ## Architecture
 
@@ -158,6 +161,10 @@ graph TB
 - `kolt-jvm-compiler-daemon/kolt.lock` — `kolt deps install` 実行で再生成 (手書き編集なし、 PR diff に含めて review)
 - `kolt-native-compiler-daemon/kolt.lock` — 同上 (PR diff に含めて review)
 - `.kiro/steering/tech.md` — `## Common Commands` の `./gradlew check` 行と `./gradlew linkDebugExecutableLinuxX64` 行、 および周辺の "Special-purpose" 注釈を削除
+- `src/nativeMain/kotlin/kolt/build/TestBuilder.kt` — `testBuildCommand` の argv に `-module-name <project-name>` と `-Xfriend-paths=<classesDir>` を追加 (R7)
+- `src/nativeMain/kotlin/kolt/build/SubprocessCompilerBackend.kt` — `subprocessArgv` の argv に `-module-name <moduleName>` を forward (R7)、 line 29 の "intentionally not forwarded" コメントを更新
+- `src/nativeTest/kotlin/kolt/build/TestBuilderTest.kt` (or 既存 TestRunnerTest.kt と同階層の新 file) — argv に新 flag が含まれることを assert する unit test を追加 (R7.5)
+- `src/nativeTest/kotlin/kolt/build/` 内の subprocess argv 関連既存 test に `-module-name` forward を assert する case を追加 (R7.5)
 
 ### Created Files
 
@@ -229,6 +236,11 @@ sequenceDiagram
 | 6.3 | useJUnitPlatform 等価 | JUnit Console Launcher の `--scan-class-path` が同等 discovery | — | — |
 | 6.4 | Gradle vs kolt verdict 一致 | #316 lands 前の cross-check 期間 | manual cross-run | Migration |
 | 6.5 | invariant test 追加許容 + ic test source root sysprop | `IcModuleBoundaryInvariantTest.kt` (新規 1 ファイル)、 `[test.sys_props.kolt.daemon.icTestSourceRoot] project_dir = "ic/src/test/kotlin"` | source-static walk + ADR 0032 ProjectDir delivery | — |
+| 7.1 | test compile に `-module-name` forward | `TestBuilder.kt` の `testBuildCommand` 改修 | kotlinc CLI flag `-module-name <project-name>` | — |
+| 7.2 | test compile に `-Xfriend-paths` forward | 同上 | kotlinc CLI flag `-Xfriend-paths=<classesDir>` | — |
+| 7.3 | subprocess main compile の `-module-name` forward | `SubprocessCompilerBackend.kt` の `subprocessArgv` 改修 | kotlinc CLI flag `-module-name <moduleName>` | — |
+| 7.4 | `internal` access from test source set | 7.1-7.3 の効果として実現 | — | Test execution flow |
+| 7.5 | argv shape を assert する native unit test | `src/nativeTest/kotlin/kolt/build/` に新 / 拡張 test | kotlin.test | — |
 
 ## Components and Interfaces
 
@@ -386,6 +398,52 @@ class IcModuleBoundaryInvariantTest {
 - Source root resolution: sysprop `kolt.daemon.icTestSourceRoot` 経由で受ける。 `AdapterBoundaryInvariantTest` が既に sysprop 経由 (`kolt.daemon.coreMainSourceRoot`) で source root を受ける pattern を採用しており、 本 invariant も同 pattern に揃える。 cwd-relative 解決 (例 `Paths.get("ic/src/test/kotlin")`) は `AdapterBoundaryInvariantTest` 側を本 spec で書き換えることになり scope 膨張のため不採用。 invariant test が `[test.sys_props]` delivery 経路に self-referentially 依存する trade-off は既存 invariant test と同じ
 - Validation: 自身が新規追加されることで pass することを確認 (現状 ic test は root daemon production package を import していないことを research.md で確認済)
 - Risks: prefix リストの過不足。 `kolt.daemon` 配下で ic 以外の package が増えたら invariant の prefix も追従が必要
+
+### Foundation Layer (kolt CLI bug fix)
+
+#### CLI Test Compile Module-Name Alignment
+
+| Field | Detail |
+|-------|--------|
+| Intent | kolt CLI の JVM test compile が main と同じ Kotlin module 名で compile されるようにし、 test source set が main の `internal` symbol にアクセス可能にする (Gradle Kotlin plugin と同等の挙動) |
+| Requirements | 7.1, 7.2, 7.3, 7.4, 7.5 |
+
+**Responsibilities & Constraints**
+
+- `testBuildCommand` の kotlinc argv に `-module-name <KoltConfig.name>` と `-Xfriend-paths=<CLASSES_DIR>` を追加 (line 9-36 の `testBuildCommand` 関数 signature には既に `config` と `classesDir` がある)
+- `subprocessArgv` の kotlinc argv に `-module-name <request.moduleName>` を forward (line 29 の「moduleName intentionally not forwarded」 コメントは同時に削除)
+- daemon path (`DaemonCompilerBackend.kt:277` 周辺) は既に `moduleName` を forward しているため改修不要、 subprocess path のみ修正
+- 改修後、 daemon path / subprocess path のどちらでも main と test が同じ Kotlin module として compile される
+- Kotlin compiler の `internal` semantics 仕様 (`-module-name` 一致 + `-Xfriend-paths` で friend module 認定) に依拠
+
+**Dependencies**
+
+- Inbound: 既存 `doBuildInner` / `doTestInner` 経路 (P0)
+- Outbound: kotlinc CLI (Kotlin 2.3.20 など、 既存 toolchain) (P0)
+- External: Kotlin compiler の `-module-name` / `-Xfriend-paths` flag 仕様 (P0)
+
+**Contracts**: Service [x]
+
+##### Argv Contract
+
+`testBuildCommand` の出力 argv に以下が含まれる:
+
+```
+-module-name <config.name>
+-Xfriend-paths=<classesDir>
+```
+
+`subprocessArgv` の出力 argv に以下が含まれる (target=jvm のとき):
+
+```
+-module-name <request.moduleName>
+```
+
+**Implementation Notes**
+
+- Integration: 既存の argv builder 関数 signature を変えず、 既存 parameter (`config`、 `classesDir`、 `request.moduleName`) を消費する形で flag を追加するだけ
+- Validation: native unit test (`src/nativeTest/kotlin/kolt/build/`) で argv 内に新 flag が含まれることを assert、 さらに本 spec の task 5.1 / 5.4 で daemon test compile が `internal` access error なく成功することを e2e 確認
+- Risks: `-Xfriend-paths` は internal/private API 扱いだが Kotlin 1.x 系から安定して存在、 Gradle Kotlin plugin / IntelliJ で広く使われている。 値は **main classes 出力 dir** (例 `build/<profile>/classes`) で source dir ではない点に注意 (debug subagent 由来のメモ)。 `-Xfriend-paths` は internal flag なので将来 Kotlin major bump で名称が変わる可能性あり、 その時は `[Revalidation Triggers]` で検出される
 
 ### Documentation Layer
 

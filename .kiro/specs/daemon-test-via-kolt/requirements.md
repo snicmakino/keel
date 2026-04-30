@@ -21,7 +21,7 @@
   - orphan な Gradle 設定ファイル (`build.gradle.kts`、 `settings.gradle.kts`、 `gradlew`、 `gradle/wrapper/`) の物理削除 (#316)
   - `./gradlew linkDebugExecutableLinuxX64` 等価レシピの提供 (vestigial、 #316)
   - multi-module project 機能 (#4) への統合 (Option B 採用により ic を独立 kolt project にしないため、 path-based dep schema は本 spec で導入しない)
-  - kolt CLI / schema の新機能追加 (今回は ADR 0032 の適用のみ)
+  - kolt CLI / schema の **新機能追加** (= 新しい API / コマンド / オプションの追加。 既存挙動の bug fix は本 spec で必要に応じて含める。 R7 が代表例: 既存 test compile path の `-module-name` / `-Xfriend-paths` 欠落を修正、 これは Gradle parity を満たすための bug fix で新機能ではない)
   - daemon 副プロジェクトの test 範囲拡張 (Gradle 集合と同一を保つ。 invariant test の新規追加は `ic test の import 制約` を assert する目的に限る)
   - `kolt-jvm-compiler-daemon/ic/` directory 単体での `kolt test` 実行サポート (本 spec の元案では Requirement 1.2 の filter 経路で代替する想定だったが、 Pre-flight Gate で filter 経路自体も動作不能と判明、 fix を #323 へ defer。 本 spec では ic-only / root-only DX 自体を一時的に犠牲にする)
 - **Adjacent expectations**:
@@ -102,3 +102,17 @@
 3. The kolt project shall keep test-discovery semantics equivalent to `useJUnitPlatform()` so that the same test classes are picked up under `kolt test` as under `./gradlew :<subproject>:test`.
 4. When run on the same source tree, `./gradlew check` (against the orphan Gradle config retained for #316) and `kolt test` against the new kolt configuration shall, until #316 lands, produce the same green / red verdict on the daemon test suites — treating the kolt-side `kolt test` invocation in `kolt-jvm-compiler-daemon/` as equivalent to the union of `./gradlew :kolt-jvm-compiler-daemon:check` and `./gradlew :kolt-jvm-compiler-daemon:ic:check`.
 5. The kolt project may add new test files under the daemon test source roots whose sole purpose is to encode the test-classpath isolation invariant lost in the merger of root daemon and ic into a single kolt project (e.g. asserting ic test sources do not import `kolt.daemon.{Main,server,reaper}` packages). Such additions are permitted only when their failure mode is statically derivable from source code (no production-code dependency, no flake risk).
+
+### Requirement 7: kolt CLI test compile module-name alignment
+
+**Objective:** As a kolt-on-kolt maintainer, I want the JVM test compile path to set `-module-name` and `-Xfriend-paths` so that test source sets can access `internal` symbols of the same kolt project, just as they do under Gradle's Kotlin plugin.
+
+This requirement was added during impl phase (task 4.1 hit a pre-existing kolt CLI bug where test compile uses a default `-module-name` derived from the output directory, so test sources see main as a different Kotlin module and lose `internal` visibility). The fix is in scope for this spec because without it R1.1 / R1.4 / R1.5 / R6.4 are unachievable: the daemon test suites depend on `internal` access (multiple symbols in `kolt.daemon.Main`, `SelfHealingIncrementalCompiler`, `BtaIncrementalCompiler`, `ClasspathSnapshotCache`).
+
+#### Acceptance Criteria
+
+1. When kolt's JVM test compile runs (via `testBuildCommand` or its equivalent), the kolt build pipeline shall pass `-module-name <project-name>` to kotlinc so the test source set is compiled into the same Kotlin module as main.
+2. When kolt's JVM test compile runs, the kolt build pipeline shall pass `-Xfriend-paths=<main-classes-dir>` to kotlinc so the test source set is treated as a friend module of main.
+3. When kolt's JVM main subprocess compile runs (via `subprocessArgv`), the kolt build pipeline shall forward `request.moduleName` as `-module-name <module-name>` so the daemon path and subprocess fallback produce identical Kotlin module identity.
+4. When `internal`-marked symbols are referenced from a test source file in the same kolt project, the kolt test compile shall succeed with no `internal in file` access error.
+5. The kolt project shall add unit tests under `src/nativeTest/kotlin/kolt/build/` that assert the new flags appear in the argv produced by `testBuildCommand` and `subprocessArgv` (one test per builder).

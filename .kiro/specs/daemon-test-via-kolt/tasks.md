@@ -53,13 +53,22 @@
   - _Requirements: 1.3, 6.2, 6.3_
   - _Boundary: kolt-native-compiler-daemon/kolt.toml, kolt-native-compiler-daemon/kolt.lock_
 
-- [ ] 4. invariant test 実装
-- [ ] 4.1 IcModuleBoundaryInvariantTest を作成
+- [ ] 4. Foundation fix + invariant test
+- [ ] 4.1 kolt CLI test compile に -module-name と -Xfriend-paths を forward
+  - `src/nativeMain/kotlin/kolt/build/TestBuilder.kt` の `testBuildCommand` argv に `-module-name <config.name>` と `-Xfriend-paths=<classesDir>` を追加
+  - `src/nativeMain/kotlin/kolt/build/SubprocessCompilerBackend.kt` の `subprocessArgv` で `request.moduleName` を `-module-name <moduleName>` として forward、 line 29 の "intentionally not forwarded" コメントは削除 / 更新
+  - `src/nativeTest/kotlin/kolt/build/` に native unit test を追加 (`testBuildCommand` の argv に新 flag が含まれること、 `subprocessArgv` の argv に新 flag が含まれることを assert)
+  - 修正後 `kolt build` で kolt 自身を再 build し、 `cd kolt-jvm-compiler-daemon && build/debug/kolt.kexe test` で daemon test の compile が `internal in file` error なく成功することを smoke (full pass までは task 5.1 の責務、 ここでは compile error 解消の確認のみ)
+  - 観察可能: native unit test 追加分が `kolt test` で discovered + green、 daemon test compile が `internal` access error 0 件で進行
+  - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5_
+  - _Boundary: src/nativeMain/kotlin/kolt/build/{TestBuilder,SubprocessCompilerBackend}.kt, src/nativeTest/kotlin/kolt/build/_
+
+- [ ] 4.2 IcModuleBoundaryInvariantTest を作成
   - `kolt-jvm-compiler-daemon/src/test/kotlin/kolt/daemon/IcModuleBoundaryInvariantTest.kt` を新設、 既存 `AdapterBoundaryInvariantTest` の `Files.walk(sourceRoot)` パターンを踏襲
   - sysprop `kolt.daemon.icTestSourceRoot` から source root を受け、 不在時は明示的な error message で fail
   - `import kolt.daemon.Main`、 `import kolt.daemon.server.`、 `import kolt.daemon.reaper.` のいずれかの prefix を含む行を violations として収集、 空でないなら fail message に違反 file / 行 / 行番号を列挙
   - 観察可能: `cd kolt-jvm-compiler-daemon && kolt test` で本 invariant test が discovered + green (現状 ic test 配下に違反なし)
-  - _Depends: 2.3_
+  - _Depends: 2.3, 4.1_
   - _Requirements: 6.5_
   - _Boundary: IcModuleBoundaryInvariantTest_
 
@@ -69,7 +78,7 @@
   - root daemon test 群 (8 ファイル相当) と ic test 群 (16 ファイル相当) の union が全 pass、 exit code 0
   - test 失敗時の出力を確認 (意図的に 1 test を一時 fail させて exit code が non-zero になることも cross-check)
   - 観察可能: pass count が Gradle 時代の `./gradlew :kolt-jvm-compiler-daemon:check` + `./gradlew :ic:check` と一致 (count + class 名で confirm)
-  - _Depends: 2.4, 4.1_
+  - _Depends: 2.4, 4.1, 4.2_
   - _Requirements: 1.1, 1.4, 1.5, 1.6_
 
 - [ ] 5.2 (P) Native daemon directory での kolt test smoke
@@ -108,3 +117,4 @@
 - 2026-05-01 task 1.1: filter passthrough は JUnit Console Launcher 1.11.4 の `--scan-class-path` mutex 制約により動作不能。 #323 (`testRunCommand` の conditional `--scan-class-path` 抑止) で別途対応。 R1.2 関連 task (5.3) は deferred として close、 本 spec の DoD は filter なしの全 test 実行で完結させる。
 - 2026-05-01 task 2.1: `test_sources` を空から有効化したことで、 これまで kolt fmt の対象外だった test 配下の既存 file が ktfmt 0.54 と format 違反を持っていることが pre-commit hook で発覚。 26 ファイルを `kolt fmt` で apply して別 commit に分離。 task 3.1 (native daemon の test_sources 有効化) でも同じ現象が起きる可能性が高い、 同様に format apply を切り分ける。
 - 2026-05-01 task 2.4: PATH の `kolt` (`/home/makino/.local/bin/kolt`) は古い v3 binary で、 `kolt deps install` を実行すると lockfile を v3 に書き戻す。 v4 lockfile を生成するには dev-built `build/debug/kolt.kexe` を直接呼ぶ必要があった (bootstrap pinch、 #316 で解消予定)。 また kolt と Gradle の transitive 表示には platform-suffix の有無 (`-jvm`)、 declared vs resolved version 等の cosmetic 差があるが、 on-disk jar 集合は一致 (bundle 単位で byte-identical を確認)。 `apiguardian-api:1.1.2` は kolt が POM scope に従って `compile` として取り込み、 Gradle module metadata では `compileOnlyApi` として除外、 これは harmless な annotation jar の追加で test 動作に影響なし。
+- 2026-05-01 task 4.1 (旧): kolt の JVM test compile が `-module-name` を渡しておらず、 main と test が別 module として compile される結果、 test source set から main の `internal` symbol が見えない bug を発見。 `MainCliArgsTest`、 `SelfHealingIncrementalCompiler.METRIC_*`、 `CapturingKotlinLogger`、 `BtaIncrementalCompiler.METRIC_LOG_ERROR`、 `ClasspathSnapshotCache.METRIC_*` など多数の test が compile fail。 元 task 4.1 (invariant test) を 4.2 に renumber、 新規 task 4.1 として CLI fix を foundation 扱いで追加。 R7 を requirements に追加。 fix 規模: `TestBuilder.kt` と `SubprocessCompilerBackend.kt` の argv builder + native unit test。 line 29 の「moduleName intentionally not forwarded」 コメントは削除予定。
