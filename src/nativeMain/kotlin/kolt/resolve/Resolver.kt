@@ -136,7 +136,7 @@ fun resolve(
 
 fun buildLockfileFromResolved(config: KoltConfig, deps: List<ResolvedDep>): Lockfile {
   return Lockfile(
-    version = 3,
+    version = LOCKFILE_VERSION,
     kotlin = config.kotlin.version,
     jvmTarget = config.build.jvmTarget,
     dependencies =
@@ -149,5 +149,6 @@ fun buildLockfileFromResolved(config: KoltConfig, deps: List<ResolvedDep>): Lock
             test = it.origin == Origin.TEST,
           )
       },
+    classpathBundles = emptyMap(),
   )
 }

@@ -141,7 +141,11 @@ private fun doInstallInner(): Result<Unit, Int> {
     loadProjectConfig().getOrElse {
       return Err(it)
     }
-  resolveDependencies(config).getOrElse {
+  // `kolt deps install` is the single command that may rewrite a v3
+  // kolt.lock as v4 (with a stderr warning). All other commands surface
+  // an error and exit so build behavior never silently re-resolves on
+  // a stale lockfile. See spec jvm-sys-props design.md, Migration Strategy.
+  resolveDependencies(config, allowLockfileMigration = true).getOrElse {
     return Err(it)
   }
   println("install complete")

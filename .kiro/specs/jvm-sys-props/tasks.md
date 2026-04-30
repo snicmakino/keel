@@ -14,7 +14,7 @@
   - _Requirements: 2.1, 2.2, 2.7_
   - _Boundary: SysPropValue, Config_
 
-- [ ] 1.2 (P) Lockfile schema を v4 に bump し migration UX を実装する
+- [x] 1.2 (P) Lockfile schema を v4 に bump し migration UX を実装する
   - LOCKFILE_VERSION を 4 に bump、 `classpathBundles: Map<String, Map<String, LockEntry>> = emptyMap()` を schema に追加する
   - `kolt deps install` の v3 detection: stderr に `warning: kolt.lock v3 detected, regenerating as v4 (one-time migration for v0.X)` を出して fresh resolve → v4 で上書きする
   - `kolt build` / `kolt test` / `kolt run` の v3 detection: 明確 error (`error: kolt.lock v3 is no longer supported, run 'kolt deps install' to regenerate`) で停止する。silent な再解決は行わない
@@ -138,3 +138,5 @@
 
 - **Task 1.1**: ktoml 0.7.1 の `decodeFromString` は `Map<String, V>` の declaration order を保つ (ConfigOrderingTest で確認済)。 future task で `parseConfig` 内に LinkedHashMap 正規化 step を入れる必要なし
 - **Task 1.1**: ktoml 0.7.1 の標準 `KSerializer` 表面では「TOML string OR inline-table」polymorphism を扱えない (TomlNode 内部型 cast が必須で fragile)。 `SysPropValue` は uniform inline-table (`{ literal | classpath | project_dir = "..." }`) で確定、 Req 2.1 amendment 済
+- **Task 1.2**: `kolt deps install` だけが v3 → v4 自動 migration を許す pattern を `allowLockfileMigration: Boolean = false` でカプセル化。 build path (`BuildCommands.kt:171, 291`) は default false を引き継ぐので silent re-resolve は構造的に発生しない。 `doUpdate` は元から `existingLock = null` 固定なので干渉なし
+- **Task 1.2**: `LockfileLoadResult` を sealed 5 variant にして v3 detection 結果を caller policy で分岐。pure 関数 `classifyLockfileLoad` で eprintln から切り離して unit test 可能にし、 stderr message 自体は call site の visual review で検証する pattern を採用

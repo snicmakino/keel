@@ -48,7 +48,10 @@ internal fun findOverlappingDependencies(
     .map { OverlappingDep(it, mainDeps[it], testDeps[it]) }
 }
 
-internal fun resolveDependencies(config: KoltConfig): Result<JvmResolutionOutcome, Int> {
+internal fun resolveDependencies(
+  config: KoltConfig,
+  allowLockfileMigration: Boolean = false,
+): Result<JvmResolutionOutcome, Int> {
   for (dep in findOverlappingDependencies(config.dependencies, config.testDependencies)) {
     eprintln(
       "warning: '${dep.groupArtifact}' is in both [dependencies] (${dep.mainVersion}) and [test-dependencies] (${dep.testVersion}); using ${dep.mainVersion}"
@@ -72,24 +75,37 @@ internal fun resolveDependencies(config: KoltConfig): Result<JvmResolutionOutcom
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
-  val existingLock =
+  val lockJsonOnDisk =
     if (fileExists(LOCK_FILE)) {
-      val lockJson =
-        readFileAsString(LOCK_FILE).getOrElse { error ->
-          eprintln("warning: could not read $LOCK_FILE: ${error.path}")
-          null
-        }
-      lockJson?.let {
-        parseLockfile(it).getOrElse { error ->
-          when (error) {
-            is LockfileError.ParseFailed -> eprintln("warning: ${error.message}")
-            is LockfileError.UnsupportedVersion ->
-              eprintln("warning: unsupported lock file version ${error.version}")
-          }
-          null
-        }
+      readFileAsString(LOCK_FILE).getOrElse { error ->
+        eprintln("warning: could not read $LOCK_FILE: ${error.path}")
+        null
       }
     } else null
+
+  val existingLock =
+    when (
+      val outcome = classifyLockfileLoad(lockJsonOnDisk, allowMigration = allowLockfileMigration)
+    ) {
+      is LockfileLoadResult.Loaded -> outcome.lockfile
+      is LockfileLoadResult.Absent -> null
+      is LockfileLoadResult.Corrupt -> {
+        eprintln("warning: ${outcome.message}")
+        null
+      }
+      is LockfileLoadResult.UnsupportedAndMigrationAllowed -> {
+        eprintln(
+          "warning: kolt.lock v${outcome.version} detected, regenerating as v$LOCKFILE_VERSION (one-time migration for v0.X)"
+        )
+        null
+      }
+      is LockfileLoadResult.UnsupportedAndMigrationDenied -> {
+        eprintln(
+          "error: kolt.lock v${outcome.version} is no longer supported, run 'kolt deps install' to regenerate"
+        )
+        return Err(EXIT_DEPENDENCY_ERROR)
+      }
+    }
 
   println("resolving dependencies...")
   val resolveResult =
