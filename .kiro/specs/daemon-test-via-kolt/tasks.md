@@ -10,7 +10,7 @@
   - _Requirements: 1.2_
 
 - [ ] 2. JVM daemon kolt.toml 整備 (root + ic 統合)
-- [ ] 2.1 test_sources と test-dependencies を追加
+- [x] 2.1 test_sources と test-dependencies を追加
   - `kolt-jvm-compiler-daemon/kolt.toml` の `[build]` に `test_sources = ["src/test/kotlin", "ic/src/test/kotlin"]` を追加
   - `[test-dependencies]` を新設し `org.junit.jupiter:junit-jupiter = "5.11.3"` と `org.junit.platform:junit-platform-launcher = "1.11.3"` を pin (Gradle 時代と同 version)
   - `kolt info` または config parse smoke で構文 error なく読み込める
