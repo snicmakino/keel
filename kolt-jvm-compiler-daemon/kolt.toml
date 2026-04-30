@@ -25,3 +25,16 @@ test_sources = ["src/test/kotlin", "ic/src/test/kotlin"]
 [test-dependencies]
 "org.junit.jupiter:junit-jupiter" = "5.11.3"
 "org.junit.platform:junit-platform-launcher" = "1.11.3"
+
+[classpaths.bta_impl]
+"org.jetbrains.kotlin:kotlin-build-tools-impl" = "2.3.20"
+
+[classpaths.fixture]
+"org.jetbrains.kotlin:kotlin-stdlib" = "2.3.20"
+
+[classpaths.serialization_plugin]
+"org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable" = "2.3.20"
+
+[classpaths.serialization_runtime]
+"org.jetbrains.kotlin:kotlin-stdlib" = "2.3.20"
+"org.jetbrains.kotlinx:kotlinx-serialization-core-jvm" = "1.7.3"

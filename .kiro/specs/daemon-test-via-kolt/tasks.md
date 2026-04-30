@@ -18,7 +18,7 @@
   - _Requirements: 1.1, 1.6, 6.2, 6.3_
   - _Boundary: kolt-jvm-compiler-daemon/kolt.toml_
 
-- [ ] 2.2 4 classpath bundle を declare
+- [x] 2.2 4 classpath bundle を declare
   - `[classpaths.bta_impl]` に `org.jetbrains.kotlin:kotlin-build-tools-impl = "2.3.20"` を追加
   - `[classpaths.fixture]` に `org.jetbrains.kotlin:kotlin-stdlib = "2.3.20"` を追加
   - `[classpaths.serialization_plugin]` に `org.jetbrains.kotlin:kotlin-serialization-compiler-plugin-embeddable = "2.3.20"` を追加
