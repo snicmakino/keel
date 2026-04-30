@@ -6,6 +6,7 @@ import kotlin.streams.asSequence
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 
 // kolt-jvm-compiler-daemon now compiles root daemon and ic into the
 // same kolt project, so the Gradle module boundary that previously
@@ -20,15 +21,17 @@ class IcModuleBoundaryInvariantTest {
 
   @Test
   fun `ic test sources do not import root daemon production packages`() {
-    val sourceRoot =
-      Path.of(
-        System.getProperty("kolt.daemon.icTestSourceRoot")
-          ?: error(
-            "kolt.daemon.icTestSourceRoot system property not set — " +
-              "declare it in kolt-jvm-compiler-daemon/kolt.toml under [test.sys_props] " +
-              "as `\"kolt.daemon.icTestSourceRoot\" = { project_dir = \"ic/src/test/kotlin\" }`"
-          )
-      )
+    // Skip when run outside kolt (e.g. cross-check via `./gradlew check` while
+    // the orphan Gradle config is still around): the Gradle test task does not
+    // declare this sysprop, and adding it would mean editing config that #316
+    // is about to delete. The kolt path always sets the sysprop via
+    // [test.sys_props.kolt.daemon.icTestSourceRoot] in kolt.toml.
+    val sourceRootProp = System.getProperty("kolt.daemon.icTestSourceRoot")
+    assumeTrue(
+      sourceRootProp != null,
+      "kolt.daemon.icTestSourceRoot not set — invariant only enforced under `kolt test`",
+    )
+    val sourceRoot = Path.of(sourceRootProp!!)
     assertTrue(Files.isDirectory(sourceRoot), "expected ic test source root at $sourceRoot")
 
     val forbiddenPrefixes =
