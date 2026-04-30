@@ -57,6 +57,13 @@ Kiro-style Spec-Driven Development on an agentic SDLC
 ## Development Guidelines
 - Think in English, generate responses in Japanese. All Markdown content written to project files (e.g., requirements.md, design.md, tasks.md, research.md, validation reports) MUST be written in the target language configured for this specification (see spec.json.language).
 
+## When SDD applies
+
+- Default: SDD for new features, cross-cutting refactors, or behavior changes not covered by existing spec/ADR.
+- Skip to TDD only when the contract is pinned in `.kiro/specs/` or `docs/adr/` and the issue's DoD is concrete with no design choice in play.
+- When skipping, fold any contract delta into the closest existing ADR (1–2 lines) — don't open a new ADR for a touch-up.
+- State the SDD-vs-TDD call at kickoff before code-touching tools. Borderline → SDD.
+
 ## Minimal Workflow
 - Phase 0 (optional): `/kiro-steering`, `/kiro-steering-custom`
 - Discovery: `/kiro-discovery "idea"` — determines action path, writes brief.md + roadmap.md for multi-spec projects
