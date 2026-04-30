@@ -55,7 +55,7 @@
   - _Requirements: 2.7, 3.3, 3.4, 3.5_
   - _Boundary: SysPropResolver_
 
-- [ ] 2.3 (P) testRunCommand と runCommand に sysProps 引数を追加する
+- [x] 2.3 (P) testRunCommand と runCommand に sysProps 引数を追加する
   - `testRunCommand` と `runCommand` のシグネチャに `sysProps: List<Pair<String, String>> = emptyList()` を追加する
   - `java` 直後に `-D<k>=<v>` を `sysProps` の iteration 順で挿入、 `-jar` / `-cp` / `--class-path` / main class 等は従来位置を保つ
   - `sysProps = emptyList()` のとき argv は従来と byte-verbatim 同一
