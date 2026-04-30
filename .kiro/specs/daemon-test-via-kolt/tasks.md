@@ -103,7 +103,7 @@
   - _Requirements: 6.1, 6.4_
 
 - [ ] 6. Documentation cleanup
-- [ ] 6.1 tech.md から ./gradlew check 言及を撤去
+- [x] 6.1 tech.md から ./gradlew check 言及を撤去
   - `.kiro/steering/tech.md` の `## Common Commands` 末尾にある Special-purpose ブロック (`./gradlew check` 行 + `./gradlew linkDebugExecutableLinuxX64 \\` 行 + 続く `&& ...kolt.kexe build` 行 + 周辺の "Special-purpose" 注釈) を削除
   - 削除後の `## Common Commands` セクションが文構造として整っている (見出し / 空行 / Development for working on kolt itself のブロック整合)
   - `grep -rn "gradlew check" .` を実行し、 historical record (`.kiro/specs/`、 `docs/adr/`、 `spike/`) と orphan Gradle config を除いた user / dev surface に該当が 0 件であることを confirm
