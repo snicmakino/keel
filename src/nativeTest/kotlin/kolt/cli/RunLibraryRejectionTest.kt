@@ -23,6 +23,16 @@ import platform.posix.chdir
 import platform.posix.getcwd
 import platform.posix.mkdtemp
 
+@OptIn(ExperimentalForeignApi::class)
+private fun createTempDir(prefix: String): String {
+  val template = "/tmp/${prefix}XXXXXX"
+  val buf = template.encodeToByteArray().copyOf(template.length + 1)
+  buf.usePinned { pinned ->
+    val result = mkdtemp(pinned.addressOf(0)) ?: error("mkdtemp failed")
+    return result.toKString()
+  }
+}
+
 /**
  * R4 matrix: `kolt run` must reject library projects before any artifact resolution or build
  * invocation (ADR 0023 §1 kind schema). Coverage:
@@ -33,6 +43,32 @@ import platform.posix.mkdtemp
  */
 @OptIn(ExperimentalForeignApi::class)
 class RunLibraryRejectionTest {
+
+  // chdir to a temp dir so `doRun`'s `withProjectLock` acquires a lock
+  // against an unrelated directory rather than the kolt project root —
+  // otherwise self-host `kolt test` deadlocks against the lock its own
+  // parent invocation already holds. Tactical workaround for #303;
+  // revert once that lands.
+  private var originalCwd: String = ""
+  private var tmpDir: String = ""
+
+  @BeforeTest
+  fun setUp() {
+    originalCwd = memScoped {
+      val buf = allocArray<ByteVar>(PATH_MAX)
+      getcwd(buf, PATH_MAX.toULong())?.toKString() ?: error("getcwd failed")
+    }
+    tmpDir = createTempDir("kolt-doRun-lib-reject-")
+    check(chdir(tmpDir) == 0) { "chdir to $tmpDir failed" }
+  }
+
+  @AfterTest
+  fun tearDown() {
+    chdir(originalCwd)
+    if (tmpDir.isNotEmpty() && fileExists(tmpDir)) {
+      removeDirectoryRecursive(tmpDir)
+    }
+  }
 
   // R4.1 + R4.3: the run-guard rejects both JVM and native library
   // configs with `EXIT_CONFIG_ERROR` and emits the canonical stderr
@@ -143,15 +179,6 @@ class WatchRunLoopLibraryRejectionTest {
       stderr.any { it.contains("watching for changes") },
       "watch-run must not enter the poll loop for a library; stderr=$stderr",
     )
-  }
-
-  private fun createTempDir(prefix: String): String {
-    val template = "/tmp/${prefix}XXXXXX"
-    val buf = template.encodeToByteArray().copyOf(template.length + 1)
-    buf.usePinned { pinned ->
-      val result = mkdtemp(pinned.addressOf(0)) ?: error("mkdtemp failed")
-      return result.toKString()
-    }
   }
 
   companion object {
