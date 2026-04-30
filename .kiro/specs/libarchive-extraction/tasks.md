@@ -69,7 +69,7 @@
 
 - [ ] 4. Documentation: ADR and steering update
 
-- [ ] 4.1 (P) Add ADR 0031 for libarchive cinterop adoption
+- [x] 4.1 (P) Add ADR 0031 for libarchive cinterop adoption
   - `docs/adr/0031-use-libarchive-cinterop-for-toolchain-extraction.md` を新規作成、ADR 0006 と同じ Status / Context / Decision / Consequences 構造で書く
   - 含める内容: 採用根拠 (3 callsite 統合 + disk writer/security flag 委譲 + libcurl パターン踏襲)、build/runtime 影響範囲 (libarchive-dev / libarchive13)、却下案 (純 Kotlin 自前 / zlib + 自前 zip-tar) の理由
   - feedback_adr_summary_section.md に従い Status と Context の間に 5〜7 bullet の Summary を置く

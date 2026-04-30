@@ -69,8 +69,8 @@ private const val EXTRACT_BLOCK_SIZE: ULong = 10240u
 // whose pathname (after any rewriting) is absolute, so we cannot rewrite
 // entry paths to absolute destDir-prefixed paths. Instead we chdir into
 // destDir for the duration of extraction and let entry paths stay relative.
-// kolt installs toolchains sequentially during bootstrap, so the global
-// cwd mutation does not race with other extraction work in practice.
+// ADR 0031 §5: chdir is process-global and safe only under kolt's sequential
+// bootstrap install; revisit before introducing concurrent toolchain installs.
 @OptIn(ExperimentalForeignApi::class)
 internal fun extractArchive(archivePath: String, destDir: String): Result<Unit, ExtractError> {
   if (!fileExists(archivePath)) {
