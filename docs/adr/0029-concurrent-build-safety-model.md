@@ -11,10 +11,11 @@ date: 2026-04-27
   `flock(2)` over `build/.kolt-build.lock`. The critical section is
   the `kolt.lock` rewrite plus `build/` finalisation; CLI startup,
   `kolt.toml` parse, and read-only commands (`deps tree`, `fmt`,
-  `--help`, `--version`) are not lock-protected. The lock is also
-  released before any post-build child-process spawn (`kolt run`
-  target, `kolt test` runner) so the child's lifetime does not pin the
-  lock and nested `kolt` invocations from inside it can proceed (§1).
+  `--help`, `--version`) are not lock-protected. `kolt test` releases
+  the lock after the build / test-compile phase and before spawning
+  the test-runner child, and `kolt run` does not acquire the lock at
+  all — both rules ensure the child's lifetime does not pin the lock
+  and nested `kolt` invocations from inside it can proceed (§1).
 - Wait protocol: `flock(LOCK_EX|LOCK_NB)` polled at 100 ms with a 30 s
   default upper bound. On first peer detection a single stderr line
   "another kolt is running, waiting..." is emitted; on timeout kolt
@@ -325,6 +326,10 @@ not provide a migration path:
   serialises behind the first; a second case asserts that
   `KOLT_LOCK_TIMEOUT_MS=200` produces `EXIT_LOCK_TIMEOUT` when the
   first holds the lock past the bound.
+- `NestedLockAcquireTest.kt` runs from inside `kolt test`'s test
+  child and asserts `ProjectLock.acquire(BUILD_DIR, 200ms)` succeeds
+  — locking down the rule that `kolt test` releases the lock before
+  spawning the runner child.
 - `Downloader.kt` tests pin: (a) destination unchanged when curl
   fails mid-stream, (b) destination unchanged on SHA mismatch, (c)
   no `*.tmp.*` files left after success, (d) two concurrent
