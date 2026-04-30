@@ -102,7 +102,7 @@
   - _Requirements: 3.1, 3.3, 3.4_
   - _Depends: 3.2_
 
-- [ ] 4.2 dogfood: kolt 自身の kolt.lock を v4 に rotate する
+- [x] 4.2 dogfood: kolt 自身の kolt.lock を v4 に rotate する
   - root + `kolt-jvm-compiler-daemon` + `kolt-native-compiler-daemon` の 3 つの `kolt.lock` を `kolt deps install` で v4 に再生成する
   - 各 lockfile の git diff が `version: 3 → 4` と (空の) `classpathBundles: {}` 追加に閉じていることを目視確認する
   - 全 test suite (`kolt test` × 3) が green であることを確認する
