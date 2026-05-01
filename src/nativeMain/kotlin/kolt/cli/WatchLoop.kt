@@ -58,6 +58,14 @@ internal enum class WatchKind {
 
 private data class WatchSetup(val watcher: InotifyWatcher, val wdKinds: Map<Int, WatchKind>)
 
+private data class InnerLoopOutcome(val shouldRebuild: Boolean, val shouldRespawnOnly: Boolean)
+
+private data class KoltTomlEffect(
+  val breakInnerLoop: Boolean,
+  val shouldRebuild: Boolean,
+  val shouldRespawnOnly: Boolean,
+)
+
 private fun setupWatches(watchDirs: List<String>, config: KoltConfig): WatchSetup? {
   val watcher =
     InotifyWatcher.create().getOrElse { err ->
@@ -367,18 +375,6 @@ internal fun watchRunLoop(
 
   installSigintHandler()
   eprintln("watching for changes (Ctrl+C to stop)...")
-
-  // Outcome of the inner watch loop. Drives the outer loop's rebuild / respawn decisions.
-  data class InnerLoopOutcome(val shouldRebuild: Boolean, val shouldRespawnOnly: Boolean)
-
-  // Apply a kolt.toml change to currentConfig / watcher / wdKinds. Returns whether the outer loop
-  // should rebuild (true), respawn only (false but caller handles run.sys_props case separately),
-  // or stay running (caller continues the inner loop).
-  data class KoltTomlEffect(
-    val breakInnerLoop: Boolean,
-    val shouldRebuild: Boolean,
-    val shouldRespawnOnly: Boolean,
-  )
 
   fun applyKoltTomlChange(): KoltTomlEffect {
     when (val outcome = dispatchKoltTomlChange(currentConfig, parseProjectConfig())) {
