@@ -17,7 +17,7 @@
 ### Non-Goals
 - daemon protocol への config-changed message 追加 (α1)
 - IDE/LSP 連携 auto-resync
-- `kolt deps remove` 実装 (γ2)
+- `kolt remove` 実装 (γ2)
 - watch loop の inotify integration test 基盤 (defer)
 - 暗黙の Maven Central / daemon restart (β3)
 
@@ -32,7 +32,7 @@
 ### Out of Boundary
 - daemon protocol 変更 (恒久 out, α1)
 - 非 watch コマンドのコード変更 (現状追認のみ、 ADR で文書化)
-- `kolt deps remove` 実装 (γ2 follow-up)
+- `kolt remove` 実装 (γ2 follow-up)
 - watch 中の暗黙 Maven Central アクセス (β3)
 - inotify-driven integration test 基盤 (本 spec scope 外、 ChangeMatrix unit test + 手動 smoke で覆う)
 
@@ -319,7 +319,7 @@ const val NOTIFICATION_MARKER: String = "[watch] ⚠"
 
 **構成** (ADR 0032 を template):
 - Status: `accepted`、 Date
-- Summary: 5〜7 bullet (3-value taxonomy / per-invocation matrix / watch matrix / mixed-window prevail / build-serialize / α1 reaffirmation / `kolt deps remove` follow-up reference)
+- Summary: 5〜7 bullet (3-value taxonomy / per-invocation matrix / watch matrix / mixed-window prevail / build-serialize / α1 reaffirmation / `kolt remove` follow-up reference)
 - Context: 現状の暗黙ルール混在、 #297 動機、 entry point 拡大前の matrix 確定の必要性
 - Decision: SectionAction 3-value 定義、 per-invocation matrix table、 watch matrix table、 mixed-window prevail policy、 build-serialize policy、 daemon-stateless reaffirmation
 - Rationale: 各 design call (α1 / β3 / Q1=B / γ2 / build-serialize / `[kotlin]` notify-only / mixed-window prevail) の理由を明記
@@ -362,7 +362,7 @@ classDiagram
 **Invariants**:
 - `SectionAction` は 3 variant のみ (Req 8.2)
 - `AutoReload(rebuild=true)` と `AutoReload(rebuild=false)` は data class equality で等価判定可能 (test fixture で利用)
-- `NotifyOnly` の `recommendation` は user-facing 文字列、 `Run kolt deps install` / `Run kolt daemon stop --all and restart watch` / `Restart watch` のいずれか (matrix table 内で section ごとに定義)
+- `NotifyOnly` の `recommendation` は user-facing 文字列、 `Run kolt fetch` / `Run kolt daemon stop --all and restart watch` / `Restart watch` のいずれか (matrix table 内で section ごとに定義)
 - `DispatchPlan.notifications` の各文字列は `"${NOTIFICATION_MARKER} ${sectionName} changed; ${recommendation}"` の形。 `sectionName` は `SECTION_ACTIONS` キーをそのまま使い (例: `"name"`, `"[dependencies]"`, `"[kotlin] compiler"`)、 既に TOML-canonical な括弧を含むものは追加 wrap しない (二重括弧回避)
 
 ### Section → Action Matrix (draft for ADR 0033)
@@ -382,11 +382,11 @@ classDiagram
 | `[build] resources` | AutoReload(rebuild=true, watcher 再構築) | 監視 path 変更 |
 | `[build.targets.<target>]` (含む全 sub-field) | NotifyOnly("Restart watch — per-target override changes are not yet auto-reloaded") | per-target override |
 | `[fmt]` | NoOp | `kolt fmt` のみが consume、 watch では効果なし |
-| `[dependencies]` | NotifyOnly("Run kolt deps install") | resolve 必要 |
-| `[test-dependencies]` | NotifyOnly("Run kolt deps install") | resolve 必要 |
-| `[repositories]` | NotifyOnly("Run kolt deps install") | resolve 必要 |
+| `[dependencies]` | NotifyOnly("Run kolt fetch") | resolve 必要 |
+| `[test-dependencies]` | NotifyOnly("Run kolt fetch") | resolve 必要 |
+| `[repositories]` | NotifyOnly("Run kolt fetch") | resolve 必要 |
 | `[[cinterop]]` | NotifyOnly("Restart watch — cinterop binding regeneration required") | binding 再生成 |
-| `[classpaths.<name>]` | NotifyOnly("Run kolt deps install") | resolve 必要 |
+| `[classpaths.<name>]` | NotifyOnly("Run kolt fetch") | resolve 必要 |
 | `[test.sys_props]` | AutoReload(rebuild=false) | 次の `kolt test` invocation で反映 |
 | `[run.sys_props]` | AutoReload(rebuild=false) | run loop 専用: app respawn |
 

@@ -2,9 +2,9 @@
 
 ## Project Description (Input)
 
-GitHub issue #297 を起点とする v1.0 readiness テーマ。 `kolt.toml` の編集経路ごと (hand-edit / `kolt deps add` / `kolt deps install` / `kolt deps update` / watch 中の編集) で挙動が暗黙に異なり、 contributor が「いつ何が反映されるのか」を予測できない違和感を解消する。
+GitHub issue #297 を起点とする v1.0 readiness テーマ。 `kolt.toml` の編集経路ごと (hand-edit / `kolt add` / `kolt fetch` / `kolt update` / watch 中の編集) で挙動が暗黙に異なり、 contributor が「いつ何が反映されるのか」を予測できない違和感を解消する。
 
-**(a) 誰が困っているか**: kolt の contributor および将来のユーザ。 `kolt deps add` は eager full sync するのに hand-edit は次の build まで遅延、 watch 中の `kolt.toml` 編集は rebuild は走るが startup 時の stale config で実行される (`[build.sources]` を増やしても watch range は古いまま、 `[run.sys_props]` を増やしても古い env で run)、 `[kotlin] compiler` 変更は通知すらされず気付けない、 `kolt deps remove` が存在しない (add だけある非対称) — これらが「手触りの悪さ」の正体。
+**(a) 誰が困っているか**: kolt の contributor および将来のユーザ。 `kolt add` は eager full sync するのに hand-edit は次の build まで遅延、 watch 中の `kolt.toml` 編集は rebuild は走るが startup 時の stale config で実行される (`[build.sources]` を増やしても watch range は古いまま、 `[run.sys_props]` を増やしても古い env で run)、 `[kotlin] compiler` 変更は通知すらされず気付けない、 `kolt remove` が存在しない (add だけある非対称) — これらが「手触りの悪さ」の正体。
 
 **(b) 現状**: 検証済 (Explore agent, 2026-05-01)。 per-invocation 経路は実は揃っている (`BuildCommands.kt:141 loadProjectConfig()` が毎回 fresh load)。 ただし暗黙ルールで未文書化。 watch loop は `WatchLoop.kt:181, :285` で startup 時に config を 1 回だけ load し以降 reload しない。 daemon は kolt.toml を一切読まず stateless (`KoltPaths.kt:15-32` の socket path `(projectHash, kotlinVersion)` が `[kotlin] compiler` 変更の唯一の検知路)。 lockfile v4 + `[test.sys_props]` / `[run.sys_props]` / `[classpaths.*]` schema は #318 で main に landed 済。
 
@@ -13,21 +13,21 @@ GitHub issue #297 を起点とする v1.0 readiness テーマ。 `kolt.toml` の
 **確定済み design call** (discovery で合意):
 
 - **α1 (daemon stateless)**: daemon は kolt.toml を読まない stateless を維持。 protocol に config-changed message を追加しない。 daemon-side observation の代わりに watch 経路で section diff + 通知 (β3) で対処する
-- **β3 + 検知通知**: watch は通知役、 resolve / daemon-lifecycle に触る変更は明示操作 (CLI 再起動 / `kolt deps install`) に委ねる。 暗黙の Maven Central アクセスや daemon 再起動は行わない
-- **Q1=B + γ2**: per-invocation は完全 eager に揃え (現状追認)、 `kolt deps remove` は対称性確保のため別 issue で follow-up (本 spec scope 外)
+- **β3 + 検知通知**: watch は通知役、 resolve / daemon-lifecycle に触る変更は明示操作 (CLI 再起動 / `kolt fetch`) に委ねる。 暗黙の Maven Central アクセスや daemon 再起動は行わない
+- **Q1=B + γ2**: per-invocation は完全 eager に揃え (現状追認)、 `kolt remove` は対称性確保のため別 issue で follow-up (本 spec scope 外)
 - **Build-serialize**: config reload は in-flight build invocation の完了まで保留する。 build cancel 戦略は採らない。 reload latency が build 1 周分伸びる代償で race 不在を保証し、 予測可能性を優先する
 - **`[kotlin]` セクション全体 = 通知のみ**: `[kotlin] compiler` (socket path 変更) / `[kotlin] version` / `[kotlin.plugins]` の watch 中変更はすべて通知のみで rebuild skip。 BTA の internal IC invalidation を kolt 側で保証できないため、 silent な BTA-trust より explicit な user 操作を優先する。 推奨アクションは `kolt daemon stop --all` 後の watch 再起動 (daemon 再起動で BTA IC を完全 reset)。 将来 BTA の invalidation 保証が個別に確認できた sub-section は matrix 改訂で auto-reload 側に移動可能。 ADR 0033 rationale に「silent な BTA-trust より explicit な user 操作を予測可能性として優先」 を明記する
 
 **本 spec の requirements が満たすべき要件** (`/kiro-spec-requirements` で各 EARS requirement に展開):
 
 - **R-1 (全 section 網羅性)**: matrix は kolt.toml の現行 schema 全 section (`name` / `version` / `kind` 等の top-level scalar、 `[kotlin]` / `[build]` / `[build.targets.*]` / `[fmt]` / `[dependencies]` / `[test-dependencies]` / `[repositories]` / `[[cinterop]]` / `[classpaths.*]` / `[test]` / `[run]`) を漏れなく扱う。 deferred セルは明示的に "deferred / out of scope" とマークする。 後続で section を追加する際は matrix への追記を必須とする
-- **R-2 (通知 contract)**: 1 debounce window に対し 1 group の通知。 通知メッセージには変更 section 名と推奨アクション (e.g. `Run kolt deps install`、 `Restart watch`) を含める。 group 内に複数 section の変更が含まれる場合は **各 section を 1 行ずつ列挙** (各行に section 名と推奨アクション)。 同一 section の連続編集 (debounce window 内) は 1 行に集約。 group 内で auto-reload 系と通知のみ系が混在した場合の action 分岐は design 段階で確定する
+- **R-2 (通知 contract)**: 1 debounce window に対し 1 group の通知。 通知メッセージには変更 section 名と推奨アクション (e.g. `Run kolt fetch`、 `Restart watch`) を含める。 group 内に複数 section の変更が含まれる場合は **各 section を 1 行ずつ列挙** (各行に section 名と推奨アクション)。 同一 section の連続編集 (debounce window 内) は 1 行に集約。 group 内で auto-reload 系と通知のみ系が混在した場合の action 分岐は design 段階で確定する
 - **R-3 (matrix セル単位の acceptance criteria)**: matrix の各セル (section × edit-source × runtime-state) が 1 つ以上の acceptance criterion を持つ。 watch 経路は section-diff → expected action の table-driven test、 per-invocation 経路は hand-edit → next build による post-state 検証で覆う
 
 **Scope 境界** (詳細は `brief.md` 参照):
 
 - **In**: ADR 0033、 WatchLoop の config reload + section diff + action dispatch + 通知出力、 per-invocation matrix の docs 化、 matrix が kolt.toml 現行 schema 全 section を網羅 (R-1)、 関連テスト
-- **Out**: `kolt deps remove` 実装 (γ2 follow-up)、 daemon-side config observation (α1 で恒久 out)、 IDE/LSP 連携 auto-resync (build tool 責務外)、 `[kotlin.plugins]` / `[kotlin] version` 変更時の明示的 IC wipe signal (BTA 任せ、 watch 中は通知のみで対処)
+- **Out**: `kolt remove` 実装 (γ2 follow-up)、 daemon-side config observation (α1 で恒久 out)、 IDE/LSP 連携 auto-resync (build tool 責務外)、 `[kotlin.plugins]` / `[kotlin] version` 変更時の明示的 IC wipe signal (BTA 任せ、 watch 中は通知のみで対処)
 
 **Constraints**:
 
@@ -41,7 +41,7 @@ GitHub issue #297 を起点とする v1.0 readiness テーマ。 `kolt.toml` の
 
 - Upstream: #318 / `jvm-sys-props` (sys_props schema)、 #322 (`[run.sys_props]` watch threading 部分実装)、 ADR 0019 (BTA-driven IC、 α1 の前提)、 ADR 0024 (Native daemon)
 - Adjacent: `concurrent-build-safety` (build invocation lifecycle で隣接)、 `daemon-self-host` (α1 = daemon stateless 原則を再確認する文脈)
-- Downstream: #297 Q6 = `kolt deps remove` follow-up、 将来の config schema 拡張 (`[publish]` 等) は本 matrix を継承
+- Downstream: #297 Q6 = `kolt remove` follow-up、 将来の config schema 拡張 (`[publish]` 等) は本 matrix を継承
 
 ## Boundary Context
 
@@ -52,14 +52,14 @@ GitHub issue #297 を起点とする v1.0 readiness テーマ。 `kolt.toml` の
   - kolt.toml 現行 schema 全 section の matrix 網羅 (R-1)
   - matrix セル単位の acceptance criteria を test suite で覆う (R-3)
 - **Out of scope**:
-  - `kolt deps remove` 実装 (#297 Q6 follow-up issue として別途切る; γ2)
+  - `kolt remove` 実装 (#297 Q6 follow-up issue として別途切る; γ2)
   - daemon protocol への config-changed message 追加 (α1 で恒久 out)
   - IDE/LSP 連携 auto-resync (build tool 責務外)
   - watch 中の暗黙 Maven Central アクセス (β3 で恒久 out)
   - `[kotlin.plugins]` / `[kotlin] version` 変更時の daemon-side 明示的 IC wipe signal (BTA 任せ; watch 中は通知のみで対処)
   - watch loop の inotify integration test 基盤 (mock inotify / fs fixture) は本 spec scope 外。 ChangeMatrix の unit test (table-driven) と手動 smoke test で覆う
 - **Adjacent expectations**:
-  - 既存の `kolt deps {add, install, update}` command 挙動は不変 (matrix で公式化のみ、 commands 実装に変更なし)
+  - 既存の `kolt {add, fetch, update}` command 挙動は不変 (matrix で公式化のみ、 commands 実装に変更なし)
   - 各 build/test/run command の per-invocation fresh-load 挙動は不変 (現状追認)
   - kolt JVM / native compiler daemon は引き続き kolt.toml を読まない (α1)
   - `kolt run --watch` で `[run.sys_props]` 等 runtime-only セクション変更時、 既に走っている app process の即時 respawn を行うかは design 段階で確定 (matrix 上は AutoReload + no rebuild、 process lifecycle は run loop 固有の design)
@@ -68,14 +68,14 @@ GitHub issue #297 を起点とする v1.0 readiness テーマ。 `kolt.toml` の
 
 ### Requirement 1: Per-invocation change handling matrix
 
-**Objective:** As a kolt contributor, I want every per-invocation entry point (hand-edit followed by `kolt build` / `kolt test` / `kolt run`, or `kolt deps {add, install, update}`) to converge on the same post-state for a given kolt.toml edit, so that I can reason about what happens after I edit kolt.toml without consulting the source for each command.
+**Objective:** As a kolt contributor, I want every per-invocation entry point (hand-edit followed by `kolt build` / `kolt test` / `kolt run`, or `kolt {add, fetch, update}`) to converge on the same post-state for a given kolt.toml edit, so that I can reason about what happens after I edit kolt.toml without consulting the source for each command.
 
 #### Acceptance Criteria
 
 1. When the user invokes `kolt build`, `kolt test`, or `kolt run`, the kolt CLI shall load the latest `kolt.toml` from disk before resolving any subsequent state.
-2. When `kolt deps add <gav>` completes successfully, the resulting `kolt.toml`, `kolt.lock`, and JAR cache shall be in the same state as if the user had hand-edited `kolt.toml` and then run `kolt deps install`.
-3. When `kolt deps install` is invoked, the kolt CLI shall re-read `kolt.toml`, re-resolve dependencies against the current configuration, and rewrite `kolt.lock` only when the resolution result differs from the existing lockfile.
-4. When `kolt deps update` is invoked, the kolt CLI shall delete cached JARs, re-read `kolt.toml`, force-resolve dependencies, and rewrite `kolt.lock`.
+2. When `kolt add <gav>` completes successfully, the resulting `kolt.toml`, `kolt.lock`, and JAR cache shall be in the same state as if the user had hand-edited `kolt.toml` and then run `kolt fetch`.
+3. When `kolt fetch` is invoked, the kolt CLI shall re-read `kolt.toml`, re-resolve dependencies against the current configuration, and rewrite `kolt.lock` only when the resolution result differs from the existing lockfile.
+4. When `kolt update` is invoked, the kolt CLI shall delete cached JARs, re-read `kolt.toml`, force-resolve dependencies, and rewrite `kolt.lock`.
 5. The kolt CLI shall not retain a kolt.toml that was loaded by a prior process invocation; each invocation begins with a fresh disk read.
 
 ### Requirement 2: Watch detection of kolt.toml changes
@@ -109,7 +109,7 @@ GitHub issue #297 を起点とする v1.0 readiness テーマ。 `kolt.toml` の
 
 #### Acceptance Criteria
 
-1. When the kolt watch loop detects a change in any of `[dependencies]`, `[test-dependencies]`, `[classpaths.<name>]`, or `[repositories]`, the kolt watch loop shall emit a notification recommending `kolt deps install` and shall skip the rebuild.
+1. When the kolt watch loop detects a change in any of `[dependencies]`, `[test-dependencies]`, `[classpaths.<name>]`, or `[repositories]`, the kolt watch loop shall emit a notification recommending `kolt fetch` and shall skip the rebuild.
 2. When the kolt watch loop detects a change in `[kotlin] compiler`, `[kotlin] version`, or `[kotlin.plugins]`, the kolt watch loop shall emit a notification recommending `kolt daemon stop --all` followed by restarting watch, and shall skip the rebuild.
 3. When the kolt watch loop detects a change in `kind` or `[build] target`, the kolt watch loop shall emit a notification recommending restarting watch (these changes alter the fundamental build pipeline), and shall skip the rebuild.
 4. The kolt watch loop shall not perform dependency resolution, daemon shutdown, or Maven Central network access in response to any kolt.toml change event.
@@ -165,7 +165,7 @@ GitHub issue #297 を起点とする v1.0 readiness テーマ。 `kolt.toml` の
 7. ADR 0033 shall record the rationale for placing `[kotlin] compiler`, `[kotlin] version`, and `[kotlin.plugins]` in the NotifyOnly category, citing the project's preference for explicit user operations over implicit compiler-internal cache invalidation.
 8. ADR 0033 shall record the rationale for build-serialization (hold over cancel) and for the daemon stateless-with-respect-to-kolt.toml decision (α1).
 9. ADR 0033 shall record the rationale for the mixed-window dispatch policy (notify-only prevails when a debounce window contains both notify-only and auto-reload changes).
-10. ADR 0033 shall name `kolt deps remove` (#297 Q6) as the documented follow-up for per-invocation symmetry.
+10. ADR 0033 shall name `kolt remove` (#297 Q6) as the documented follow-up for per-invocation symmetry.
 11. ADR 0033 shall include a maintenance clause requiring future kolt.toml schema additions to be classified in both matrix tables before merging.
 12. The kolt project shall reference ADR 0033 from `docs/architecture.md`.
 13. The kolt project test suite shall include at least one acceptance test per matrix cell, where a cell is a (section × edit-source × runtime-state) tuple defined by ADR 0033.
@@ -177,5 +177,5 @@ GitHub issue #297 を起点とする v1.0 readiness テーマ。 `kolt.toml` の
 #### Acceptance Criteria
 
 1. While `kolt {build,run,test} --watch` is running and `kolt.toml` is not modified, the kolt watch loop shall behave identically to its prior behavior with respect to source-file-driven rebuilds.
-2. The kolt CLI shall not change the user-observable behavior of `kolt build`, `kolt run`, `kolt test`, `kolt deps add`, `kolt deps install`, `kolt deps update`, or any other non-watch command; this requirement formalizes the existing behavior in ADR 0033 without altering it.
+2. The kolt CLI shall not change the user-observable behavior of `kolt build`, `kolt run`, `kolt test`, `kolt add`, `kolt fetch`, `kolt update`, or any other non-watch command; this requirement formalizes the existing behavior in ADR 0033 without altering it.
 3. The kolt JVM compiler daemon and the kolt native compiler daemon shall remain stateless with respect to `kolt.toml`.

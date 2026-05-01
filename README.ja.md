@@ -66,7 +66,10 @@ kolt build --release   release プロファイルでコンパイル
 kolt run               ビルドして実行（kolt run -- args でアプリ引数を渡す）
 kolt test              ビルドしてテスト実行（kolt test -- args で JUnit Platform 引数を渡す）
 kolt check             成果物を生成せずに型チェック
-kolt add <dep>         依存を追加（deps add のエイリアス）
+kolt add <dep>         依存を kolt.toml に追加
+kolt fetch             依存を解決して JAR をダウンロード
+kolt update            依存を再解決して kolt.lock を更新
+kolt tree              依存ツリーを表示
 
 # --watch フラグ：ソースを監視し、変更時に再ビルド
 kolt build --watch     監視して再ビルド
@@ -76,11 +79,6 @@ kolt fmt               ktfmt でソースファイルをフォーマット
 kolt fmt --check       フォーマットチェック（CI モード）
 kolt clean             ビルド成果物を削除
 
-kolt deps add <dep>    依存を追加
-kolt deps install      依存を解決して JAR をダウンロード
-kolt deps update       依存を再解決してロックファイルを更新
-kolt deps tree         依存ツリーを表示
-
 kolt toolchain install kolt.toml で定義された kotlinc バージョンをインストール
 
 kolt daemon stop       このプロジェクトのコンパイラデーモンを停止
@@ -89,8 +87,6 @@ kolt daemon reap       古いデーモンディレクトリと孤立ソケット
 
 kolt --version         バージョンを表示
 ```
-
-`install`、`update`、`tree` はトップレベルのエイリアスとしても利用可能です（例：`kolt install`）。
 
 ### フラグ
 
@@ -173,7 +169,7 @@ kolt add --test io.kotest:kotest-runner-junit5:5.8.0      # テスト依存
 "com.squareup.okhttp3:okhttp" = "4.12.0"
 ```
 
-`kolt install` を実行すると、ビルドせずにすべての依存を解決・ダウンロードします。
+`kolt fetch` を実行すると、ビルドせずにすべての依存を解決・ダウンロードします。
 
 推移的依存は POM メタデータを通じて自動解決されます。`kolt.lock` ファイルがバージョンと SHA-256 ハッシュを記録し、再現可能なビルドを保証します。
 

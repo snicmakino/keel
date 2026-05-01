@@ -38,7 +38,7 @@ class WatchChangeDispatchTest {
     val notify = assertIs<KoltTomlChangeOutcome.NotifyOnly>(outcome)
     assertEquals(1, notify.notifications.size)
     assertTrue(notify.notifications[0].contains("[dependencies]"))
-    assertTrue(notify.notifications[0].contains("Run kolt deps install"))
+    assertTrue(notify.notifications[0].contains("Run kolt fetch"))
   }
 
   @Test

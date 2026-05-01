@@ -115,7 +115,7 @@ Critical-section scope:
   lock-protected state. `doRun` is not locked at all — it only reads
   prebuilt artifacts and spawns the run target, with no `kolt.lock`
   rewrite or `build/` finalisation in its body.
-- **Not locked**: `kolt --help`, `kolt --version`, `kolt deps tree`,
+- **Not locked**: `kolt --help`, `kolt --version`, `kolt tree`,
   `kolt fmt`, `kolt run`. These are read-only or write only to source
   files outside `build/` and `kolt.lock`, and locking them would
   block IDE on-save formatting or a running app against an in-progress

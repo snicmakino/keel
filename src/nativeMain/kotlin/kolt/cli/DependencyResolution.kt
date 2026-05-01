@@ -32,7 +32,7 @@ internal fun createResolverDeps(): ResolverDeps = defaultResolverDeps()
 // mainJars / allJars — bundles are scope-isolated from main/test (Req 4.5).
 // SysPropResolver consumes `bundleClasspaths` to materialise `-Dkey=path`
 // values for `{ classpath = "<bundle>" }` sysprops; `bundleJars` is exposed
-// for `kolt deps tree` and similar tooling.
+// for `kolt tree` and similar tooling.
 internal data class JvmResolutionOutcome(
   val mainClasspath: String?,
   val mainJars: List<ResolvedJar>,
@@ -110,7 +110,7 @@ internal fun resolveDependencies(
       }
       is LockfileLoadResult.UnsupportedAndMigrationDenied -> {
         eprintln(
-          "error: kolt.lock v${outcome.version} is no longer supported, run 'kolt deps install' to regenerate"
+          "error: kolt.lock v${outcome.version} is no longer supported, run 'kolt fetch' to regenerate"
         )
         return Err(EXIT_DEPENDENCY_ERROR)
       }

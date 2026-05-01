@@ -112,7 +112,7 @@ class ResolveDependenciesNoDepsTest {
   fun emptyDepsReturnsOutcomeWithNullClasspathAndEmptyJars() {
     // Use a native target so autoInjectedTestDeps stays empty — the
     // JVM path auto-injects kotlin-test-junit5 and never reaches the
-    // empty-deps branch. doInstall exercises this branch for native.
+    // empty-deps branch. doFetch exercises this branch for native.
     val config =
       testConfig(target = "linuxX64", dependencies = emptyMap(), testDependencies = emptyMap())
 

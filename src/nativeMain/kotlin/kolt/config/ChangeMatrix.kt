@@ -34,7 +34,7 @@ data class DispatchPlan(
 /** Marker that prefixes every kolt.toml change-handling notification line on stderr. */
 const val NOTIFICATION_MARKER: String = "[watch] ⚠"
 
-private const val RECOMMEND_DEPS_INSTALL = "Run kolt deps install"
+private const val RECOMMEND_FETCH = "Run kolt fetch"
 private const val RECOMMEND_DAEMON_RESTART = "Run kolt daemon stop --all and restart watch"
 private const val RECOMMEND_RESTART_KIND = "Restart watch — kind change alters build pipeline"
 private const val RECOMMEND_RESTART_TARGET = "Restart watch — target change alters build pipeline"
@@ -97,21 +97,19 @@ private val SECTIONS: List<SectionDescriptor> =
       it.build.testResources
     },
     SectionDescriptor("[fmt]", SectionAction.NoOp) { it.fmt },
-    SectionDescriptor("[dependencies]", SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL)) {
+    SectionDescriptor("[dependencies]", SectionAction.NotifyOnly(RECOMMEND_FETCH)) {
       it.dependencies
     },
-    SectionDescriptor("[test-dependencies]", SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL)) {
+    SectionDescriptor("[test-dependencies]", SectionAction.NotifyOnly(RECOMMEND_FETCH)) {
       it.testDependencies
     },
-    SectionDescriptor("[repositories]", SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL)) {
+    SectionDescriptor("[repositories]", SectionAction.NotifyOnly(RECOMMEND_FETCH)) {
       it.repositories
     },
     SectionDescriptor("[[cinterop]]", SectionAction.NotifyOnly(RECOMMEND_RESTART_CINTEROP)) {
       it.cinterop
     },
-    SectionDescriptor("[classpaths]", SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL)) {
-      it.classpaths
-    },
+    SectionDescriptor("[classpaths]", SectionAction.NotifyOnly(RECOMMEND_FETCH)) { it.classpaths },
     SectionDescriptor("[test.sys_props]", SectionAction.AutoReload(rebuild = false)) {
       it.testSection.sysProps
     },

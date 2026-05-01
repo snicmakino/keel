@@ -138,11 +138,11 @@ class ConcurrentBuildIT {
     )
   }
 
-  // Req 1.1, 1.2, 1.5: deps install and build against the same project
+  // Req 1.1, 1.2, 1.5: kolt fetch and kolt build against the same project
   // both acquire the same project-local lock and serialise. Both must
   // reach exit 0 — no half-written `kolt.lock` or torn `build/` artefact.
   @Test
-  fun depsInstallAndBuildBothExitZeroWhenRunConcurrently() {
+  fun fetchAndBuildBothExitZeroWhenRunConcurrently() {
     if (!enabled()) return
     val kolt = locateKoltKexe() ?: return
     val fixture = createFixtureProject("kolt-it-deps-")
@@ -151,7 +151,7 @@ class ConcurrentBuildIT {
             set -u
             cd "$fixture"
             (
-              "$kolt" deps install > d.stdout 2> d.stderr
+              "$kolt" fetch > d.stdout 2> d.stderr
               echo $D? > d.exit
             ) &
             P1=$D!
@@ -170,7 +170,7 @@ class ConcurrentBuildIT {
     val buildExit = readExit(fixture, "b.exit")
     val depsStderr = readOptional(fixture, "d.stderr")
     val buildStderr = readOptional(fixture, "b.stderr")
-    assertEquals(0, depsExit, "kolt deps install must exit 0; stderr=$depsStderr")
+    assertEquals(0, depsExit, "kolt fetch must exit 0; stderr=$depsStderr")
     assertEquals(0, buildExit, "kolt build must exit 0; stderr=$buildStderr")
   }
 
@@ -199,13 +199,13 @@ class ConcurrentBuildIT {
             export HOME="$tmpHome"
             (
               cd "$fixture1"
-              "$kolt" deps install > a.stdout 2> a.stderr
+              "$kolt" fetch > a.stdout 2> a.stderr
               echo $D? > a.exit
             ) &
             P1=$D!
             (
               cd "$fixture2"
-              "$kolt" deps install > b.stdout 2> b.stderr
+              "$kolt" fetch > b.stdout 2> b.stderr
               echo $D? > b.exit
             ) &
             P2=$D!
@@ -218,8 +218,8 @@ class ConcurrentBuildIT {
     val exit2 = readExit(fixture2, "b.exit")
     val stderr1 = readOptional(fixture1, "a.stderr")
     val stderr2 = readOptional(fixture2, "b.stderr")
-    assertEquals(0, exit1, "deps install A must exit 0; stderr=$stderr1")
-    assertEquals(0, exit2, "deps install B must exit 0; stderr=$stderr2")
+    assertEquals(0, exit1, "fetch A must exit 0; stderr=$stderr1")
+    assertEquals(0, exit2, "fetch B must exit 0; stderr=$stderr2")
     val lsDiagnostic = executeAndCapture("ls -la $coordinateDir 2>&1").getOrElse { "<ls failed>" }
     assertTrue(
       fileExists(expectedJar),

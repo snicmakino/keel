@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-// `kolt deps tree` must render main and test closures as separate
+// `kolt tree` must render main and test closures as separate
 // sections and suppress the test section when the auto-inject skip
 // kicks in (empty test_sources + empty [test-dependencies] on JVM).
 // Tests exercise the pure seed decider so assertions do not depend on
@@ -48,7 +48,7 @@ class DepsTreeSeedsTest {
   fun testSectionEmptyWhenAutoInjectSkipsAndNoTestDepsDeclared() {
     // test_sources empty + test-dependencies empty on JVM: the
     // kotlin-test-junit5 auto-inject is skipped so the test section is
-    // empty. `kolt deps tree` must suppress the "test dependencies:"
+    // empty. `kolt tree` must suppress the "test dependencies:"
     // header in that case (doTree's `seeds.testSeeds.isNotEmpty()` gate).
     val config =
       testConfig(
@@ -147,43 +147,5 @@ class DepsTreeSeedsTest {
     )
     assertTrue(seeds.testSeeds.isEmpty())
     assertFalse(seeds.isEmpty)
-  }
-}
-
-class ValidateDepsSubcommandTest {
-
-  @Test
-  fun validTreeSubcommand() {
-    assertTrue(validateDepsSubcommand(listOf("tree")))
-  }
-
-  @Test
-  fun validAddSubcommand() {
-    assertTrue(validateDepsSubcommand(listOf("add", "com.example:lib:1.0")))
-  }
-
-  @Test
-  fun validInstallSubcommand() {
-    assertTrue(validateDepsSubcommand(listOf("install")))
-  }
-
-  @Test
-  fun validUpdateSubcommand() {
-    assertTrue(validateDepsSubcommand(listOf("update")))
-  }
-
-  @Test
-  fun emptyArgsReturnsInvalid() {
-    assertFalse(validateDepsSubcommand(emptyList()))
-  }
-
-  @Test
-  fun unknownSubcommandReturnsInvalid() {
-    assertFalse(validateDepsSubcommand(listOf("list")))
-  }
-
-  @Test
-  fun treeWithExtraArgsIsValid() {
-    assertTrue(validateDepsSubcommand(listOf("tree", "--verbose")))
   }
 }

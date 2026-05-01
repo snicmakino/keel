@@ -78,11 +78,10 @@ fun main(args: Array<String>) {
     }
     "fmt" -> doFmt(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
     "clean" -> doClean().getOrElse { exitProcess(it) }
-    "deps" -> doDeps(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
-    "add" -> doDeps(listOf("add") + filteredArgs.drop(1)).getOrElse { exitProcess(it) }
-    "install" -> doDeps(listOf("install")).getOrElse { exitProcess(it) }
-    "update" -> doDeps(listOf("update")).getOrElse { exitProcess(it) }
-    "tree" -> doDeps(listOf("tree")).getOrElse { exitProcess(it) }
+    "add" -> doAdd(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
+    "fetch" -> doFetch().getOrElse { exitProcess(it) }
+    "update" -> doUpdate().getOrElse { exitProcess(it) }
+    "tree" -> doTree().getOrElse { exitProcess(it) }
     "toolchain" -> doToolchain(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
     "daemon" -> doDaemon(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
     "cache" -> doCache(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
@@ -160,9 +159,10 @@ private fun printUsage() {
   eprintln("  test       Build and run tests")
   eprintln("  fmt        Format source files with ktfmt")
   eprintln("  clean      Remove build artifacts")
-  eprintln("  add        Add a dependency (alias for deps add)")
-  eprintln("  deps       Manage dependencies (add, install, update, tree)")
-  eprintln("             install, update, tree are also available as top-level aliases")
+  eprintln("  add        Add a dependency to kolt.toml")
+  eprintln("  fetch      Resolve dependencies and download JARs")
+  eprintln("  update     Re-resolve dependencies and update kolt.lock")
+  eprintln("  tree       Show dependency tree")
   eprintln("  toolchain  Manage toolchains (install, list, remove)")
   eprintln("  daemon     Manage compiler daemons (stop)")
   eprintln("  cache      Manage the global dependency cache (clean)")
