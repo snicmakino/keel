@@ -60,7 +60,8 @@ kolt init custom-name
 ## Commands
 
 ```
-kolt init [name]       Create a new project
+kolt init [name]       Scaffold a project in the current directory
+kolt new <name>        Create a new project in a new directory
 kolt build             Compile the project (debug profile by default)
 kolt build --release   Compile under the release profile
 kolt run               Build and run (kolt run -- args for app arguments)
@@ -326,7 +327,7 @@ Toolchains are stored under `~/.kolt/toolchains/kotlinc/{version}/`. When a mana
 Planned for v1.0:
 
 - Library packaging (currently `app` only)
-- `kolt publish` / `kolt new`
+- `kolt publish`
 - macOS and linuxArm64 targets
 - Private Maven repository authentication
 
