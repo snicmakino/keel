@@ -83,6 +83,7 @@ kolt --version              Show version
 | `--watch` | Watch source files and re-run on change (build/check/test/run) |
 | `--no-daemon` | Skip the warm compiler daemon for this invocation. Always available, even on Kotlin versions outside the daemon's supported range (ADR 0022). |
 | `--release` | Build under the release profile. Native: enables `-opt`, omits `-g`, writes artifacts to `build/release/`. JVM: declared no-op; the artifact still moves to `build/release/<name>.jar`. Debug remains the default. |
+| `-D<key>=<value>` | JVM system property for `kolt test` / `kolt run` (JVM target only). Overlays declared `[test.sys_props]` / `[run.sys_props]`; same-key collisions drop the toml entry. CLI values are literal-only. |
 
 ### Build Profiles
 
@@ -162,6 +163,18 @@ jitpack = "https://jitpack.io"
 name = "libcurl"
 def = "src/nativeInterop/cinterop/libcurl.def"
 package = "libcurl"
+
+# Named jar bundle, resolved independently of [dependencies].
+[classpaths.serialization-tools]
+"org.jetbrains.kotlinx:kotlinx-serialization-core" = "1.6.0"
+
+[test.sys_props]
+"my.app.fixture" = { project_dir = "test/fixtures" }
+"my.app.tools"   = { classpath = "serialization-tools" }
+"my.app.mode"    = { literal = "test" }
+
+[run.sys_props]
+"my.app.config" = { project_dir = "config" }
 ```
 
 ### Fields
@@ -184,10 +197,46 @@ package = "libcurl"
 | `[fmt] style` | ktfmt style: `"google"`, `"kotlinlang"`, `"meta"` | `"google"` |
 | `[[cinterop]]` | C interop bindings for native targets (array of `.def` entries) | `[]` |
 | `[repositories]` | Maven repositories (name = URL, tried in order) | Maven Central only |
+| `[classpaths.<name>]` | Named jar bundle resolved independently of `[dependencies]`. Same TOML shape (`"group:artifact" = "version"`). Referenced from `[test\|run.sys_props]` via `{ classpath = "<name>" }`. JVM target only. | `{}` |
+| `[test.sys_props]` | Map of `-D<key>=<value>` for the test JVM. Each value is `{ literal = "..." }` / `{ classpath = "<bundle>" }` / `{ project_dir = "<rel>" }`. JVM target only. | `{}` |
+| `[run.sys_props]` | Same shape as `[test.sys_props]` for `kolt run`. JVM target + `kind = "app"` only. | `{}` |
 
 ### C Interop
 
 For native target projects, declare one `[[cinterop]]` entry per `.def` file. kolt invokes the konan `cinterop` tool, caches `build/<name>.klib`, and links it via `konanc -l`. Fields: `name` (klib base), `def` (.def path), `package` (optional Kotlin package). Compiler and linker flags belong inside the `.def` file itself via the Kotlin/Native standard `compilerOpts.<platform>` / `linkerOpts.<platform>` keys — kolt does not duplicate them in `kolt.toml`. Klibs are regenerated when the `.def` file's mtime changes.
+
+### JVM System Properties (`[test.sys_props]` / `[run.sys_props]`)
+
+JVM target projects can declare `-D<key>=<value>` system properties for `kolt test` (`[test.sys_props]`) and `kolt run` (`[run.sys_props]`). Each value is one inline-table shape:
+
+| Shape | Resolution |
+|-------|------------|
+| `{ literal = "..." }` | Verbatim string. |
+| `{ classpath = "<bundle>" }` | Colon-joined absolute paths from `[classpaths.<bundle>]`. |
+| `{ project_dir = "<rel>" }` | `<project root>/<rel>` as absolute path; `"."` resolves to the project root. |
+
+```toml
+[classpaths.compiler-plugins]
+"org.example:my-plugin" = "1.2.0"
+
+[test.sys_props]
+"my.app.fixture" = { project_dir = "test/fixtures" }
+"my.app.plugins" = { classpath = "compiler-plugins" }
+"my.app.mode"    = { literal = "test" }
+
+[run.sys_props]
+"my.app.config" = { project_dir = "config" }
+```
+
+`-D<key>=<value>` flags on the command line overlay declared sysprops at invocation time. Toml entries are emitted first in declaration order; CLI entries are appended in command-line order; same-key collisions drop the toml entry (CLI wins). CLI values are literal-only.
+
+```sh
+kolt test -Dlog.level=DEBUG
+kolt run -Dapi.endpoint=http://localhost:8080
+kolt test -Dmy.app.mode=integration   # overlays [test.sys_props].my.app.mode
+```
+
+`kolt.toml` does not interpolate `${env.X}` — values are literal at parse time (ADR 0032). Per-machine values arrive through the CLI flag (now) or `kolt.local.toml` (future, #320). The schema rejects `[test.sys_props]` / `[run.sys_props]` / `[classpaths.*]` on native targets at parse time, and `[run.sys_props]` on `kind = "lib"`.
 
 ## Dependencies
 

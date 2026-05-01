@@ -5,7 +5,7 @@
 
 English | [日本語](README.ja.md)
 
-> v0.16.3 — Early-stage project. Expect breaking changes.
+> v0.17.0 — Early-stage project. Expect breaking changes.
 
 A lightweight build tool for Kotlin. TOML config — no Kotlin DSL build scripts to evaluate. Distributed as a single Kotlin/Native binary — no Java install required to use it.
 
@@ -100,6 +100,7 @@ kolt --version         Show version
 | `--watch` | Watch source files and re-run the command on change (build/check/test/run) |
 | `--no-daemon` | Skip the warm compiler daemon for this invocation. Always available, including on Kotlin versions outside the daemon's supported range (ADR 0022). |
 | `--release` | Build under the release profile. Native: enables `-opt`, omits `-g`, writes artifacts to `build/release/`. JVM: declared no-op (same kotlinc args, same daemon IC path) — the artifact still moves to `build/release/<name>.jar` so the two profiles' outputs do not overwrite each other. Default profile is `debug`; both profiles' artifacts coexist on disk so switching between them does not invalidate the other. See [ADR 0030](docs/adr/0030-build-profiles.md). |
+| `-D<key>=<value>` | JVM system property for `kolt test` / `kolt run` (JVM target only). Overlays declared `[test.sys_props]` / `[run.sys_props]`; same-key collisions drop the toml entry. CLI values are literal-only. See [ADR 0032](docs/adr/0032-kolt-toml-env-agnostic.md). |
 
 ## Configuration
 
@@ -151,6 +152,9 @@ jitpack = "https://jitpack.io"
 | `[fmt] style` | ktfmt style: `"google"`, `"kotlinlang"`, `"meta"` | `"google"` |
 | `[[cinterop]]` | C interop bindings for native targets (one array entry per `.def`) | `[]` |
 | `[repositories]` | Maven repositories (name = URL) | Maven Central only |
+| `[classpaths.<name>]` | Named jar bundle, resolved independently of `[dependencies]`. Same TOML shape (`"group:artifact" = "version"`). JVM target only. | `{}` |
+| `[test.sys_props]` | Map of `-D<key>=<value>` for the test JVM. Each value is `{ literal = "..." }` / `{ classpath = "<bundle>" }` / `{ project_dir = "<rel>" }`. JVM target only. | `{}` |
+| `[run.sys_props]` | Same shape as `[test.sys_props]` for `kolt run`. JVM target + `kind = "app"` only. | `{}` |
 
 ### Dependencies
 
@@ -225,6 +229,32 @@ linkerOpts.linux = -L/usr/lib/x86_64-linux-gnu -lcurl
 ```
 
 The `cinterop` klib is regenerated when the `.def` file's mtime changes; source-only edits reuse the cached klib. Multiple `[[cinterop]]` entries are allowed and are linked in declaration order.
+
+### JVM System Properties
+
+JVM-target projects can declare `-D<key>=<value>` system properties for `kolt test` (`[test.sys_props]`) and `kolt run` (`[run.sys_props]`). Each value is one of three inline-table shapes: `{ literal = "..." }` (verbatim), `{ classpath = "<bundle>" }` (colon-joined paths from a `[classpaths.<bundle>]` declaration), or `{ project_dir = "<rel>" }` (`<project root>/<rel>` as absolute path).
+
+```toml
+[classpaths.compiler-plugins]
+"org.example:my-plugin" = "1.2.0"
+
+[test.sys_props]
+"my.app.fixture" = { project_dir = "test/fixtures" }
+"my.app.plugins" = { classpath = "compiler-plugins" }
+"my.app.mode"    = { literal = "test" }
+
+[run.sys_props]
+"my.app.config" = { project_dir = "config" }
+```
+
+`-D<key>=<value>` flags on the command line overlay declared sysprops at invocation time. Toml entries are emitted first in declaration order; CLI entries are appended in command-line order; same-key collisions drop the toml entry (CLI wins). CLI values are literal-only.
+
+```sh
+kolt test -Dlog.level=DEBUG
+kolt run -Dapi.endpoint=http://localhost:8080
+```
+
+`kolt.toml` does not interpolate `${env.X}` — values are literal at parse time. Per-machine values arrive through the CLI flag (now) or `kolt.local.toml` (planned, post-1.0). The schema rejects `[test.sys_props]` / `[run.sys_props]` / `[classpaths.*]` on native targets and `[run.sys_props]` on `kind = "lib"`. See [ADR 0032](docs/adr/0032-kolt-toml-env-agnostic.md).
 
 ### Resource Files
 
