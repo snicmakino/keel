@@ -121,3 +121,32 @@ jobs:
             exit 1
           fi
           echo "Canary OK: daemon spawn path was reached"
+
+      # #336 observability: bootstrap kolt redirects daemon stdio to
+      # ~/.kolt/daemon/<hash>/<ver>/*-compiler-daemon[-<fp>].log via
+      # spawnDetached. When the daemon fails to bind on cold-cache CI
+      # we currently can only see the parent's connect-side timeout;
+      # this dump surfaces whatever the JVM child managed to write
+      # before exit. An empty / missing file means the JVM never wrote
+      # anything (daemon init slower than the 10s budget OR exec failed
+      # silently). always() so a failed canary does not skip this.
+      - name: Dump daemon logs for #336
+        if: always()
+        run: |
+          set +e
+          shopt -s globstar nullglob
+          dir="$HOME/.kolt/daemon"
+          echo "::group::tree under $dir"
+          find "$dir" -maxdepth 6 -printf '%y %s %p\n' 2>/dev/null || true
+          echo "::endgroup::"
+          found=0
+          for f in "$dir"/**/*-compiler-daemon*.log; do
+            found=1
+            echo "::group::$f"
+            wc -c "$f"
+            cat "$f"
+            echo "::endgroup::"
+          done
+          if [ "$found" = "0" ]; then
+            echo "no daemon log files found under $dir"
+          fi
