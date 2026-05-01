@@ -5,7 +5,7 @@
 
 [English](README.md) | 日本語
 
-> v0.16.3 — 初期段階のプロジェクトです。破壊的変更の可能性があります。
+> v0.17.0 — 初期段階のプロジェクトです。破壊的変更の可能性があります。
 
 Kotlin 向けの軽量ビルドツールです。TOML 設定ファイルのみで動作し、Kotlin DSL のビルドスクリプト評価は不要です。単一の Kotlin/Native バイナリとして配布されるため、利用に Java のインストールは必要ありません。
 
@@ -100,6 +100,7 @@ kolt --version         バージョンを表示
 | `--watch` | ソースファイルを監視し、変更時にコマンドを再実行（build/check/test/run） |
 | `--no-daemon` | この実行でウォームコンパイラデーモンをスキップ。daemon サポート対象外の Kotlin バージョン (ADR 0022) でも常に利用可能。 |
 | `--release` | release プロファイルでビルドする。Native は `-opt` を有効化し `-g` を外して `build/release/` に出力。JVM では宣言上 no-op（kotlinc 引数も daemon IC パスも変わらない）だが、両プロファイル成果物を相互に上書きしないよう成果物パスは `build/release/<name>.jar` に切り替わる。デフォルトは `debug` プロファイルで、両プロファイルの成果物はディスク上に共存するためプロファイルを切り替えても他方の IC が無効化されることはない。詳細は [ADR 0030](docs/adr/0030-build-profiles.md) を参照。 |
+| `-D<key>=<value>` | `kolt test` / `kolt run` 用の JVM システムプロパティ（JVM ターゲットのみ）。宣言済みの `[test.sys_props]` / `[run.sys_props]` に対するオーバーレイで、同一キーが衝突した場合は kolt.toml 側のエントリを破棄する。CLI 値は literal のみ。詳細は [ADR 0032](docs/adr/0032-kolt-toml-env-agnostic.md) を参照。 |
 
 ## 設定
 
@@ -151,6 +152,9 @@ jitpack = "https://jitpack.io"
 | `[fmt] style` | ktfmt スタイル：`"google"`、`"kotlinlang"`、`"meta"` | `"google"` |
 | `[[cinterop]]` | native target 用の C interop バインディング（`.def` ごとに 1 エントリ） | `[]` |
 | `[repositories]` | Maven リポジトリ（名前 = URL） | Maven Central のみ |
+| `[classpaths.<name>]` | `[dependencies]` と独立に解決される名前付き jar bundle。TOML 形式は `[dependencies]` と同じ（`"group:artifact" = "version"`）。JVM ターゲットのみ。 | `{}` |
+| `[test.sys_props]` | テスト JVM 用 `-D<key>=<value>` のマップ。各値は `{ literal = "..." }` / `{ classpath = "<bundle>" }` / `{ project_dir = "<rel>" }` のいずれか。JVM ターゲットのみ。 | `{}` |
+| `[run.sys_props]` | `kolt run` 用、形式は `[test.sys_props]` と同じ。JVM ターゲット + `kind = "app"` のみ。 | `{}` |
 
 ### 依存関係
 
@@ -225,6 +229,32 @@ linkerOpts.linux = -L/usr/lib/x86_64-linux-gnu -lcurl
 ```
 
 `cinterop` klib は `.def` ファイルの mtime が変更された場合に再生成されます。ソースのみの編集ではキャッシュ済み klib を再利用します。複数の `[[cinterop]]` エントリが許可され、宣言順にリンクされます。
+
+### JVM システムプロパティ
+
+JVM ターゲットのプロジェクトは、`kolt test` 用の `[test.sys_props]` と `kolt run` 用の `[run.sys_props]` で `-D<key>=<value>` JVM システムプロパティを宣言できます。各値は 3 種類のインラインテーブル形式のいずれか：`{ literal = "..." }` (リテラル文字列)、`{ classpath = "<bundle>" }` (`[classpaths.<bundle>]` の解決後コロン区切り絶対パス)、`{ project_dir = "<rel>" }` (`<project root>/<rel>` の絶対パス)。
+
+```toml
+[classpaths.compiler-plugins]
+"org.example:my-plugin" = "1.2.0"
+
+[test.sys_props]
+"my.app.fixture" = { project_dir = "test/fixtures" }
+"my.app.plugins" = { classpath = "compiler-plugins" }
+"my.app.mode"    = { literal = "test" }
+
+[run.sys_props]
+"my.app.config" = { project_dir = "config" }
+```
+
+コマンドラインの `-D<key>=<value>` フラグは、起動時に宣言済みの sysprops にオーバーレイします。toml エントリは宣言順に先頭側、CLI エントリはコマンドライン順で末尾側に配置され、同一キー衝突時は toml 側のエントリを破棄します（CLI が勝つ）。CLI 値は literal のみ。
+
+```sh
+kolt test -Dlog.level=DEBUG
+kolt run -Dapi.endpoint=http://localhost:8080
+```
+
+`kolt.toml` は `${env.X}` 補間を行いません — 値は parse 時にリテラルとして扱われます。マシン固有値は CLI フラグ（現在）か `kolt.local.toml`（v1.x ロードマップ）で渡します。スキーマは native ターゲットの `[test.sys_props]` / `[run.sys_props]` / `[classpaths.*]`、および `kind = "lib"` の `[run.sys_props]` を parse 時に拒否します。詳細は [ADR 0032](docs/adr/0032-kolt-toml-env-agnostic.md) を参照。
 
 ### リソースファイル
 
