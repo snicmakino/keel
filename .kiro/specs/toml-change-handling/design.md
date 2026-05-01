@@ -305,7 +305,7 @@ const val NOTIFICATION_MARKER: String = "[watch] ⚠"
 - **Run loop respawn 条件 (D-8 確定)**: `watchRunLoop` のみ、 以下 3 条件すべてを満たす場合に running app を kill + spawn:
   1. `plan.reload == true` (mixed-window prevail で reload=false のケースを除外)
   2. `plan.rebuild == false`
-  3. `plan.changedSections.any { it.sectionName == "run.sys_props" }`
+  3. `plan.changedSections.any { it.sectionName == "[run.sys_props]" }`
   
   この guard により、 `[run.sys_props]` + `[dependencies]` 同時変更 (mixed-window prevail で reload=false, rebuild=false) のケースでは respawn が走らない (β3 整合)。 一方 `[run.sys_props]` + `[build.sources]` 同時変更 (rebuild=true) では本 step は no-op となり、 通常の rebuild → app spawn フロー内で sysprops が反映される
 - **rebuild 同時ケースの sysprops 引き継ぎ確認 (実装時 todo)**: `commandRunner` lambda が毎回 `currentConfig.run.sysProps` を fresh に参照しているか確認する。 startup 時 capture してそのまま使い回している場合は、 lambda signature を `commandRunner: (config: KoltConfig) -> Result<...>` 等に拡張するか、 mutable `currentConfig` reference を closure で参照する形に修正する
