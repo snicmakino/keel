@@ -196,11 +196,9 @@ private fun doFetchInner(): Result<Unit, Int> {
 
 internal fun doUpdate(): Result<Unit, Int> = withDependencyLock { doUpdateInner() }
 
-// `kolt update` does not evict cached JARs (#347). The cache is host-shared
-// across projects; project-local eviction is a cross-project side effect.
-// Stale or corrupt cache entries must be cleared explicitly via `kolt cache
-// clean`. Re-introducing eviction here breaks the invariant declared in the
-// v0.18 release note.
+// Cache eviction is reserved for `kolt cache clean`: `~/.kolt/cache/` is
+// host-shared, so a project-local update must not invalidate other projects'
+// entries.
 private fun doUpdateInner(): Result<Unit, Int> {
   val config =
     loadProjectConfig().getOrElse {
@@ -239,7 +237,7 @@ private fun doUpdateInner(): Result<Unit, Int> {
       }
 
   // Bundles re-resolve with `existingLock = null` so `[classpaths.<name>]`
-  // follow the same update policy as main / test (Req 4.3).
+  // follow the same update policy as main / test.
   val bundleResolutions =
     resolveAllBundles(config, existingLock = null, paths.cacheBase, resolverDeps).getOrElse { error
       ->
