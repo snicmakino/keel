@@ -33,8 +33,8 @@
     - _Requirements: 8.13_
     - _Boundary: kolt.config.ChangeMatrix_
 
-- [ ] 3. (P) ADR 0033 publication
-  - [ ] 3.1 Draft and publish ADR 0033 "kolt.toml change-handling model"
+- [x] 3. (P) ADR 0033 publication
+  - [x] 3.1 Draft and publish ADR 0033 "kolt.toml change-handling model"
     - Status / Date / Summary section with 5–7 bullets covering 3-value taxonomy, per-invocation matrix, watch matrix, mixed-window prevail, build-serialize, daemon-stateless reaffirmation, and `kolt deps remove` follow-up reference
     - Context section motivating the matrix from #297 and the implicit-rules problem
     - Decision section with two matrix tables (per-invocation + watch) covering every section listed in the design matrix draft; render `[kotlin]` family with visual sub-section grouping
