@@ -400,4 +400,47 @@ class ChangeMatrixTest {
     val names = changes.map { it.sectionName }.toSet()
     assertEquals(setOf("name", "[dependencies]", "[build] sources"), names)
   }
+
+  // --- schema-coverage cross-validation ---
+
+  @Test
+  fun matrixCoverageMatchesKoltConfigSections() {
+    // Hardcoded list of every section / top-level scalar that a contributor must classify in
+    // SECTION_ACTIONS when adding to KoltConfig. Kept independent from SECTION_ACTIONS so that
+    // updating one without the other fails this test loudly. The second defensive line is the
+    // ADR 0033 maintenance clause + CONTRIBUTING note near the kolt.toml schema definition.
+    val expected =
+      setOf(
+        "name",
+        "version",
+        "kind",
+        "[kotlin] compiler",
+        "[kotlin] version",
+        "[kotlin.plugins]",
+        "[build] target",
+        "[build] jvm_target",
+        "[build] jdk",
+        "[build] main",
+        "[build] sources",
+        "[build] test_sources",
+        "[build] resources",
+        "[build] test_resources",
+        "[fmt]",
+        "[dependencies]",
+        "[test-dependencies]",
+        "[repositories]",
+        "[[cinterop]]",
+        "[classpaths]",
+        "[test.sys_props]",
+        "[run.sys_props]",
+      )
+    val actual = SECTION_ACTIONS.keys
+
+    assertEquals(
+      expected,
+      actual,
+      "drift between KoltConfig section list and SECTION_ACTIONS — " +
+        "missing in matrix: ${expected - actual}; extra in matrix: ${actual - expected}",
+    )
+  }
 }

@@ -25,7 +25,7 @@
     - Observable: planDispatch tests all pass; notification format string is inspectable in test output and matches the `[watch] ⚠ [<section>] changed; <action>` shape
     - _Requirements: 3.1, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 5.1, 6.2, 6.4_
     - _Boundary: kolt.config.ChangeMatrix_
-  - [ ] 2.3 Implement schema-coverage cross-validation test
+  - [x] 2.3 Implement schema-coverage cross-validation test
     - Hardcode a `KOLT_CONFIG_SECTIONS` set inside the test file enumerating top-level scalar names and section names exposed via `KoltConfig`
     - Hardcode (or expose for test) the matrix table's section name set
     - Assert the two sets are equal so adding a section to either side without the other fails the test with a clear delta message
