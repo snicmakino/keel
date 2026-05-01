@@ -18,7 +18,7 @@
     - Observable: ChangeMatrix unit tests pass; running `kolt test` shows the per-matrix-cell test cases in green
     - _Requirements: 2.3, 2.4, 8.6, 8.13_
     - _Boundary: kolt.config.ChangeMatrix_
-  - [ ] 2.2 Implement planDispatch covering all five branches and notify-only-prevail semantics
+  - [x] 2.2 Implement planDispatch covering all five branches and notify-only-prevail semantics
     - Red: write unit tests covering (a) empty input, (b) all-NoOp, (c) `AutoReload(rebuild=true)` sets `reload=true, rebuild=true`, (d) `AutoReload(rebuild=false)` only sets `reload=true`, (e) any `NotifyOnly` forces `reload=false, rebuild=false, notifications` non-empty (mixed-window prevail)
     - Green: implement branching logic that respects notify-only-prevail; format each `NotifyOnly` notification line as `${NOTIFICATION_MARKER} [${sectionName}] changed; ${recommendation}`
     - Refactor: enforce the invariant `notifications.isNotEmpty()` ⇔ `!reload && !rebuild` via a single guard or test-visible assertion

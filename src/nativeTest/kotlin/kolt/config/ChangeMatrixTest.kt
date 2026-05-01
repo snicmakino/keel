@@ -263,6 +263,117 @@ class ChangeMatrixTest {
     assertEquals(SectionAction.AutoReload(rebuild = false), result[0].action)
   }
 
+  // --- planDispatch: branches ---
+
+  @Test
+  fun planDispatchOfAllNoOpProducesNoActionPlanWithChangesIntact() {
+    val changes = listOf(SectionChange("[fmt]", SectionAction.NoOp))
+    val plan = planDispatch(changes)
+    assertEquals(false, plan.reload)
+    assertEquals(false, plan.rebuild)
+    assertTrue(plan.notifications.isEmpty())
+    assertEquals(changes, plan.changedSections)
+  }
+
+  @Test
+  fun planDispatchOfSingleAutoReloadRebuildSetsReloadAndRebuild() {
+    val changes = listOf(SectionChange("[build] sources", SectionAction.AutoReload(rebuild = true)))
+    val plan = planDispatch(changes)
+    assertEquals(true, plan.reload)
+    assertEquals(true, plan.rebuild)
+    assertTrue(plan.notifications.isEmpty())
+    assertEquals(changes, plan.changedSections)
+  }
+
+  @Test
+  fun planDispatchOfSingleAutoReloadNoRebuildSetsReloadOnly() {
+    val changes =
+      listOf(SectionChange("[run.sys_props]", SectionAction.AutoReload(rebuild = false)))
+    val plan = planDispatch(changes)
+    assertEquals(true, plan.reload)
+    assertEquals(false, plan.rebuild)
+    assertTrue(plan.notifications.isEmpty())
+    assertEquals(changes, plan.changedSections)
+  }
+
+  @Test
+  fun planDispatchOfMixedAutoReloadCombinesRebuildFlagToTrueIfAny() {
+    val changes =
+      listOf(
+        SectionChange("[run.sys_props]", SectionAction.AutoReload(rebuild = false)),
+        SectionChange("[build] sources", SectionAction.AutoReload(rebuild = true)),
+      )
+    val plan = planDispatch(changes)
+    assertEquals(true, plan.reload)
+    assertEquals(true, plan.rebuild)
+    assertTrue(plan.notifications.isEmpty())
+  }
+
+  @Test
+  fun planDispatchOfSingleNotifyOnlyEmitsNotificationAndSkipsReload() {
+    val changes =
+      listOf(SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")))
+    val plan = planDispatch(changes)
+    assertEquals(false, plan.reload)
+    assertEquals(false, plan.rebuild)
+    assertEquals(1, plan.notifications.size)
+    assertEquals(changes, plan.changedSections)
+  }
+
+  @Test
+  fun planDispatchNotificationFormatIncludesMarkerSectionAndRecommendation() {
+    val changes =
+      listOf(SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")))
+    val plan = planDispatch(changes)
+    assertEquals("[watch] ⚠ [dependencies] changed; Run kolt deps install", plan.notifications[0])
+  }
+
+  @Test
+  fun planDispatchOfMixedWindowPrevailsAsNotifyOnly() {
+    val changes =
+      listOf(
+        SectionChange("[build] sources", SectionAction.AutoReload(rebuild = true)),
+        SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")),
+      )
+    val plan = planDispatch(changes)
+    assertEquals(false, plan.reload)
+    assertEquals(false, plan.rebuild)
+    assertEquals(1, plan.notifications.size)
+    assertEquals("[watch] ⚠ [dependencies] changed; Run kolt deps install", plan.notifications[0])
+    assertEquals(2, plan.changedSections.size)
+  }
+
+  @Test
+  fun planDispatchEmitsOneNotificationLinePerNotifyOnlySection() {
+    val changes =
+      listOf(
+        SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")),
+        SectionChange(
+          "[kotlin] compiler",
+          SectionAction.NotifyOnly("Run kolt daemon stop --all and restart watch"),
+        ),
+      )
+    val plan = planDispatch(changes)
+    assertEquals(2, plan.notifications.size)
+    assertTrue(plan.notifications.any { it.contains("[dependencies]") })
+    assertTrue(plan.notifications.any { it.contains("[kotlin] compiler") })
+  }
+
+  @Test
+  fun planDispatchInvariantNotificationsImplyNoReloadOrRebuild() {
+    val changes =
+      listOf(
+        SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")),
+        SectionChange("[build] sources", SectionAction.AutoReload(rebuild = true)),
+        SectionChange("[run.sys_props]", SectionAction.AutoReload(rebuild = false)),
+      )
+    val plan = planDispatch(changes)
+    if (plan.notifications.isNotEmpty()) {
+      assertEquals(false, plan.reload)
+      assertEquals(false, plan.rebuild)
+    }
+  }
+
   // --- classifyChange: defensive fallback for schema-unknown section names ---
 
   @Test

@@ -363,7 +363,7 @@ classDiagram
 - `SectionAction` は 3 variant のみ (Req 8.2)
 - `AutoReload(rebuild=true)` と `AutoReload(rebuild=false)` は data class equality で等価判定可能 (test fixture で利用)
 - `NotifyOnly` の `recommendation` は user-facing 文字列、 `Run kolt deps install` / `Run kolt daemon stop --all and restart watch` / `Restart watch` のいずれか (matrix table 内で section ごとに定義)
-- `DispatchPlan.notifications` の各文字列は `${NOTIFICATION_MARKER} [${sectionName}] ${reasonClause}; ${recommendation}` の形 (Req 6.2 / 6.5 / 6.6)
+- `DispatchPlan.notifications` の各文字列は `"${NOTIFICATION_MARKER} ${sectionName} changed; ${recommendation}"` の形。 `sectionName` は `SECTION_ACTIONS` キーをそのまま使い (例: `"name"`, `"[dependencies]"`, `"[kotlin] compiler"`)、 既に TOML-canonical な括弧を含むものは追加 wrap しない (二重括弧回避)
 
 ### Section → Action Matrix (draft for ADR 0033)
 

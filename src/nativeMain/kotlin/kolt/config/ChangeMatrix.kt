@@ -159,13 +159,41 @@ fun classifyChange(old: KoltConfig, new: KoltConfig): List<SectionChange> {
 /**
  * Decide reload / rebuild / notification dispatch for a list of section changes.
  *
- * Stub: returns an empty plan.
+ * Notify-only-prevail rule: if any change carries NotifyOnly, the entire window is treated as
+ * notify-only — no reload, no rebuild, only notifications are emitted. AutoReload sections detected
+ * in the same window are deferred until the user takes the recommended explicit action.
  */
 fun planDispatch(changes: List<SectionChange>): DispatchPlan {
+  val notifyOnly = changes.filter { it.action is SectionAction.NotifyOnly }
+  if (notifyOnly.isNotEmpty()) {
+    val notifications =
+      notifyOnly.map {
+        val recommendation = (it.action as SectionAction.NotifyOnly).recommendation
+        "$NOTIFICATION_MARKER ${it.sectionName} changed; $recommendation"
+      }
+    return DispatchPlan(
+      reload = false,
+      rebuild = false,
+      notifications = notifications,
+      changedSections = changes,
+    )
+  }
+
+  val autoReloads = changes.filter { it.action is SectionAction.AutoReload }
+  if (autoReloads.isEmpty()) {
+    return DispatchPlan(
+      reload = false,
+      rebuild = false,
+      notifications = emptyList(),
+      changedSections = changes,
+    )
+  }
+
+  val rebuildRequired = autoReloads.any { (it.action as SectionAction.AutoReload).rebuild }
   return DispatchPlan(
-    reload = false,
-    rebuild = false,
+    reload = true,
+    rebuild = rebuildRequired,
     notifications = emptyList(),
-    changedSections = emptyList(),
+    changedSections = changes,
   )
 }
