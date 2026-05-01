@@ -45,35 +45,87 @@ private const val RECOMMEND_RESTART_CINTEROP =
   "Restart watch — cinterop binding regeneration required"
 
 /**
- * Authoritative section name → SectionAction map. The keys here are the canonical section names
- * surfaced in user-facing notifications and used by all classifyChange callers. Adding a new
- * KoltConfig field requires updating both this map and the schema-coverage test.
+ * Single source of truth: each KoltConfig section is described once with its canonical name, its
+ * SectionAction classification, and the field extractor that classifyChange compares between
+ * snapshots. SECTION_ACTIONS is derived from this list so the section name cannot drift between the
+ * matrix and the diff loop. Adding a new KoltConfig field is a one-entry edit here plus the mirror
+ * entry in the schema-coverage test.
+ */
+private data class SectionDescriptor(
+  val name: String,
+  val action: SectionAction,
+  val extract: (KoltConfig) -> Any?,
+)
+
+private val SECTIONS: List<SectionDescriptor> =
+  listOf(
+    SectionDescriptor("name", SectionAction.AutoReload(rebuild = true)) { it.name },
+    SectionDescriptor("version", SectionAction.AutoReload(rebuild = true)) { it.version },
+    SectionDescriptor("kind", SectionAction.NotifyOnly(RECOMMEND_RESTART_KIND)) { it.kind },
+    SectionDescriptor("[kotlin] compiler", SectionAction.NotifyOnly(RECOMMEND_DAEMON_RESTART)) {
+      it.kotlin.compiler
+    },
+    SectionDescriptor("[kotlin] version", SectionAction.NotifyOnly(RECOMMEND_DAEMON_RESTART)) {
+      it.kotlin.version
+    },
+    SectionDescriptor("[kotlin.plugins]", SectionAction.NotifyOnly(RECOMMEND_DAEMON_RESTART)) {
+      it.kotlin.plugins
+    },
+    SectionDescriptor("[build] target", SectionAction.NotifyOnly(RECOMMEND_RESTART_TARGET)) {
+      it.build.target
+    },
+    SectionDescriptor(
+      "[build] jvm_target",
+      SectionAction.NotifyOnly(RECOMMEND_RESTART_JVM_TARGET),
+    ) {
+      it.build.jvmTarget
+    },
+    SectionDescriptor("[build] jdk", SectionAction.NotifyOnly(RECOMMEND_RESTART_JDK)) {
+      it.build.jdk
+    },
+    SectionDescriptor("[build] main", SectionAction.AutoReload(rebuild = true)) { it.build.main },
+    SectionDescriptor("[build] sources", SectionAction.AutoReload(rebuild = true)) {
+      it.build.sources
+    },
+    SectionDescriptor("[build] test_sources", SectionAction.AutoReload(rebuild = true)) {
+      it.build.testSources
+    },
+    SectionDescriptor("[build] resources", SectionAction.AutoReload(rebuild = true)) {
+      it.build.resources
+    },
+    SectionDescriptor("[build] test_resources", SectionAction.AutoReload(rebuild = true)) {
+      it.build.testResources
+    },
+    SectionDescriptor("[fmt]", SectionAction.NoOp) { it.fmt },
+    SectionDescriptor("[dependencies]", SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL)) {
+      it.dependencies
+    },
+    SectionDescriptor("[test-dependencies]", SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL)) {
+      it.testDependencies
+    },
+    SectionDescriptor("[repositories]", SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL)) {
+      it.repositories
+    },
+    SectionDescriptor("[[cinterop]]", SectionAction.NotifyOnly(RECOMMEND_RESTART_CINTEROP)) {
+      it.cinterop
+    },
+    SectionDescriptor("[classpaths]", SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL)) {
+      it.classpaths
+    },
+    SectionDescriptor("[test.sys_props]", SectionAction.AutoReload(rebuild = false)) {
+      it.testSection.sysProps
+    },
+    SectionDescriptor("[run.sys_props]", SectionAction.AutoReload(rebuild = false)) {
+      it.runSection.sysProps
+    },
+  )
+
+/**
+ * Section name → SectionAction view derived from SECTIONS. Used by callers that only need the
+ * action (e.g. notification formatting) and by the schema-coverage cross-validation test.
  */
 internal val SECTION_ACTIONS: Map<String, SectionAction> =
-  mapOf(
-    "name" to SectionAction.AutoReload(rebuild = true),
-    "version" to SectionAction.AutoReload(rebuild = true),
-    "kind" to SectionAction.NotifyOnly(RECOMMEND_RESTART_KIND),
-    "[kotlin] compiler" to SectionAction.NotifyOnly(RECOMMEND_DAEMON_RESTART),
-    "[kotlin] version" to SectionAction.NotifyOnly(RECOMMEND_DAEMON_RESTART),
-    "[kotlin.plugins]" to SectionAction.NotifyOnly(RECOMMEND_DAEMON_RESTART),
-    "[build] target" to SectionAction.NotifyOnly(RECOMMEND_RESTART_TARGET),
-    "[build] jvm_target" to SectionAction.NotifyOnly(RECOMMEND_RESTART_JVM_TARGET),
-    "[build] jdk" to SectionAction.NotifyOnly(RECOMMEND_RESTART_JDK),
-    "[build] main" to SectionAction.AutoReload(rebuild = true),
-    "[build] sources" to SectionAction.AutoReload(rebuild = true),
-    "[build] test_sources" to SectionAction.AutoReload(rebuild = true),
-    "[build] resources" to SectionAction.AutoReload(rebuild = true),
-    "[build] test_resources" to SectionAction.AutoReload(rebuild = true),
-    "[fmt]" to SectionAction.NoOp,
-    "[dependencies]" to SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL),
-    "[test-dependencies]" to SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL),
-    "[repositories]" to SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL),
-    "[[cinterop]]" to SectionAction.NotifyOnly(RECOMMEND_RESTART_CINTEROP),
-    "[classpaths]" to SectionAction.NotifyOnly(RECOMMEND_DEPS_INSTALL),
-    "[test.sys_props]" to SectionAction.AutoReload(rebuild = false),
-    "[run.sys_props]" to SectionAction.AutoReload(rebuild = false),
-  )
+  SECTIONS.associate { it.name to it.action }
 
 internal const val DEFERRED_RECOMMENDATION =
   "This section is not yet classified; please file an issue or update ChangeMatrix.kt"
@@ -83,77 +135,13 @@ internal fun action(name: String): SectionAction =
 
 /**
  * Classify the section-level diff between two KoltConfig snapshots. Returns one SectionChange per
- * differing top-level scalar or section. Equal configs produce an empty list.
+ * differing section. Equal configs produce an empty list.
  */
 fun classifyChange(old: KoltConfig, new: KoltConfig): List<SectionChange> {
   if (old == new) return emptyList()
-
-  val changes = mutableListOf<SectionChange>()
-
-  if (old.name != new.name) changes += SectionChange("name", action("name"))
-  if (old.version != new.version) changes += SectionChange("version", action("version"))
-  if (old.kind != new.kind) changes += SectionChange("kind", action("kind"))
-
-  if (old.kotlin.compiler != new.kotlin.compiler) {
-    changes += SectionChange("[kotlin] compiler", action("[kotlin] compiler"))
+  return SECTIONS.mapNotNull { desc ->
+    if (desc.extract(old) != desc.extract(new)) SectionChange(desc.name, desc.action) else null
   }
-  if (old.kotlin.version != new.kotlin.version) {
-    changes += SectionChange("[kotlin] version", action("[kotlin] version"))
-  }
-  if (old.kotlin.plugins != new.kotlin.plugins) {
-    changes += SectionChange("[kotlin.plugins]", action("[kotlin.plugins]"))
-  }
-
-  if (old.build.target != new.build.target) {
-    changes += SectionChange("[build] target", action("[build] target"))
-  }
-  if (old.build.jvmTarget != new.build.jvmTarget) {
-    changes += SectionChange("[build] jvm_target", action("[build] jvm_target"))
-  }
-  if (old.build.jdk != new.build.jdk) {
-    changes += SectionChange("[build] jdk", action("[build] jdk"))
-  }
-  if (old.build.main != new.build.main) {
-    changes += SectionChange("[build] main", action("[build] main"))
-  }
-  if (old.build.sources != new.build.sources) {
-    changes += SectionChange("[build] sources", action("[build] sources"))
-  }
-  if (old.build.testSources != new.build.testSources) {
-    changes += SectionChange("[build] test_sources", action("[build] test_sources"))
-  }
-  if (old.build.resources != new.build.resources) {
-    changes += SectionChange("[build] resources", action("[build] resources"))
-  }
-  if (old.build.testResources != new.build.testResources) {
-    changes += SectionChange("[build] test_resources", action("[build] test_resources"))
-  }
-
-  if (old.fmt != new.fmt) changes += SectionChange("[fmt]", action("[fmt]"))
-
-  if (old.dependencies != new.dependencies) {
-    changes += SectionChange("[dependencies]", action("[dependencies]"))
-  }
-  if (old.testDependencies != new.testDependencies) {
-    changes += SectionChange("[test-dependencies]", action("[test-dependencies]"))
-  }
-  if (old.repositories != new.repositories) {
-    changes += SectionChange("[repositories]", action("[repositories]"))
-  }
-  if (old.cinterop != new.cinterop) {
-    changes += SectionChange("[[cinterop]]", action("[[cinterop]]"))
-  }
-  if (old.classpaths != new.classpaths) {
-    changes += SectionChange("[classpaths]", action("[classpaths]"))
-  }
-  if (old.testSection.sysProps != new.testSection.sysProps) {
-    changes += SectionChange("[test.sys_props]", action("[test.sys_props]"))
-  }
-  if (old.runSection.sysProps != new.runSection.sysProps) {
-    changes += SectionChange("[run.sys_props]", action("[run.sys_props]"))
-  }
-
-  return changes
 }
 
 /**
