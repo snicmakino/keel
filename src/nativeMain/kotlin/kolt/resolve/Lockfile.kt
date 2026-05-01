@@ -35,7 +35,7 @@ data class Lockfile(
 
 // Result of loading kolt.lock at the start of a CLI command. Splits the
 // "v3 detected" case into two policy-distinct branches so callers can
-// decide whether to migrate (kolt deps install) or refuse to proceed
+// decide whether to migrate (kolt fetch) or refuse to proceed
 // (kolt build / test / run). See spec jvm-sys-props design.md, Migration
 // Strategy section.
 sealed class LockfileLoadResult {
@@ -49,7 +49,7 @@ sealed class LockfileLoadResult {
   // because corrupt content is not a versioned breaking change.
   data class Corrupt(val message: String) : LockfileLoadResult()
 
-  // v3 detected and migration is allowed for this command (kolt deps install).
+  // v3 detected and migration is allowed for this command (kolt fetch).
   // Caller emits a warning and proceeds with a fresh resolve.
   data class UnsupportedAndMigrationAllowed(val version: Int) : LockfileLoadResult()
 

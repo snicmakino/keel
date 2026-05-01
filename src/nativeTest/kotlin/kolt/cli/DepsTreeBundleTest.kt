@@ -6,7 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-// Req 4.2: `kolt deps tree` lists every declared bundle under a labelled
+// Req 4.2: `kolt tree` lists every declared bundle under a labelled
 // section distinct from main / test. `buildBundlesSection` is the pure
 // rendering helper extracted from `doTree` so the format can be asserted
 // without invoking the network-touching `createPomLookup`.

@@ -54,16 +54,14 @@ kolt build --release        Compile under the release profile
 kolt run                    Build and run (kolt run -- args for app arguments)
 kolt test                   Build and run tests (kolt test -- args for JUnit Platform)
 kolt check                  Type-check without producing artifacts
-kolt add <dep>              Add a dependency (alias for deps add)
+kolt add <dep>              Add a dependency to kolt.toml
 kolt add --test <dep>       Add a test dependency
+kolt fetch                  Resolve dependencies and download JARs
+kolt update                 Re-resolve dependencies and update kolt.lock
+kolt tree                   Show dependency tree
 kolt fmt                    Format source files with ktfmt
 kolt fmt --check            Check formatting (CI mode)
 kolt clean                  Remove build artifacts
-
-kolt deps add <dep>         Add a dependency
-kolt deps install           Resolve dependencies and download JARs
-kolt deps update            Re-resolve dependencies and update lockfile
-kolt deps tree              Show dependency tree
 
 kolt toolchain install      Install kotlinc version defined in kolt.toml
 
@@ -73,8 +71,6 @@ kolt daemon reap            Remove stale daemon directories and orphaned sockets
 
 kolt --version              Show version
 ```
-
-`install`, `update`, and `tree` are also available as top-level aliases.
 
 ### Flags
 

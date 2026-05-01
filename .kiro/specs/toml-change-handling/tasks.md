@@ -35,7 +35,7 @@
 
 - [x] 3. (P) ADR 0033 publication
   - [x] 3.1 Draft and publish ADR 0033 "kolt.toml change-handling model"
-    - Status / Date / Summary section with 5–7 bullets covering 3-value taxonomy, per-invocation matrix, watch matrix, mixed-window prevail, build-serialize, daemon-stateless reaffirmation, and `kolt deps remove` follow-up reference
+    - Status / Date / Summary section with 5–7 bullets covering 3-value taxonomy, per-invocation matrix, watch matrix, mixed-window prevail, build-serialize, daemon-stateless reaffirmation, and `kolt remove` follow-up reference
     - Context section motivating the matrix from #297 and the implicit-rules problem
     - Decision section with two matrix tables (per-invocation + watch) covering every section listed in the design matrix draft; render `[kotlin]` family with visual sub-section grouping
     - Rationale section recording mixed-window prevail logic, build-serialize over cancel, NotifyOnly placement for `[kotlin]` family with explicit-user-operations preference, and daemon stateless decision
@@ -69,7 +69,7 @@
     - After successful reparse, call `classifyChange(currentConfig, newConfig)` then `planDispatch(changes)`
     - When `plan.notifications` is non-empty: emit each line to stderr as a single notification group within the same debounce window; retain the old config; skip rebuild
     - Same-section repeated edits within one debounce window collapse to a single line via the existing `settleAndDrain` aggregation behavior
-    - Observable: in a manual watch session, modifying `[dependencies]` emits exactly one notification line `[watch] ⚠ [dependencies] changed; Run kolt deps install` with no `--- change detected, rebuilding ---` line following
+    - Observable: in a manual watch session, modifying `[dependencies]` emits exactly one notification line `[watch] ⚠ [dependencies] changed; Run kolt fetch` with no `--- change detected, rebuilding ---` line following
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7_
     - _Boundary: kolt.cli.WatchLoop_
   - [x] 5.3 Wire ChangeMatrix dispatch — AutoReload path with full watcher rebuild

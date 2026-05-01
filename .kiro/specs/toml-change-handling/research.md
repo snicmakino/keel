@@ -223,4 +223,4 @@ D-9 (新). **未ピン section の matrix 分類**: 主に `[build] jdk` / `[bui
 
 - watch integration test 基盤の新設 (R-7) は本 spec scope 外。 design では「unit test で覆える範囲」 + 「手動 smoke test 手順」 を最低線とし、 inotify mock 等は将来 issue
 - daemon protocol 変更 (α1 で恒久 out)
-- `kolt deps remove` 実装 (γ2 follow-up)
+- `kolt remove` 実装 (γ2 follow-up)

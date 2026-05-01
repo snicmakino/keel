@@ -312,7 +312,7 @@ class ChangeMatrixTest {
   @Test
   fun planDispatchOfSingleNotifyOnlyEmitsNotificationAndSkipsReload() {
     val changes =
-      listOf(SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")))
+      listOf(SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt fetch")))
     val plan = planDispatch(changes)
     assertEquals(false, plan.reload)
     assertEquals(false, plan.rebuild)
@@ -323,9 +323,9 @@ class ChangeMatrixTest {
   @Test
   fun planDispatchNotificationFormatIncludesMarkerSectionAndRecommendation() {
     val changes =
-      listOf(SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")))
+      listOf(SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt fetch")))
     val plan = planDispatch(changes)
-    assertEquals("[watch] ⚠ [dependencies] changed; Run kolt deps install", plan.notifications[0])
+    assertEquals("[watch] ⚠ [dependencies] changed; Run kolt fetch", plan.notifications[0])
   }
 
   @Test
@@ -333,13 +333,13 @@ class ChangeMatrixTest {
     val changes =
       listOf(
         SectionChange("[build] sources", SectionAction.AutoReload(rebuild = true)),
-        SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")),
+        SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt fetch")),
       )
     val plan = planDispatch(changes)
     assertEquals(false, plan.reload)
     assertEquals(false, plan.rebuild)
     assertEquals(1, plan.notifications.size)
-    assertEquals("[watch] ⚠ [dependencies] changed; Run kolt deps install", plan.notifications[0])
+    assertEquals("[watch] ⚠ [dependencies] changed; Run kolt fetch", plan.notifications[0])
     assertEquals(2, plan.changedSections.size)
   }
 
@@ -347,7 +347,7 @@ class ChangeMatrixTest {
   fun planDispatchEmitsOneNotificationLinePerNotifyOnlySection() {
     val changes =
       listOf(
-        SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")),
+        SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt fetch")),
         SectionChange(
           "[kotlin] compiler",
           SectionAction.NotifyOnly("Run kolt daemon stop --all and restart watch"),
@@ -363,7 +363,7 @@ class ChangeMatrixTest {
   fun planDispatchInvariantNotificationsImplyNoReloadOrRebuild() {
     val changes =
       listOf(
-        SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt deps install")),
+        SectionChange("[dependencies]", SectionAction.NotifyOnly("Run kolt fetch")),
         SectionChange("[build] sources", SectionAction.AutoReload(rebuild = true)),
         SectionChange("[run.sys_props]", SectionAction.AutoReload(rebuild = false)),
       )

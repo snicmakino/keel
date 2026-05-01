@@ -74,10 +74,10 @@ private fun doAddInner(args: List<String>): Result<Unit, Int> {
   val section = if (addArgs.isTest) "[test-dependencies]" else "[dependencies]"
   println("added $groupArtifact = \"$version\" to $section")
 
-  // doInstallInner (not doInstall) — the outer lock acquired by doAdd
-  // already covers the install; calling doInstall would attempt a second
+  // doFetchInner (not doFetch) — the outer lock acquired by doAdd
+  // already covers the fetch; calling doFetch would attempt a second
   // flock(2) acquire on a fresh OFD and deadlock against ourselves.
-  return doInstallInner()
+  return doFetchInner()
 }
 
 private fun fetchLatestVersion(
@@ -134,21 +134,21 @@ private fun fetchLatestVersion(
     .let { Ok(it) }
 }
 
-internal fun doInstall(): Result<Unit, Int> = withDependencyLock { doInstallInner() }
+internal fun doFetch(): Result<Unit, Int> = withDependencyLock { doFetchInner() }
 
-private fun doInstallInner(): Result<Unit, Int> {
+private fun doFetchInner(): Result<Unit, Int> {
   val config =
     loadProjectConfig().getOrElse {
       return Err(it)
     }
-  // `kolt deps install` is the single command that may rewrite a v3
-  // kolt.lock as v4 (with a stderr warning). All other commands surface
-  // an error and exit so build behavior never silently re-resolves on
-  // a stale lockfile. See spec jvm-sys-props design.md, Migration Strategy.
+  // `kolt fetch` is the single command that may rewrite a v3 kolt.lock
+  // as v4 (with a stderr warning). All other commands surface an error
+  // and exit so build behavior never silently re-resolves on a stale
+  // lockfile. See spec jvm-sys-props design.md, Migration Strategy.
   resolveDependencies(config, allowLockfileMigration = true).getOrElse {
     return Err(it)
   }
-  println("install complete")
+  println("fetch complete")
   return Ok(Unit)
 }
 
@@ -299,7 +299,7 @@ internal fun doTree(): Result<Unit, Int> {
   return Ok(Unit)
 }
 
-// Renders the [classpaths.<name>] block of `kolt deps tree` (Req 4.2). Pure
+// Renders the [classpaths.<name>] block of `kolt tree` (Req 4.2). Pure
 // projection over the bundle declarations + a JVM POM lookup; the only
 // reason this is internal-and-public-to-the-test is so we can assert the
 // format without invoking `createPomLookup` (which hits the network).
@@ -324,35 +324,6 @@ internal fun buildBundlesSection(
   parts.add("")
   parts.add(perBundle.joinToString("\n\n"))
   return parts.joinToString("\n")
-}
-
-private val DEPS_SUBCOMMANDS = setOf("add", "install", "update", "tree")
-
-internal fun validateDepsSubcommand(args: List<String>): Boolean =
-  args.isNotEmpty() && args[0] in DEPS_SUBCOMMANDS
-
-internal fun doDeps(args: List<String>): Result<Unit, Int> {
-  if (!validateDepsSubcommand(args)) {
-    printDepsUsage()
-    return Err(EXIT_BUILD_ERROR)
-  }
-  return when (args[0]) {
-    "add" -> doAdd(args.drop(1))
-    "install" -> doInstall()
-    "update" -> doUpdate()
-    "tree" -> doTree()
-    else -> Ok(Unit)
-  }
-}
-
-private fun printDepsUsage() {
-  eprintln("usage: kolt deps <command>")
-  eprintln("")
-  eprintln("commands:")
-  eprintln("  add        Add a dependency (e.g. kolt deps add group:artifact:version)")
-  eprintln("  install    Resolve dependencies and download JARs")
-  eprintln("  update     Re-resolve dependencies and update lockfile")
-  eprintln("  tree       Show dependency tree")
 }
 
 // Read KOLT_LOCK_TIMEOUT_MS from the env. Anything that does not parse as

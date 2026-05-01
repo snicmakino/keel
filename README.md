@@ -67,7 +67,10 @@ kolt build --release   Compile under the release profile
 kolt run               Build and run (kolt run -- args for app arguments)
 kolt test              Build and run tests (kolt test -- args for JUnit Platform arguments)
 kolt check             Type-check without producing artifacts
-kolt add <dep>         Add a dependency (alias for deps add)
+kolt add <dep>         Add a dependency to kolt.toml
+kolt fetch             Resolve dependencies and download JARs
+kolt update            Re-resolve dependencies and update kolt.lock
+kolt tree              Show dependency tree
 
 # --watch flag: monitor sources, rebuild on change
 kolt build --watch     Watch and rebuild
@@ -77,11 +80,6 @@ kolt fmt               Format source files with ktfmt
 kolt fmt --check       Check formatting (CI mode)
 kolt clean             Remove build artifacts
 
-kolt deps add <dep>    Add a dependency
-kolt deps install      Resolve dependencies and download JARs
-kolt deps update       Re-resolve dependencies and update lockfile
-kolt deps tree         Show dependency tree
-
 kolt toolchain install Install kotlinc version defined in kolt.toml
 
 kolt daemon stop       Stop the compiler daemon for this project
@@ -90,8 +88,6 @@ kolt daemon reap       Remove stale daemon directories and orphaned sockets
 
 kolt --version         Show version
 ```
-
-`install`, `update`, and `tree` are also available as top-level aliases (e.g. `kolt install`).
 
 ### Flags
 
@@ -174,7 +170,7 @@ Or declare Maven coordinates directly in `[dependencies]`:
 "com.squareup.okhttp3:okhttp" = "4.12.0"
 ```
 
-Run `kolt install` to resolve and download all dependencies without building.
+Run `kolt fetch` to resolve and download all dependencies without building.
 
 Transitive dependencies are resolved automatically via POM metadata. A `kolt.lock` file records versions and SHA-256 hashes for reproducible builds.
 
