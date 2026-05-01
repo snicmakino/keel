@@ -1,6 +1,7 @@
 # Build outputs
 /build/
 **/build/
+.gradle/
 # `**/build/` also matches the kolt source domain package at
 # src/**/kolt/build/. Re-include it explicitly so new files there can be
 # tracked.
