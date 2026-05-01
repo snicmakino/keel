@@ -196,6 +196,11 @@ private fun doFetchInner(): Result<Unit, Int> {
 
 internal fun doUpdate(): Result<Unit, Int> = withDependencyLock { doUpdateInner() }
 
+// `kolt update` does not evict cached JARs (#347). The cache is host-shared
+// across projects; project-local eviction is a cross-project side effect.
+// Stale or corrupt cache entries must be cleared explicitly via `kolt cache
+// clean`. Re-introducing eviction here breaks the invariant declared in the
+// v0.18 release note.
 private fun doUpdateInner(): Result<Unit, Int> {
   val config =
     loadProjectConfig().getOrElse {
@@ -203,8 +208,6 @@ private fun doUpdateInner(): Result<Unit, Int> {
     }
   val mainSeeds = autoInjectedMainDeps(config) + config.dependencies
   val testSeeds = autoInjectedTestDeps(config) + config.testDependencies
-  // Bundles are re-resolved with `existingLock = null` so `[classpaths.<name>]`
-  // follow the same update policy as main / test (Req 4.3).
   val bundleSeedsAll =
     config.classpaths.values.fold(emptyMap<String, String>()) { acc, m -> acc + m }
   val allSeeds = mainSeeds + testSeeds + bundleSeedsAll
@@ -235,6 +238,8 @@ private fun doUpdateInner(): Result<Unit, Int> {
         return Err(EXIT_DEPENDENCY_ERROR)
       }
 
+  // Bundles re-resolve with `existingLock = null` so `[classpaths.<name>]`
+  // follow the same update policy as main / test (Req 4.3).
   val bundleResolutions =
     resolveAllBundles(config, existingLock = null, paths.cacheBase, resolverDeps).getOrElse { error
       ->
