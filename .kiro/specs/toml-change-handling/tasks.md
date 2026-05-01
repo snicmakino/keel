@@ -10,7 +10,7 @@
     - _Requirements: 8.2, 8.3, 8.4_
     - _Boundary: kolt.config.ChangeMatrix_
 
-- [ ] 2. ChangeMatrix Core: classification and dispatch logic
+- [x] 2. ChangeMatrix Core: classification and dispatch logic
   - [x] 2.1 Implement classifyChange covering identity, per-section diff, and defensive fallback
     - Red: write unit tests asserting (a) `classifyChange(c, c)` returns empty list, (b) per-section field-only diff fixtures produce one expected `SectionChange` aligned with the matrix table in design.md, (c) a synthetic unknown-section name yields a defensive `NotifyOnly` fallback line
     - Green: implement section-by-section comparison using `KoltConfig` data-class equality and an internal section-to-action lookup table aligned with the design matrix
@@ -81,7 +81,7 @@
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 5.1, 5.2, 9.1_
     - _Boundary: kolt.cli.WatchLoop_
   - [x] 5.4 Wire `[run.sys_props]` respawn into watchRunLoop only
-    - In `watchRunLoop` only: after AutoReload completes, when `plan.reload && !plan.rebuild && plan.changedSections.any { it.sectionName == "run.sys_props" }`, kill the running app and respawn it with new sysprops via the existing run-loop spawn path
+    - In `watchRunLoop` only: after AutoReload completes, when `plan.reload && !plan.rebuild && plan.changedSections.any { it.sectionName == "[run.sys_props]" }`, kill the running app and respawn it with new sysprops via the existing run-loop spawn path
     - Verify or refactor: ensure `commandRunner` (or the run-loop spawn path) reads `currentConfig.run.sysProps` fresh on each invocation; if the existing implementation captures sysprops at startup, refactor to capture by mutable reference so subsequent respawns pick up the latest values
     - Mixed-window guard: the respawn condition explicitly checks `plan.reload`, so notify-only-prevail cases (where `plan.reload == false`) do not trigger respawn (β3 integrity)
     - Observable: in a manual `kolt run --watch` session, editing `[run.sys_props]` causes the running app to be killed and respawned; the new env value is visible (e.g., via `System.getProperty(...)` in the test fixture or via a printed value the app emits)
