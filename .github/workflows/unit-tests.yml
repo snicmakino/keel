@@ -147,4 +147,6 @@ jobs:
             cat "$f"
             echo "::endgroup::"
           done
-          [ "$found" = "0" ] && echo "no daemon log files found under $dir"
+          if [ "$found" = "0" ]; then
+            echo "no daemon log files found under $dir"
+          fi
