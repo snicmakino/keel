@@ -1,7 +1,7 @@
 # Implementation Plan: toml-change-handling
 
-- [ ] 1. Foundation: ChangeMatrix module scaffolding
-  - [ ] 1.1 Create ChangeMatrix module with SectionAction taxonomy and supporting types
+- [x] 1. Foundation: ChangeMatrix module scaffolding
+  - [x] 1.1 Create ChangeMatrix module with SectionAction taxonomy and supporting types
     - Define `SectionAction` sealed class with `AutoReload(rebuild: Boolean)`, `NotifyOnly(recommendation: String)`, `NoOp` variants per design taxonomy
     - Define `SectionChange` data class (sectionName + action) and `DispatchPlan` data class (reload, rebuild, notifications, changedSections)
     - Define `NOTIFICATION_MARKER` constant ("[watch] ⚠")
