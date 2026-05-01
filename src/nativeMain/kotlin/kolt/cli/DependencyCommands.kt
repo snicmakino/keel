@@ -196,6 +196,9 @@ private fun doFetchInner(): Result<Unit, Int> {
 
 internal fun doUpdate(): Result<Unit, Int> = withDependencyLock { doUpdateInner() }
 
+// Cache eviction is reserved for `kolt cache clean`: `~/.kolt/cache/` is
+// host-shared, so a project-local update must not invalidate other projects'
+// entries.
 private fun doUpdateInner(): Result<Unit, Int> {
   val config =
     loadProjectConfig().getOrElse {
@@ -203,8 +206,6 @@ private fun doUpdateInner(): Result<Unit, Int> {
     }
   val mainSeeds = autoInjectedMainDeps(config) + config.dependencies
   val testSeeds = autoInjectedTestDeps(config) + config.testDependencies
-  // Bundle seeds are deleted from cache and re-resolved with `existingLock = null`
-  // so [classpaths.<name>] follow the same update policy as main / test (Req 4.3).
   val bundleSeedsAll =
     config.classpaths.values.fold(emptyMap<String, String>()) { acc, m -> acc + m }
   val allSeeds = mainSeeds + testSeeds + bundleSeedsAll
@@ -218,14 +219,6 @@ private fun doUpdateInner(): Result<Unit, Int> {
       eprintln("error: $it")
       return Err(EXIT_DEPENDENCY_ERROR)
     }
-
-  for ((groupArtifact, version) in allSeeds) {
-    val coord = parseCoordinate(groupArtifact, version).getOrElse { continue }
-    val jarPath = "${paths.cacheBase}/${buildCachePath(coord)}"
-    if (fileExists(jarPath)) {
-      deleteFile(jarPath)
-    }
-  }
 
   println("updating dependencies...")
   val resolverDeps = createResolverDeps()
@@ -243,6 +236,8 @@ private fun doUpdateInner(): Result<Unit, Int> {
         return Err(EXIT_DEPENDENCY_ERROR)
       }
 
+  // Bundles re-resolve with `existingLock = null` so `[classpaths.<name>]`
+  // follow the same update policy as main / test.
   val bundleResolutions =
     resolveAllBundles(config, existingLock = null, paths.cacheBase, resolverDeps).getOrElse { error
       ->
