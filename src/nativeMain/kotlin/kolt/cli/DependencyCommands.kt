@@ -66,6 +66,21 @@ private fun doAddInner(args: List<String>): Result<Unit, Int> {
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
+  // Resolve against the in-memory updated config before persisting
+  // kolt.toml. Writing first and fetching after (the pre-#353 order)
+  // left the project locked into a bogus entry whenever the coordinate
+  // was unfetchable (typo, 404, dead repo).
+  val newConfig =
+    parseConfig(updatedToml).getOrElse { error ->
+      when (error) {
+        is ConfigError.ParseFailed -> eprintln("error: ${error.message}")
+      }
+      return Err(EXIT_CONFIG_ERROR)
+    }
+  resolveDependencies(newConfig, allowLockfileMigration = true).getOrElse {
+    return Err(it)
+  }
+
   writeFileAsString(KOLT_TOML, updatedToml).getOrElse { error ->
     eprintln("error: could not write ${error.path}")
     return Err(EXIT_CONFIG_ERROR)
@@ -73,11 +88,8 @@ private fun doAddInner(args: List<String>): Result<Unit, Int> {
 
   val section = if (addArgs.isTest) "[test-dependencies]" else "[dependencies]"
   println("added $groupArtifact = \"$version\" to $section")
-
-  // doFetchInner (not doFetch) — the outer lock acquired by doAdd
-  // already covers the fetch; calling doFetch would attempt a second
-  // flock(2) acquire on a fresh OFD and deadlock against ourselves.
-  return doFetchInner()
+  println("fetch complete")
+  return Ok(Unit)
 }
 
 internal fun doRemove(args: List<String>): Result<Unit, Int> = withDependencyLock {
