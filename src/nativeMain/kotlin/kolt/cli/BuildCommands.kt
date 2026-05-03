@@ -357,7 +357,17 @@ internal fun doBuild(
   profile: Profile = Profile.Debug,
 ): Result<BuildResult, Int> = withProjectLock { doBuildInner(useDaemon, profile) }
 
-private fun doBuildInner(useDaemon: Boolean, profile: Profile): Result<BuildResult, Int> {
+// `quietUpToDate` suppresses the `<name> is up to date (Xms)` line when an
+// outer caller (e.g. doTest's JVM path) is about to print its own phase
+// banner immediately afterwards. Without the gate the user sees a
+// contradictory pair like `uptodate-it is up to date (0.0s)` followed by
+// `compiling tests...` (#359). The flag defaults to `false` so standalone
+// `kolt build` still emits the cache-hit confirmation.
+private fun doBuildInner(
+  useDaemon: Boolean,
+  profile: Profile,
+  quietUpToDate: Boolean = false,
+): Result<BuildResult, Int> {
   val startMark = TimeSource.Monotonic.markNow()
   val config =
     loadProjectConfig().getOrElse {
@@ -365,7 +375,7 @@ private fun doBuildInner(useDaemon: Boolean, profile: Profile): Result<BuildResu
     }
 
   if (config.build.target in NATIVE_TARGETS) {
-    return doNativeBuildInner(config, useDaemon, profile)
+    return doNativeBuildInner(config, useDaemon, profile, quietUpToDate)
   }
 
   val currentState =
@@ -400,7 +410,9 @@ private fun doBuildInner(useDaemon: Boolean, profile: Profile): Result<BuildResu
   val jarPath = outputJarPath(config, profile)
   if (isBuildUpToDate(current = currentState, cached = cachedState) && fileExists(jarPath)) {
     val elapsed = startMark.elapsedNow()
-    println("${config.name} is up to date (${formatDuration(elapsed)})")
+    if (!quietUpToDate) {
+      println("${config.name} is up to date (${formatDuration(elapsed)})")
+    }
     // Invariant: the up-to-date path must stay a pure mtime compare —
     // no plugin jar resolution or toolchain provisioning — so offline
     // cached builds don't hard-exit on a failed fetch.
@@ -573,6 +585,7 @@ private fun doNativeBuildInner(
   config: KoltConfig,
   useDaemon: Boolean,
   profile: Profile,
+  quietUpToDate: Boolean = false,
 ): Result<BuildResult, Int> {
   val startMark = TimeSource.Monotonic.markNow()
 
@@ -612,7 +625,9 @@ private fun doNativeBuildInner(
 
   if (isBuildUpToDate(current = currentState, cached = cachedState)) {
     val elapsed = startMark.elapsedNow()
-    println("${config.name} is up to date (${formatDuration(elapsed)})")
+    if (!quietUpToDate) {
+      println("${config.name} is up to date (${formatDuration(elapsed)})")
+    }
     return Ok(BuildResult(config, classpath = null, javaPath = null))
   }
   // Out of date → rebuild. Drop the state file first so any failure
@@ -982,8 +997,10 @@ private fun doTestInner(
   // doBuildInner (not doBuild) — the outer lock acquired by doTest
   // already covers the build; calling doBuild would attempt a second
   // flock(2) acquire on a fresh OFD and deadlock against ourselves.
+  // quietUpToDate=true so the main-artifact "up to date" line does not
+  // precede the test pipeline's own "compiling tests..." banner (#359).
   val buildResult =
-    doBuildInner(useDaemon = useDaemon, profile = profile).getOrElse {
+    doBuildInner(useDaemon = useDaemon, profile = profile, quietUpToDate = true).getOrElse {
       return Err(it)
     }
   // R4.1: test compile/run classpath is main ∪ test. Fall through to the
