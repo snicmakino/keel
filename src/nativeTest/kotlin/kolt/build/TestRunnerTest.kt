@@ -5,6 +5,11 @@ import kotlin.test.assertEquals
 
 class TestRunnerTest {
 
+  // #357: invoke the `execute` subcommand explicitly. The launcher's bare
+  // form prints a `Delegated to the 'execute' command. This behaviour has
+  // been deprecated` warning on every run; calling `execute` directly
+  // silences it. `--class-path` / `--scan-class-path` / `--select-*` are
+  // already in `execute`-compatible form, so no flag rewriting needed.
   @Test
   fun testRunCommandBasic() {
     val cmd =
@@ -19,6 +24,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/home/user/.kolt/tools/junit-platform-console-standalone-1.11.4.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes",
         "--scan-class-path",
@@ -42,6 +48,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes:/cache/dep.jar:/cache/junit.jar",
         "--scan-class-path",
@@ -65,6 +72,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes",
         "--scan-class-path",
@@ -90,6 +98,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes",
         "--scan-class-path",
@@ -113,6 +122,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes:test-resources",
         "--scan-class-path",
@@ -136,6 +146,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes:test-resources:fixtures",
         "--scan-class-path",
@@ -160,6 +171,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes:test-resources:/cache/dep.jar",
         "--scan-class-path",
@@ -183,6 +195,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes",
         "--scan-class-path",
@@ -208,6 +221,7 @@ class TestRunnerTest {
         managedJavaBin,
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes",
         "--scan-class-path",
@@ -247,6 +261,7 @@ class TestRunnerTest {
         managedJavaBin,
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes:/cache/dep.jar",
         "--scan-class-path",
@@ -275,6 +290,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes",
         "--select-class=foo.bar.AlphaTest",
@@ -298,6 +314,7 @@ class TestRunnerTest {
         "java",
         "-jar",
         "/tools/launcher.jar",
+        "execute",
         "--class-path",
         "build/classes:build/test-classes",
         "--select-package=foo.bar",

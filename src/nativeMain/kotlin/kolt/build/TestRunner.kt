@@ -26,11 +26,16 @@ fun testRunCommand(
   // `--exclude-*` filters do not collide with class-path scanning, so
   // they continue to compose with the default scan.
   val hasExplicitSelector = testArgs.any { it.startsWith("--select-") }
+  // #357: invoke the `execute` subcommand explicitly. Bare-form invocation
+  // prints a `Delegated to the 'execute' command. This behaviour has been
+  // deprecated` warning on every run; calling `execute` directly silences
+  // it without flag rewriting (existing args are already execute-compatible).
   val args = buildList {
     add(javaPath ?: "java")
     for ((k, v) in sysProps) add("-D$k=$v")
     add("-jar")
     add(consoleLauncherPath)
+    add("execute")
     add("--class-path")
     add(cp)
     if (!hasExplicitSelector) add("--scan-class-path")
