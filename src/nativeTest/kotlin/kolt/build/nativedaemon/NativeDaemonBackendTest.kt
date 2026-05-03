@@ -6,6 +6,7 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getError
 import kolt.build.NativeCompileError
+import kolt.build.daemon.BOOTSTRAP_JDK_VERSION
 import kolt.infra.ProcessError
 import kolt.infra.net.UnixSocketError
 import kolt.nativedaemon.wire.FrameError
@@ -395,6 +396,52 @@ class NativeDaemonBackendConnectAndSpawnTest {
     )
     assertEquals("/opt/konan", argv[argv.indexOf("--konan-home") + 1])
     assertEquals("/opt/jdk/bin/java", argv.first())
+  }
+
+  @Test
+  fun spawnArgvSilencesJdk23PlusKonancWarnings() {
+    var capturedArgv: List<String>? = null
+    val backend =
+      newBackend(
+        connector = { _ ->
+          Err(UnixSocketError.ConnectFailed(path = "/tmp/s", errno = 2, message = "ENOENT"))
+        },
+        spawner = { argv, _ ->
+          capturedArgv = argv
+          Err(ProcessError.ForkFailed)
+        },
+      )
+
+    backend.compile(sampleArgs)
+
+    val argv = assertNotNull(capturedArgv)
+    val unsafeIdx = argv.indexOf("--sun-misc-unsafe-memory-access=allow")
+    val nativeAccessIdx = argv.indexOf("--enable-native-access=ALL-UNNAMED")
+    assertTrue(unsafeIdx > 0, "missing --sun-misc-unsafe-memory-access flag: $argv")
+    assertTrue(nativeAccessIdx > 0, "missing --enable-native-access flag: $argv")
+    // Flags must precede `-cp` (and the daemon main class). After `-cp ...
+    // MainKt`, the JVM hands tokens to the program's main, not its own arg
+    // parser — flags placed there fail with `Unrecognized option` at startup.
+    val cpIdx = argv.indexOf("-cp")
+    assertTrue(cpIdx > 0, "test fixture must include -cp marker")
+    assertTrue(unsafeIdx < cpIdx, "unsafe flag must precede -cp; argv=$argv")
+    assertTrue(nativeAccessIdx < cpIdx, "native-access flag must precede -cp; argv=$argv")
+  }
+
+  // The daemon JVM unconditionally passes `--sun-misc-unsafe-memory-access`
+  // and `--enable-native-access`, both of which require JDK 17+ and JEP 498
+  // respectively. If BOOTSTRAP_JDK_VERSION is ever lowered below 23 the
+  // daemon will fail to start with `Unrecognized option`. This pin catches
+  // that drift at the source.
+  @Test
+  fun bootstrapJdkSupportsTheUnconditionalSpawnFlags() {
+    val major = BOOTSTRAP_JDK_VERSION.takeWhile { it.isDigit() }.toIntOrNull()
+    assertNotNull(major, "BOOTSTRAP_JDK_VERSION must parse as a major version")
+    assertTrue(
+      major >= 23,
+      "BOOTSTRAP_JDK_VERSION ($BOOTSTRAP_JDK_VERSION) must be >= 23 to recognise " +
+        "--sun-misc-unsafe-memory-access; gate the daemon spawnArgv flags on a JDK check first",
+    )
   }
 
   @Test

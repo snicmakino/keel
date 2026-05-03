@@ -135,8 +135,16 @@ internal constructor(
   }
 
   // ADR 0024 §8: the three daemon CLI flags.
+  //
+  // The two `--*-access` flags silence JDK 23+ warnings emitted by konanc's
+  // bundled intellij-util fork (objectFieldOffset via JEP 498) and jansi
+  // (System::load via the restricted-method gate). The daemon JVM is the
+  // bootstrap JDK (BOOTSTRAP_JDK_VERSION), which is well past 23, so the
+  // flags are always recognised here; no gate.
   private fun spawnArgv(): List<String> = buildList {
     add(javaBin)
+    add("--sun-misc-unsafe-memory-access=allow")
+    add("--enable-native-access=ALL-UNNAMED")
     add(HEAP_CEILING_XMX)
     addAll(daemonLaunchArgs)
     add("--socket")

@@ -39,6 +39,72 @@ class NativeSubprocessBackendTest {
   }
 
   @Test
+  fun argvOmitsJvmFlagsOnPreJdk23() {
+    val argv =
+      nativeSubprocessArgv(
+        konancBin = "/opt/konanc",
+        args = listOf("src/Main.kt", "-o", "build/m"),
+        jdkMajorVersion = 22,
+      )
+
+    assertEquals(listOf("/opt/konanc", "src/Main.kt", "-o", "build/m"), argv)
+  }
+
+  @Test
+  fun argvOmitsJvmFlagsWhenJdkVersionUnknown() {
+    val argv =
+      nativeSubprocessArgv(
+        konancBin = "/opt/konanc",
+        args = listOf("src/Main.kt"),
+        jdkMajorVersion = null,
+      )
+
+    assertEquals(listOf("/opt/konanc", "src/Main.kt"), argv)
+  }
+
+  @Test
+  fun argvAddsJvmFlagsAfterKonancBinOnJdk23() {
+    val argv =
+      nativeSubprocessArgv(
+        konancBin = "/opt/konanc",
+        args = listOf("src/Main.kt", "-o", "build/m"),
+        jdkMajorVersion = 23,
+      )
+
+    assertEquals(
+      listOf(
+        "/opt/konanc",
+        "-J--sun-misc-unsafe-memory-access=allow",
+        "-J--enable-native-access=ALL-UNNAMED",
+        "src/Main.kt",
+        "-o",
+        "build/m",
+      ),
+      argv,
+    )
+  }
+
+  @Test
+  fun argvAddsJvmFlagsOnJdk25() {
+    val argv =
+      nativeSubprocessArgv(
+        konancBin = "/opt/konanc",
+        args = listOf("src/Main.kt"),
+        jdkMajorVersion = 25,
+      )
+
+    assertEquals(
+      listOf(
+        "/opt/konanc",
+        "-J--sun-misc-unsafe-memory-access=allow",
+        "-J--enable-native-access=ALL-UNNAMED",
+        "src/Main.kt",
+      ),
+      argv,
+    )
+  }
+
+  @Test
   fun processErrorForkFailedMapsToBackendUnavailable() {
     assertEquals(
       NativeCompileError.BackendUnavailable.ForkFailed,

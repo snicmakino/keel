@@ -17,11 +17,14 @@ import kolt.infra.executeCommand
 // first and falls back to PATH; without either it exits 127 on
 // `java: command not found`. `javaHome` injects the env var into the child
 // so the wrapper does not depend on the host's PATH (#285).
-class NativeSubprocessBackend(private val konancBin: String, private val javaHome: String? = null) :
-  NativeCompilerBackend {
+class NativeSubprocessBackend(
+  private val konancBin: String,
+  private val javaHome: String? = null,
+  private val jdkMajorVersion: Int? = null,
+) : NativeCompilerBackend {
 
   override fun compile(args: List<String>): Result<NativeCompileOutcome, NativeCompileError> {
-    val argv = nativeSubprocessArgv(konancBin, args)
+    val argv = nativeSubprocessArgv(konancBin, args, jdkMajorVersion)
     val env = if (javaHome != null) mapOf("JAVA_HOME" to javaHome) else emptyMap()
     executeCommand(argv, env).getOrElse { err ->
       return Err(mapProcessErrorToNativeCompileError(err))
@@ -32,8 +35,23 @@ class NativeSubprocessBackend(private val konancBin: String, private val javaHom
 
 // `args` are the konanc argv AFTER the binary (ADR 0024 §4); the subprocess
 // path prepends the binary here. The daemon path forwards `args` as-is.
-internal fun nativeSubprocessArgv(konancBin: String, args: List<String>): List<String> = buildList {
+//
+// `-J<flag>` items are stripped of the `-J` prefix by run_konan and forwarded
+// to the JVM (`java_args` in run_konan). Two flags silence konanc-side
+// warnings on JDK 23+: `--sun-misc-unsafe-memory-access=allow` (JEP 498,
+// fired by intellij-util's `objectFieldOffset` use) and
+// `--enable-native-access=ALL-UNNAMED` (jansi's `System::load`). Both flags
+// are unrecognised on JDK <23, so gate before adding.
+internal fun nativeSubprocessArgv(
+  konancBin: String,
+  args: List<String>,
+  jdkMajorVersion: Int? = null,
+): List<String> = buildList {
   add(konancBin)
+  if (jdkMajorVersion != null && jdkMajorVersion >= 23) {
+    add("-J--sun-misc-unsafe-memory-access=allow")
+    add("-J--enable-native-access=ALL-UNNAMED")
+  }
   addAll(args)
 }
 
