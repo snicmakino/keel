@@ -68,7 +68,7 @@ internal fun doFmt(args: List<String>): Result<Unit, Int> {
       checkOnly,
       style = config.fmt.style,
       javaPath = managedJdkBins.java,
-      jdkMajorVersion = jdkVersion.substringBefore('.').toIntOrNull(),
+      jdkMajorVersion = jdkVersion.takeWhile { it.isDigit() }.toIntOrNull(),
     )
 
   if (checkOnly) {
