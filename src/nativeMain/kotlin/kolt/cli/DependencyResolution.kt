@@ -3,13 +3,15 @@ package kolt.cli
 import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
-import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getOrElse
-import com.github.michaelbull.result.onErr
+import com.github.michaelbull.result.map
 import kolt.build.ResolvedJar
 import kolt.build.UserJdkError
+import kolt.build.UserJdkHome
 import kolt.build.autoInjectedMainDeps
 import kolt.build.autoInjectedTestDeps
+import kolt.build.daemon.BOOTSTRAP_JDK_VERSION
+import kolt.build.daemon.resolveBootstrapJavaBin
 import kolt.build.generateWorkspaceJson
 import kolt.build.resolveUserJdkHome
 import kolt.config.*
@@ -348,21 +350,34 @@ private fun writeWorkspaceFiles(config: KoltConfig, paths: KoltPaths, deps: List
 }
 
 // Best-effort: a null homePath just means the editor falls back to its own
-// JDK detection. Warn in each failure mode so the user can act on it without
-// blocking the resolve.
-private fun resolveWorkspaceSdkHomePath(config: KoltConfig, paths: KoltPaths): String? =
-  resolveUserJdkHome(config, paths)
-    .onErr { err ->
+// JDK detection. ManagedMissing carries a concrete action item, so warn.
+// SystemProbeFailed silently falls back to the kolt-managed bootstrap JDK
+// that actually drives the build (ADR 0017) — that home is the most honest
+// answer for the IDE, and pre-#356 this branch printed an "install a JDK"
+// warning that contradicted reality on machines where the build succeeded
+// via bootstrap. If bootstrap is not yet provisioned (pre-first-build),
+// stay silent and leave homePath null; the next build provisions bootstrap
+// and re-writes workspace.json.
+internal fun resolveWorkspaceSdkHomePath(
+  config: KoltConfig,
+  paths: KoltPaths,
+  resolveUserJdk: (KoltConfig, KoltPaths) -> Result<UserJdkHome, UserJdkError> = { c, p ->
+    resolveUserJdkHome(c, p)
+  },
+  resolveBootstrap: (KoltPaths) -> String? = ::resolveBootstrapJavaBin,
+  warningSink: (String) -> Unit = ::eprintln,
+): String? =
+  resolveUserJdk(config, paths)
+    .map { it.home }
+    .getOrElse { err ->
       when (err) {
-        is UserJdkError.ManagedMissing ->
-          eprintln(
+        is UserJdkError.ManagedMissing -> {
+          warningSink(
             "warning: workspace.json sdk homePath left unset — jdk ${err.version} not installed at ${err.expectedPath} (run `kolt toolchain install`)"
           )
+          null
+        }
         UserJdkError.SystemProbeFailed ->
-          eprintln(
-            "warning: workspace.json sdk homePath left unset — could not locate `java` on PATH (install a JDK or set [build] jdk)"
-          )
+          resolveBootstrap(paths)?.let { paths.jdkPath(BOOTSTRAP_JDK_VERSION) }
       }
     }
-    .get()
-    ?.home
