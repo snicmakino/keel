@@ -66,16 +66,17 @@ private fun doAddInner(args: List<String>): Result<Unit, Int> {
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
-  // Resolve against the in-memory updated config before persisting
-  // kolt.toml. Writing first and fetching after (the pre-#353 order)
-  // left the project locked into a bogus entry whenever the coordinate
-  // was unfetchable (typo, 404, dead repo).
+  // Resolve before persisting kolt.toml so an unfetchable coordinate
+  // leaves the file byte-identical. `resolveDependencies` may rewrite
+  // kolt.lock on the success path, so on a subsequent kolt.toml write
+  // failure the lockfile can be ahead of kolt.toml — self-healing on
+  // the next resolve.
   val newConfig =
-    parseConfig(updatedToml).getOrElse { error ->
-      when (error) {
-        is ConfigError.ParseFailed -> eprintln("error: ${error.message}")
-      }
-      return Err(EXIT_CONFIG_ERROR)
+    parseConfig(updatedToml).getOrElse {
+      // Unreachable: `addDependencyToToml` produced `updatedToml` from
+      // an already-parsed `toml` plus a validated coordinate, so the
+      // result must reparse.
+      error("invariant violation: addDependencyToToml emitted unparseable TOML: $it")
     }
   resolveDependencies(newConfig, allowLockfileMigration = true).getOrElse {
     return Err(it)
