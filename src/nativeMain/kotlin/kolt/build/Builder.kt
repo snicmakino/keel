@@ -253,15 +253,24 @@ internal fun nativeTestLinkCommand(
 }
 
 // cinterop appends .klib to the -o path, so outputPath omits the extension.
+//
+// `jdkMajorVersion` controls the same `-J` JVM-flag injection as
+// `nativeSubprocessArgv` — the cinterop wrapper is `run_konan cinterop`
+// (same launcher), so the JDK 23+ warning surface is identical.
 fun cinteropCommand(
   entry: CinteropConfig,
   target: String,
   cinteropPath: String? = null,
   outputDir: String = BUILD_DIR,
+  jdkMajorVersion: Int? = null,
 ): BuildCommand {
   val outputBase = "$outputDir/${entry.name}"
   val args = buildList {
     add(cinteropPath ?: "cinterop")
+    if (jdkMajorVersion != null && jdkMajorVersion >= 23) {
+      add("-J--sun-misc-unsafe-memory-access=allow")
+      add("-J--enable-native-access=ALL-UNNAMED")
+    }
     add("-target")
     add(konanTargetGradleName(target))
     add("-def")

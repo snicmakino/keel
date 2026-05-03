@@ -131,6 +131,40 @@ class CinteropTest {
   }
 
   @Test
+  fun cinteropCommandOmitsJvmFlagsOnPreJdk23() {
+    val entry = CinteropConfig(name = "libcurl", def = "libcurl.def")
+
+    val cmd = cinteropCommand(entry, target = "linuxX64", jdkMajorVersion = 22)
+
+    assertFalse(
+      cmd.args.any { it.startsWith("-J--") },
+      "no -J flags expected on pre-23 JDK: ${cmd.args}",
+    )
+  }
+
+  @Test
+  fun cinteropCommandAddsJvmFlagsAfterBinaryOnJdk23() {
+    val entry = CinteropConfig(name = "libcurl", def = "libcurl.def")
+
+    val cmd = cinteropCommand(entry, target = "linuxX64", jdkMajorVersion = 23)
+
+    assertEquals(
+      listOf(
+        "cinterop",
+        "-J--sun-misc-unsafe-memory-access=allow",
+        "-J--enable-native-access=ALL-UNNAMED",
+        "-target",
+        "linux_x64",
+        "-def",
+        "libcurl.def",
+        "-o",
+        "build/libcurl",
+      ),
+      cmd.args,
+    )
+  }
+
+  @Test
   fun cinteropOutputKlibPathReturnsExpectedPath() {
     val entry = CinteropConfig(name = "libcurl", def = "libcurl.def")
 

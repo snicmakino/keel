@@ -664,9 +664,15 @@ private fun doNativeBuildInner(
   }
 
   val cinteropKlibs =
-    runCinterop(config, paths, javaHome = managedJdkBins.home).getOrElse {
-      return Err(it)
-    }
+    runCinterop(
+        config,
+        paths,
+        javaHome = managedJdkBins.home,
+        jdkMajorVersion = jdkMajorVersionFor(config),
+      )
+      .getOrElse {
+        return Err(it)
+      }
   val klibs = depKlibs + cinteropKlibs
 
   val cwd =
@@ -676,7 +682,11 @@ private fun doNativeBuildInner(
         return Err(EXIT_BUILD_ERROR)
       }
   val subprocessBackend =
-    NativeSubprocessBackend(konancBin = managedKonancBin, javaHome = managedJdkBins.home)
+    NativeSubprocessBackend(
+      konancBin = managedKonancBin,
+      javaHome = managedJdkBins.home,
+      jdkMajorVersion = jdkMajorVersionFor(config),
+    )
   val backend: NativeCompilerBackend =
     resolveNativeCompilerBackend(
       config = config,
@@ -801,6 +811,7 @@ private fun runCinterop(
   config: KoltConfig,
   paths: KoltPaths,
   javaHome: String? = null,
+  jdkMajorVersion: Int? = null,
 ): Result<List<String>, Int> {
   if (config.cinterop.isEmpty()) return Ok(emptyList())
   val managedCinteropBin = paths.cinteropBin(config.kotlin.effectiveCompiler)
@@ -821,7 +832,12 @@ private fun runCinterop(
     }
 
     val cmd =
-      cinteropCommand(entry, target = config.build.target, cinteropPath = managedCinteropBin)
+      cinteropCommand(
+        entry,
+        target = config.build.target,
+        cinteropPath = managedCinteropBin,
+        jdkMajorVersion = jdkMajorVersion,
+      )
     println("generating cinterop klib for ${entry.name}...")
     executeCommand(cmd.args, cinteropEnv).getOrElse { error ->
       eprintln("error: " + formatProcessError(error, "cinterop (${entry.name})"))
@@ -1176,7 +1192,11 @@ private fun doNativeTest(
           return Err(EXIT_BUILD_ERROR)
         }
     val subprocessBackend =
-      NativeSubprocessBackend(konancBin = managedKonancBin, javaHome = managedJdkBins.home)
+      NativeSubprocessBackend(
+        konancBin = managedKonancBin,
+        javaHome = managedJdkBins.home,
+        jdkMajorVersion = jdkMajorVersionFor(config),
+      )
     val backend: NativeCompilerBackend =
       resolveNativeCompilerBackend(
         config = config,
