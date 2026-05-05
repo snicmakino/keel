@@ -72,6 +72,41 @@ class MultiShapeDaemonTestCoverageIT {
     assertMainClassesSurvive(fixture, fixtureName, mainClassesBefore)
     assertIcSegmentsPopulated(fixture, fixtureName)
   }
+
+  @Test
+  fun runsDaemonRoutedTestOnJvmProjectWithSerializationPlugin() {
+    if (!ensureGateOrSkip()) return
+    val fixture = scaffoldSerializationFixture()
+    val fixtureName = "serialization"
+
+    val buildExit = runKoltCommand(fixture, "build", "b")
+    val buildStdout = readOptional(fixture, "b.stdout") ?: ""
+    val buildStderr = readOptional(fixture, "b.stderr") ?: ""
+    assertEquals(
+      0,
+      buildExit,
+      "kolt build must exit 0 for $fixtureName fixture; stdout=$buildStdout stderr=$buildStderr",
+    )
+
+    val mainClassesBefore = snapshotMainClassFiles(fixture)
+    assertTrue(
+      mainClassesBefore.isNotEmpty(),
+      "kolt build must produce at least one .class under build/classes/ for $fixtureName " +
+        "fixture; stdout=$buildStdout stderr=$buildStderr",
+    )
+
+    val testExit = runKoltCommand(fixture, "test", "t")
+    val testStdout = readOptional(fixture, "t.stdout") ?: ""
+    val testStderr = readOptional(fixture, "t.stderr") ?: ""
+    assertEquals(
+      0,
+      testExit,
+      "kolt test must exit 0 for $fixtureName fixture; stdout=$testStdout stderr=$testStderr",
+    )
+
+    assertMainClassesSurvive(fixture, fixtureName, mainClassesBefore)
+    assertIcSegmentsPopulated(fixture, fixtureName)
+  }
 }
 
 private const val GATE_ENV = "KOLT_DAEMON_JAR"
@@ -138,6 +173,24 @@ private fun scaffoldNoPluginFixture(): String {
   }
   writeFileAsString("$testDir/MainTest.kt", NO_PLUGIN_TEST).getOrElse {
     error("write MainTest.kt: ${it.path}")
+  }
+  return dir
+}
+
+private fun scaffoldSerializationFixture(): String {
+  val dir = createTempDir("kolt-it-multishape-serialization-")
+  writeFileAsString("$dir/kolt.toml", SERIALIZATION_TOML).getOrElse {
+    error("write kolt.toml: ${it.path}")
+  }
+  val mainDir = "$dir/src/main/kotlin"
+  val testDir = "$dir/src/test/kotlin"
+  executeCommand(listOf("mkdir", "-p", mainDir)).getOrElse { error("mkdir main: $it") }
+  executeCommand(listOf("mkdir", "-p", testDir)).getOrElse { error("mkdir test: $it") }
+  writeFileAsString("$mainDir/Payload.kt", SERIALIZATION_MAIN).getOrElse {
+    error("write Payload.kt: ${it.path}")
+  }
+  writeFileAsString("$testDir/PayloadTest.kt", SERIALIZATION_TEST).getOrElse {
+    error("write PayloadTest.kt: ${it.path}")
   }
   return dir
 }
@@ -332,6 +385,61 @@ private val NO_PLUGIN_TEST =
             @Test
             fun greetReturnsExpectedValue() {
                 assertEquals("hello-no-plugin", greet())
+            }
+        }
+        """
+    .trimIndent()
+
+private val SERIALIZATION_TOML =
+  """
+        name = "multishape-serialization"
+        version = "0.0.1"
+        kind = "lib"
+
+        [kotlin]
+        version = "$FIXTURE_KOTLIN_VERSION"
+
+        [kotlin.plugins]
+        serialization = true
+
+        [build]
+        target = "jvm"
+        jvm_target = "21"
+        sources = ["src/main/kotlin"]
+        test_sources = ["src/test/kotlin"]
+
+        [dependencies]
+        "org.jetbrains.kotlinx:kotlinx-serialization-json" = "1.7.3"
+        """
+    .trimIndent()
+
+private val SERIALIZATION_MAIN =
+  """
+        package multishape.serialization
+
+        import kotlinx.serialization.Serializable
+
+        @Serializable
+        data class Payload(val id: Int, val name: String)
+        """
+    .trimIndent()
+
+private val SERIALIZATION_TEST =
+  """
+        package multishape.serialization
+
+        import kotlin.test.Test
+        import kotlin.test.assertEquals
+        import kotlinx.serialization.encodeToString
+        import kotlinx.serialization.json.Json
+
+        class PayloadTest {
+            @Test
+            fun roundTripsThroughJson() {
+                val original = Payload(id = 42, name = "answer")
+                val encoded = Json.encodeToString(original)
+                val decoded = Json.decodeFromString<Payload>(encoded)
+                assertEquals(original, decoded)
             }
         }
         """
