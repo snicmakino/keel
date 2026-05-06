@@ -24,9 +24,9 @@
 
 ## Phase 1 — Foundation: shared layout constants
 
-- [ ] 2. Extend IcStateLayout with cache-subdir constants and path helpers
+- [x] 2. Extend IcStateLayout with cache-subdir constants and path helpers
 
-- [ ] 2.1 Add shrunk-snapshots dir constant, version-level cache-subdir set, and path helpers with unit tests
+- [x] 2.1 Add shrunk-snapshots dir constant, version-level cache-subdir set, and path helpers with unit tests
   - Add `SHRUNK_SNAPSHOTS_SUBDIR` constant alongside the existing `CLASSPATH_SNAPSHOTS_SUBDIR` in IcStateLayout
   - Add `CACHE_SUBDIRS_AT_VERSION_LEVEL` immutable set containing both cache subdir names; this is the single source of truth that IcReaper will consume
   - Add `shrunkSnapshotsDirFor(icRoot, kotlinVersion)` returning the version-scoped cache directory
