@@ -72,7 +72,7 @@
 
 ## 4. Validation: end-to-end test and ADR
 
-- [ ] 4.1 古い daemon 模擬による end-to-end IT
+- [x] 4.1 古い daemon 模擬による end-to-end IT
   - `src/nativeTest/kotlin/kolt/cli/StaleDaemonRecycleIT.kt` を新規作成し、 既存 `MultiShapeDaemonTestCoverageIT` の env-gated パターン（false-RED 回避）と memory `feedback_bootstrap_gated_test.md` の bootstrap-gated パターンを踏襲
   - `kolt.infra.net` の UnixSocket primitive で、 受信した Compile に対し `Message.Pong` 等の期待外 reply を JSON 直書きで返すフェイク server を fixture として実装
   - シナリオ：(1) フェイク server を立てて socket path に bind、 (2) その path を daemon socket として `kolt build` を 1 回走らせる、 (3) フェイク server を停止し、 (4) もう 1 回 `kolt build` を走らせる
