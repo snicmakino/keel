@@ -84,7 +84,7 @@
 
 ## Phase 4 — Validation (parallel)
 
-- [ ] 5. End-to-end coverage and performance measurement
+- [x] 5. End-to-end coverage and performance measurement
 
 - [x] 5.1 (P) Extend MultiShapeDaemonTestCoverageIT with cache existence and survival assertions
   - Add `coldPathPopulatesShrunkSnapshotsDir` to both shapes (no-plugin and serialization-plugin): after `kolt build && kolt test`, `<v>/shrunk-snapshots/` contains at least one `.bin` file
@@ -96,7 +96,7 @@
   - _Boundary: MultiShapeDaemonTestCoverageIT_
   - _Depends: 4.2_
 
-- [ ] 5.2 (P) Cold-path benchmark and dogfood log update
+- [x] 5.2 (P) Cold-path benchmark and dogfood log update
   - Extend `spike/bench-scaling/` (or add a sibling harness) with a `cold_test_after_main` scenario: clean `~/.kolt/daemon/ic/`, `kolt build` to populate main scope IC and shrunk cache, `kolt daemon stop && start`, `kolt test`, capture BTA wall-time. Repeat with cache disabled (point `<v>/shrunk-snapshots/` at an unwritable path or use a build-time toggle) for paired comparison
   - Use the existing synthetic epoch mtime convention from `gen.sh`; do NOT use plain `touch` (WSL2 9p 1s mtime granularity will silently invalidate the cache being measured, per memory `feedback_bench_mtime_granularity`)
   - Run the bench on `kolt-jvm-compiler-daemon` as the representative project from the issue
