@@ -47,7 +47,7 @@
 
 ## 3. Wiring: reporter dispatch and entry-point reset
 
-- [ ] 3.1 (P) JVM fallback reporter から StaleDaemonNotice にディスパッチ
+- [x] 3.1 (P) JVM fallback reporter から StaleDaemonNotice にディスパッチ
   - `reportFallback` の `when (err)` に `is CompileError.BackendUnavailable.WireMismatch` 分岐を **既存 `BackendUnavailable.Other` より前** に追加し、 `StaleDaemonNotice.emit("compiler daemon", err.detail, sink)` を呼ぶ
   - 既存の generic warning（`Other` 含む）は WireMismatch には流れないことを確認
   - 観測可能な完了状態：FallbackReporterTest に「WireMismatch を渡すと stale-daemon 通知が出て、 generic warning が出ない」「他の variant 渡し時は従来どおりの文言が出る」の 2 ケースを追加し green
