@@ -65,7 +65,7 @@
 
 - [ ] 4. Wire ShrunkClasspathSnapshotCache into the BTA compile lifecycle
 
-- [ ] 4.1 Integrate cache hooks into BtaIncrementalCompiler.compile
+- [x] 4.1 Integrate cache hooks into BtaIncrementalCompiler.compile
   - Extend `BtaIncrementalCompiler` constructor (and the `create` factory) to accept a `ShrunkClasspathSnapshotCache` instance
   - Before BTA `executeOperation` (around BtaIncrementalCompiler.kt:198), call `lookupAndPlace(request.classpath, shrunkClasspathSnapshot)`; the placement outcome is logged at info level by the cache, no extra logging needed at this layer
   - After successful BTA `executeOperation` return, call `storeIfNew(request.classpath, shrunkClasspathSnapshot)`
