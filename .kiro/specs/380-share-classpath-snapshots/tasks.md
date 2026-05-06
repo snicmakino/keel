@@ -2,9 +2,9 @@
 
 ## Phase 0 — BTA Shrunk Snapshot Spike (judgment gate)
 
-- [ ] 1. Spike T1: BTA shrunk-classpath-snapshot.bin portability and extension verification
+- [x] 1. Spike T1: BTA shrunk-classpath-snapshot.bin portability and extension verification
 
-- [ ] 1.1 Construct spike harness exercising all 4 verification questions
+- [x] 1.1 Construct spike harness exercising all 4 verification questions
   - Build a small Kotlin/JVM harness under `spike/bta-shrunk-portability/` that drives BTA 2.3.20 directly via `KotlinToolchains` to compile a fixture Kotlin module (mirror the structure of existing `spike/bta-compat-138/`)
   - Cover Question 1 (portability): produce shrunk file in workingDir A, copy to workingDir B with same classpath, run BTA compile in B and assert success
   - Cover Question 2 (extension activation): produce shrunk file with main classpath, place at test workingDir, compile with main+extra classpath, capture wall-time vs no-pre-place baseline (5-run median per arm)
@@ -13,7 +13,7 @@
   - Harness exits 0 with all 4 questions answered and raw measurements written under `spike/bta-shrunk-portability/results/`
   - _Requirements: 1.2_
 
-- [ ] 1.2 Record spike results, apply OQ-1 triage, and decide GO/GO-warning/NO-GO
+- [x] 1.2 Record spike results, apply OQ-1 triage, and decide GO/GO-warning/NO-GO
   - Write `spike/bta-shrunk-portability/REPORT.md` summarizing each of the 4 question answers with raw evidence cited from the harness output
   - Apply OQ-1 triage table from design §Open Questions: GO if extension activation shows ≥5% wall-time improvement, GO-warning if 0-5%, NO-GO if no improvement
   - On GO-warning: prepare a requirements.md back-port note for Req 1.2 wording ("best-effort, no measurable target") to apply before implementation merges
