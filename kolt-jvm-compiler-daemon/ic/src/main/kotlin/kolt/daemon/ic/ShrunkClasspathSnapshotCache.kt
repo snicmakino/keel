@@ -22,13 +22,16 @@ import java.util.concurrent.ConcurrentHashMap
 // shared cache file. The cost of copying a few-KB shrunk file is
 // negligible compared to BTA snapshot computation.
 //
-// Concurrency: per-key `ConcurrentHashMap.compute { ... }` serializes
-// stores against the same key in-process; cross-process safety relies
-// on POSIX `rename(2)` atomicity (write `<key>.bin.tmp`, atomic move to
-// `<key>.bin`). Last-writer-wins is correctness-safe because BTA's
-// shrunk file content is a "subset of classes referenced so far" — any
-// valid prior cache entry is a sound starting point and BTA extends in
-// place as needed.
+// Concurrency: per-key `Any` mutex acquired via
+// `ConcurrentHashMap.computeIfAbsent` serializes stores against the same
+// key in-process. Cross-process safety relies on POSIX `rename(2)`
+// atomicity: each writer stages to `<key>.<pid>-<uuid>.bin.tmp` (unique
+// per writer so two PIDs never share the same staging file), then atomic
+// rename to `<key>.bin`. Last-writer-wins is correctness-safe because
+// BTA's shrunk file content is a "subset of classes referenced so far" —
+// any valid prior cache entry is a sound starting point and BTA extends
+// in place as needed. A reader hitting the rename window observes either
+// the pre-rename or post-rename inode; both are valid starting points.
 class ShrunkClasspathSnapshotCache(
   private val cacheDir: Path,
   private val metrics: IcMetricsSink = NoopIcMetricsSink,
@@ -153,7 +156,13 @@ class ShrunkClasspathSnapshotCache(
         }
 
         Files.createDirectories(cacheDir)
-        val tmp = cacheDir.resolve("${key.hex}.bin.tmp")
+        // Unique per writer (PID + UUID) so two daemon processes racing
+        // on the same key never share the same staging file. The
+        // synchronized(lock) above only serializes within one JVM.
+        val tmp =
+          cacheDir.resolve(
+            "${key.hex}.${ProcessHandle.current().pid()}-${java.util.UUID.randomUUID()}.bin.tmp"
+          )
         try {
           Files.copy(producedSnapshot, tmp, StandardCopyOption.REPLACE_EXISTING)
           Files.move(
