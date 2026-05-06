@@ -55,7 +55,7 @@
   - _Boundary: kolt.build.FallbackReporter_
   - _Depends: 1.1, 2.3_
 
-- [ ] 3.2 (P) Native fallback reporter から StaleDaemonNotice にディスパッチ
+- [x] 3.2 (P) Native fallback reporter から StaleDaemonNotice にディスパッチ
   - `reportNativeFallback` に同形の分岐を追加（label は `"native compiler daemon"`）
   - 観測可能な完了状態：NativeFallbackReporterTest に対応 2 ケースを追加し green
   - _Requirements: 3.1_
