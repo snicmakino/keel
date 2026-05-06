@@ -80,7 +80,7 @@
   - _Requirements: 4.1, 4.2, 5.1, 5.2_
   - _Boundary: kolt.cli (integration test only)_
 
-- [ ] 4.2 (P) ADR 0016 と ADR 0024 に Wire-mismatch auto-recycle 節を追記
+- [x] 4.2 (P) ADR 0016 と ADR 0024 に Wire-mismatch auto-recycle 節を追記
   - ADR 0016（JVM daemon fallback policy）末尾に「Wire-mismatch auto-recycle」短節（5–7 行）を追加し、 #379 の動機・トリガー・once-per-compile-pass policy・Shutdown best-effort を 1 文ずつまとめる
   - ADR 0024（native daemon symmetry）にも同節を追加（JVM 版を参照する形で短く）
   - 観測可能な完了状態：両 ADR の末尾に該当節が存在し、 既存の「fallback policy」記述（§5 / §7）から 1 行で参照されていること
