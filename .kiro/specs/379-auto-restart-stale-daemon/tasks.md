@@ -62,7 +62,7 @@
   - _Boundary: kolt.build.NativeFallbackReporter_
   - _Depends: 1.2, 2.3_
 
-- [ ] 3.3 (P) BuildCommands の compile pass entry に StaleDaemonNotice.reset() を挿入
+- [x] 3.3 (P) BuildCommands の compile pass entry に StaleDaemonNotice.reset() を挿入
   - `doBuildInner` / `doTestInner` の compile invocation 直前で `StaleDaemonNotice.reset()` を 1 回呼ぶ。 watch 経路も同関数を再呼び出しする構造のため、 同関数冒頭に reset を置けば single-shot と watch 両方をカバーする想定。 実装時にコールパスを grep で確認し、 別経路があればそこにも reset を挿入する
   - reset は idempotent なので「念のため複数箇所に呼ぶ」コストは無視できる。 ただし対称性のため 1 関数につき 1 箇所に統一する
   - 観測可能な完了状態：`grep -n "StaleDaemonNotice.reset" src/nativeMain/kotlin/kolt/cli/BuildCommands.kt` で挿入箇所が確認でき、 各 compile invocation の前に reset が走ることが目視 + 後続 IT (4.1) で検証される
