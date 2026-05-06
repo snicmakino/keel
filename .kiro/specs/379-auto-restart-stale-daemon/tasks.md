@@ -20,7 +20,7 @@
 
 ## 2. Core: detection, Shutdown send, notification module
 
-- [ ] 2.1 (P) JVM compiler daemon backend で wire 不整合を検出し Shutdown を best-effort 送信
+- [x] 2.1 (P) JVM compiler daemon backend で wire 不整合を検出し Shutdown を best-effort 送信
   - `mapFrameErrorToReceiveError` で受信側 `FrameError.{Eof, Truncated, Malformed, Transport}` を WireMismatch に振替（送信側 mapping は不変）
   - `mapReplyToOutcome` で期待外 reply variant（`Compile` / `Ping` / `Pong` / `Shutdown` 受信）を WireMismatch に振替
   - `compile()` 内で「戻り値が WireMismatch の場合のみ、 同じ open connection 上で `Message.Shutdown` を送信」する経路を追加。 `connection.use { ... }` を抜ける前に行い、 send が失敗したら `eprintln` で warn-line を 1 行出して続行
