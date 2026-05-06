@@ -2,7 +2,7 @@
 
 ## 1. Foundation: WireMismatch error variant
 
-- [ ] 1.1 (P) JVM 側エラー sealed 階層に WireMismatch 変位を追加
+- [x] 1.1 (P) JVM 側エラー sealed 階層に WireMismatch 変位を追加
   - `BackendUnavailable` sealed に `WireMismatch(detail: String)` を sibling として追加し、 既存の `Other` 等とは別 case として扱えるようにする
   - `formatCompileError` で WireMismatch を `"error: $context wire mismatch: ${detail}"` 形式に整形する分岐を追加
   - `isFallbackEligible` は `BackendUnavailable` 一括で true を返すため変更不要だが、 `when` 網羅性が新 variant でも維持されることをコンパイル通過で確認

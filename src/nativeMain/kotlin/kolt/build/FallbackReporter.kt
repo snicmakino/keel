@@ -10,6 +10,11 @@ fun reportFallback(err: CompileError, sink: (String) -> Unit = ::eprintln) {
     is CompileError.BackendUnavailable.SignalKilled,
     is CompileError.BackendUnavailable.PopenFailed ->
       sink("warning: compiler daemon unavailable, falling back to subprocess compile")
+    is CompileError.BackendUnavailable.WireMismatch ->
+      // stub branch overridden by reporter task
+      sink(
+        "warning: compiler daemon unavailable (${err.detail}), falling back to subprocess compile"
+      )
     is CompileError.BackendUnavailable.Other ->
       sink(
         "warning: compiler daemon unavailable (${err.detail}), falling back to subprocess compile"
