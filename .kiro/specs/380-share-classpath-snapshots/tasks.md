@@ -37,7 +37,7 @@
 
 ## Phase 2 — Core implementations (parallel)
 
-- [ ] 3. ShrunkClasspathSnapshotCache and IcReaper skip-set integration
+- [x] 3. ShrunkClasspathSnapshotCache and IcReaper skip-set integration
 
 - [x] 3.1 (P) Implement ShrunkClasspathSnapshotCache with classpath hashing, place-on-lookup, and atomic store
   - Implement `classpathKey` derivation: per-entry SHA-256 of `path|mtime|size`, accumulator-hashed and truncated to 16-byte hex (matching the existing per-jar cache key idiom)
@@ -63,7 +63,7 @@
 
 ## Phase 3 — Integration
 
-- [ ] 4. Wire ShrunkClasspathSnapshotCache into the BTA compile lifecycle
+- [x] 4. Wire ShrunkClasspathSnapshotCache into the BTA compile lifecycle
 
 - [x] 4.1 Integrate cache hooks into BtaIncrementalCompiler.compile
   - Extend `BtaIncrementalCompiler` constructor (and the `create` factory) to accept a `ShrunkClasspathSnapshotCache` instance
@@ -75,7 +75,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.5, 5.1, 5.2_
   - _Depends: 3.1_
 
-- [ ] 4.2 Construct and inject ShrunkClasspathSnapshotCache at daemon startup
+- [x] 4.2 Construct and inject ShrunkClasspathSnapshotCache at daemon startup
   - In `kolt-jvm-compiler-daemon/src/main/kotlin/kolt/daemon/Main.kt`, alongside the existing `ClasspathSnapshotCache` construction (around line 107), construct `ShrunkClasspathSnapshotCache(cacheDir = IcStateLayout.shrunkSnapshotsDirFor(cli.icRoot, KOLT_DAEMON_KOTLIN_VERSION), metrics = <existing IcMetricsSink instance>)` and pass it to `BtaIncrementalCompiler.create(...)`
   - Ensure the `<v>/shrunk-snapshots/` directory is created on demand (lazy on first `storeIfNew`) — daemon startup must not depend on writable disk for the cache to function
   - Daemon thin jar build (`cd kolt-jvm-compiler-daemon && kolt build`) succeeds, daemon starts cleanly, and `<v>/shrunk-snapshots/` appears on disk after the first daemon-routed compile
