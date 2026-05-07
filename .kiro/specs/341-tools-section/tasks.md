@@ -31,7 +31,7 @@
 
 ## 2. Schema parse: `[tools]` の types と validation
 
-- [ ] 2.1 `parseCoordsString` utility を新設
+- [x] 2.1 `parseCoordsString` utility を新設
   - `group:artifact:version[:classifier]` 文字列を `(Coordinate, classifier?)` に分解
   - group / artifact が ASCII letters/digits/`-`/`_`/`.`、 version が non-empty、 classifier 同 charset で optional
   - 構文逸脱は `Result.Err(reason: String)` を返し、 alias 文脈は呼び出し側で添える
