@@ -84,6 +84,7 @@ fun main(args: Array<String>) {
     "fetch" -> doFetch().getOrElse { exitProcess(it) }
     "update" -> doUpdate().getOrElse { exitProcess(it) }
     "tree" -> doTree().getOrElse { exitProcess(it) }
+    "outdated" -> doOutdated(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
     "tool" -> {
       // The Ok value carries the tool's own exit code (verbatim propagation, R2.2);
       // the Err value carries kolt's own ToolError-mapped exit code (R5.4). Both flow
@@ -173,6 +174,7 @@ private fun printUsage() {
   eprintln("  fetch      Resolve dependencies and download JARs")
   eprintln("  update     Re-resolve dependencies and update kolt.lock")
   eprintln("  tree       Show dependency tree")
+  eprintln("  outdated   Show dependencies with newer versions on Maven Central")
   eprintln("  tool       Run a [tools] alias (kolt tool run <alias> [-- args...])")
   eprintln("  toolchain  Manage toolchains (install, list, remove)")
   eprintln("  daemon     Manage compiler daemons (stop)")
