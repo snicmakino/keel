@@ -10,7 +10,8 @@ import com.github.michaelbull.result.getOrElse
 import kolt.resolve.compareVersions
 import kolt.usertool.RawToolEntry
 import kolt.usertool.ToolEntry
-import kolt.usertool.parseCoordsString
+import kolt.usertool.ToolSectionParseError
+import kolt.usertool.parseToolSection
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -365,6 +366,21 @@ private fun validateSysPropsProjectDirs(
   return Ok(Unit)
 }
 
+// Render a ToolSectionParseError for the existing ConfigError.ParseFailed
+// envelope. The detailed `ToolError` sealed (task 3.1) will replace this with
+// a structured `tool '<alias>': parse error: ...` prefix; for now we keep the
+// message inline so kolt.toml load failures stay loud and self-explanatory.
+private fun formatToolSectionParseError(err: ToolSectionParseError): String =
+  when (err) {
+    is ToolSectionParseError.ForbiddenField ->
+      "[tools.${err.alias}]: field '${err.field}' is not allowed in [tools] entries"
+    is ToolSectionParseError.InvalidAlias -> "[tools.${err.alias}]: ${err.reason}"
+    is ToolSectionParseError.MalformedCoords ->
+      "[tools.${err.alias}]: malformed coords '${err.coords}': ${err.reason}"
+    is ToolSectionParseError.DuplicateAlias -> "[tools.${err.alias}]: duplicate alias"
+    is ToolSectionParseError.MissingCoords -> "[tools.${err.alias}]: 'coords' is required"
+  }
+
 // ADR 0023 §3: scalar `[build] target = "X"` and `[build.targets.X]` are
 // mutually exclusive. Multi-target form is reserved — exactly one entry
 // is de-sugared into the scalar form, two or more are rejected.
@@ -469,23 +485,10 @@ fun parseConfig(tomlString: String): Result<KoltConfig, ConfigError> {
     validateSysPropsProjectDirs(testSysProps, runSysProps).getError()?.let {
       return Err(it)
     }
-    // Lift [tools.<alias>] entries from RawToolEntry to ToolEntry. Task 2.2
-    // wires the field plumbing and happy-path coords parse only; full
-    // validation (alias regex, forbidden-field reject, error envelope) is
-    // owned by ToolSectionParse and integrated into the validation chain in
-    // task 2.4.
-    val cleanedTools = LinkedHashMap<String, ToolEntry>()
-    raw.tools?.forEach { (rawAlias, rawEntry) ->
-      val alias = rawAlias.removeSurrounding("\"")
-      val coordsString =
-        rawEntry.coords
-          ?: return Err(ConfigError.ParseFailed("[tools.$alias]: 'coords' is required"))
-      val (coordinate, classifier) =
-        parseCoordsString(coordsString).getOrElse {
-          return Err(ConfigError.ParseFailed("[tools.$alias]: $it"))
-        }
-      cleanedTools[alias] = ToolEntry(coordinate, classifier)
-    }
+    val cleanedTools =
+      parseToolSection(raw.tools).getOrElse {
+        return Err(ConfigError.ParseFailed(formatToolSectionParseError(it)))
+      }
     Ok(
       KoltConfig(
         name = raw.name,

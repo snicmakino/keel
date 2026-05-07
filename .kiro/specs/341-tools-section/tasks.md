@@ -56,7 +56,7 @@
   - _Requirements: 1.3, 1.4, 1.5, 7.1, 7.2_
   - _Boundary: ToolSectionParse_
 
-- [ ] 2.4 `Config.parseConfig` の validation chain に `validateToolSection` を組み込む
+- [x] 2.4 `Config.parseConfig` の validation chain に `validateToolSection` を組み込む
   - 既存 `validateBundleReferences` の隣に `validateToolSection` を呼び出し、 失敗は `Config.parseConfig` の Err 経路に乗せる
   - parse 結果の `KoltConfig.tools` が `RawKoltConfig.tools` の validated 像になっていることを Config 全体テストで確認
   - 観測完了条件: `[tools]` 含む実 kolt.toml fixture が `loadProjectConfig()` で正常 parse され、 forbidden field 入りの fixture は load 段階で Err を返す

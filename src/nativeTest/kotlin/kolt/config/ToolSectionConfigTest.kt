@@ -1,9 +1,12 @@
 package kolt.config
 
 import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
 import kolt.resolve.Coordinate
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -81,5 +84,97 @@ class ToolSectionConfigTest {
     assertEquals(Coordinate("a", "b", "1.0"), config.tools["foo"]?.coords)
     assertEquals(Coordinate("c", "d", "2.0"), config.tools["bar"]?.coords)
     assertEquals("cls", config.tools["bar"]?.classifier)
+  }
+
+  @Test
+  fun rejectsUppercaseAlias() {
+    val toml =
+      baseToml +
+        """
+
+        [tools.Foo]
+        coords = "a:b:1.0"
+      """
+          .trimIndent()
+    val err = assertIs<ConfigError.ParseFailed>(parseConfig(toml).getError())
+    assertContains(err.message, "Foo")
+    assertContains(err.message, "alias")
+  }
+
+  @Test
+  fun rejectsDependsOnField() {
+    val toml =
+      baseToml +
+        """
+
+        [tools.foo]
+        coords = "a:b:1.0"
+        depends-on = "bar"
+      """
+          .trimIndent()
+    val err = assertIs<ConfigError.ParseFailed>(parseConfig(toml).getError())
+    assertContains(err.message, "depends-on")
+    assertContains(err.message, "foo")
+  }
+
+  @Test
+  fun rejectsArgsField() {
+    val toml =
+      baseToml +
+        """
+
+        [tools.foo]
+        coords = "a:b:1.0"
+        args = []
+      """
+          .trimIndent()
+    val err = assertIs<ConfigError.ParseFailed>(parseConfig(toml).getError())
+    assertContains(err.message, "args")
+    assertContains(err.message, "foo")
+  }
+
+  @Test
+  fun rejectsMainField() {
+    val toml =
+      baseToml +
+        """
+
+        [tools.foo]
+        coords = "a:b:1.0"
+        main = "com.example.Main"
+      """
+          .trimIndent()
+    val err = assertIs<ConfigError.ParseFailed>(parseConfig(toml).getError())
+    assertContains(err.message, "main")
+    assertContains(err.message, "foo")
+  }
+
+  @Test
+  fun rejectsMissingCoords() {
+    val toml =
+      baseToml +
+        """
+
+        [tools.foo]
+      """
+          .trimIndent()
+    val err = assertIs<ConfigError.ParseFailed>(parseConfig(toml).getError())
+    assertContains(err.message, "coords")
+    assertContains(err.message, "foo")
+  }
+
+  @Test
+  fun rejectsMalformedCoords() {
+    val toml =
+      baseToml +
+        """
+
+        [tools.foo]
+        coords = "no-colons-here"
+      """
+          .trimIndent()
+    val err = assertIs<ConfigError.ParseFailed>(parseConfig(toml).getError())
+    assertContains(err.message, "foo")
+    assertContains(err.message, "no-colons-here")
   }
 }
