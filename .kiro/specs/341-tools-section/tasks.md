@@ -47,7 +47,7 @@
   - _Requirements: 1.1_
   - _Boundary: ToolSection, RawKoltConfig, KoltConfig_
 
-- [ ] 2.3 `ToolSectionParse.parseToolSection` を実装
+- [x] 2.3 `ToolSectionParse.parseToolSection` を実装
   - alias を `^[a-z][a-z0-9_-]{0,63}$` の regex で照合、 違反は `InvalidAlias`
   - `RawToolEntry.dependsOn` / `args` / `main` のいずれかが non-null なら `ForbiddenField` で reject
   - `coords` が null なら `MissingCoords`、 `parseCoordsString` 失敗は `MalformedCoords`

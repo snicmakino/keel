@@ -8,6 +8,7 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
 import kolt.resolve.compareVersions
+import kolt.usertool.RawToolEntry
 import kolt.usertool.ToolEntry
 import kolt.usertool.parseCoordsString
 import kotlinx.serialization.SerialName
@@ -118,19 +119,6 @@ data class KoltConfig(
   @Transient val tools: Map<String, ToolEntry> = emptyMap(),
   @SerialName("test") val testSection: TestSection = TestSection(),
   @SerialName("run") val runSection: RunSection = RunSection(),
-)
-
-// Raw shape for `[tools.<alias>]`. `coords` is the only allowlisted field;
-// `dependsOn` / `args` / `main` are declared nullable so ToolSectionParse can
-// reject orchestration fields explicitly (R7.1, R7.2). Other unknown keys are
-// silently dropped by ktoml's `ignoreUnknownNames=true` and may be tightened
-// later additively. See design.md §Components / ToolSectionParse.
-@Serializable
-internal data class RawToolEntry(
-  val coords: String? = null,
-  @SerialName("depends-on") val dependsOn: String? = null,
-  val args: List<String>? = null,
-  val main: String? = null,
 )
 
 private val toml = Toml(inputConfig = TomlInputConfig(ignoreUnknownNames = true))
