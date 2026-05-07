@@ -6,7 +6,7 @@
 
 ## 1. Foundation: lockfile / paths / exit code 拡張
 
-- [ ] 1.1 (P) Lockfile に `tools_bundles` field を additive 追加
+- [x] 1.1 (P) Lockfile に `tools_bundles` field を additive 追加
   - `Lockfile` data class に `toolsBundles: Map<String, Map<String, LockEntry>> = emptyMap()` を `classpathBundles` の隣に追加
   - `LockfileJson` の snake_case マッピングと `parseLockfile` / `serializeLockfile` を round-trip 対応に拡張
   - 既存 lockfile (`tools_bundles` 不在) を読めることを `LockfileTest` の既存 `classpathBundles` round-trip pattern で assert
