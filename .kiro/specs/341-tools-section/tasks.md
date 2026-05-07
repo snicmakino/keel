@@ -163,7 +163,7 @@
   - _Requirements: 2.1, 2.2, 5.1_
   - _Boundary: ToolCommands E2E_
 
-- [ ] 7.2 (P) `kolt.usertool` が build / test lifecycle に連携していないことを assert する guard test を追加
+- [x] 7.2 (P) `kolt.usertool` が build / test lifecycle に連携していないことを assert する guard test を追加
   - `src/nativeMain/kotlin/kolt/build/` および `src/nativeMain/kotlin/kolt/cli/BuildCommands.kt` / `TestCommands.kt` (もしくはそれに準ずる existing build/test entry) の source 全文を grep し、 `kolt.usertool` を import / 参照していないことを assert (precedent: `DriftGuardsTest` 既存 sweep pattern)
   - 「build/test 経路から `[tools]` の hook が刺さっていない」ことを compile-time + grep で 2 重に保証
   - 観測完了条件: 新 guard test が green で、 将来誰かが build/test 経路から `kolt.usertool` を呼び出す変更を入れたら test が RED になる
