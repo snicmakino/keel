@@ -63,10 +63,36 @@ internal fun <T> ensureTool(
   val fileName = jarFileName(coords, classifier)
   val toolsJarPath = paths.toolsBundleJarPath(alias, coords.version, fileName)
   val innerKey = innerLockfileKey(coords, classifier)
-  val pin = lockfile.toolsBundles[alias]?.get(innerKey)
+  val aliasPins = lockfile.toolsBundles[alias].orEmpty()
+
+  // Lockfile-mismatch reject (R4.3): if the alias has any pin at all, it must match the toml's
+  // (group, artifact, version, classifier) exactly. The transitive-skip resolver guarantees a
+  // single pin per alias, so we either find an exact match keyed by `innerKey` with the right
+  // version, or we surface a loud mismatch — even when the divergence is in the inner key (group
+  // / artifact / classifier), in which case the inner-key lookup misses entirely.
+  if (aliasPins.isNotEmpty()) {
+    val matchedPin = aliasPins[innerKey]
+    if (matchedPin == null || matchedPin.version != coords.version) {
+      val (lockedKey, lockedEntry) = aliasPins.entries.first().toPair()
+      val (lockedCoords, lockedClassifier) = decomposeInnerKey(lockedKey, lockedEntry.version)
+      return Err(
+        ToolResolutionError.LockfileMismatch(
+          alias = alias,
+          tomlCoords = coords,
+          tomlClassifier = classifier,
+          lockedCoords = lockedCoords,
+          lockedClassifier = lockedClassifier,
+        )
+      )
+    }
+  }
+
+  val pin = aliasPins[innerKey]
 
   // Cache hit path — verify SHA-256 against pin if a pin exists. The pin is required to declare
-  // the cache trustworthy; without one there is nothing to verify against.
+  // the cache trustworthy; without one there is nothing to verify against. SHA divergence on the
+  // cached jar is a loud `IntegrityMismatch` and must NOT trigger automatic refetch (R3.3): the
+  // user has to inspect / refresh manually.
   if (pin != null && netDeps.fileExists(toolsJarPath)) {
     val cachedSha =
       netDeps.computeSha256(toolsJarPath).getOrElse {
@@ -74,7 +100,7 @@ internal fun <T> ensureTool(
           ToolResolutionError.IntegrityMismatch(alias, coords, expected = pin.sha256, actual = "")
         )
       }
-    if (cachedSha == pin.sha256 && pin.version == coords.version) {
+    if (cachedSha == pin.sha256) {
       return Ok(
         ToolJarHandle(
           jarPath = toolsJarPath,
@@ -84,6 +110,14 @@ internal fun <T> ensureTool(
         )
       )
     }
+    return Err(
+      ToolResolutionError.IntegrityMismatch(
+        alias = alias,
+        coords = coords,
+        expected = pin.sha256,
+        actual = cachedSha,
+      )
+    )
   }
 
   // Cache miss — fetch into the Maven-layout cache and then copy to the per-alias path.
@@ -183,4 +217,17 @@ internal fun jarFileName(coords: Coordinate, classifier: String?): String {
 internal fun innerLockfileKey(coords: Coordinate, classifier: String?): String {
   val ga = "${coords.group}:${coords.artifact}"
   return if (classifier != null) "$ga:$classifier" else ga
+}
+
+// Inverse of `innerLockfileKey`. Used only on the loud-reject path to render the locked-side
+// coords inside the `LockfileMismatch` message; not in the validation hot loop. Splits on `:` and
+// expects exactly two or three parts. A malformed key falls back to a placeholder Coordinate so
+// the failure still surfaces with `alias` context (the actual loud reject already happened).
+internal fun decomposeInnerKey(innerKey: String, version: String): Pair<Coordinate, String?> {
+  val parts = innerKey.split(":")
+  return when (parts.size) {
+    2 -> Coordinate(parts[0], parts[1], version) to null
+    3 -> Coordinate(parts[0], parts[1], version) to parts[2]
+    else -> Coordinate(innerKey, "", version) to null
+  }
 }

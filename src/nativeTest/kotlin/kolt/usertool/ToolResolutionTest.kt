@@ -4,6 +4,7 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
 import kolt.config.KoltPaths
 import kolt.infra.CopyFailed
 import kolt.infra.DownloadError
@@ -17,6 +18,7 @@ import kolt.resolve.ResolverDeps
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -172,6 +174,176 @@ class ToolResolutionTest {
     assertFalse(handle.lockfileChanged, "matching pin must not flag lockfile as changed")
     assertEquals(1, deps.downloads.size, "must fetch into Maven cache")
     assertEquals(listOf(mavenJarPath to toolsJarPath), deps.copies)
+  }
+
+  // ----- Failure path: LockfileMismatch (version differs) -----
+  @Test
+  fun versionDivergenceBetweenTomlAndLockfileSurfacesAsLockfileMismatch() {
+    // toml says 1.1.0, lockfile pin says 1.0.0. Inner key (group:artifact[:classifier]) is the
+    // same, but version differs — must reject loudly without touching network or cache.
+    val tomlCoords = Coordinate("com.example", "tool", "1.1.0")
+    val deps = fakeDeps()
+
+    val lockfile =
+      lockfileWithToolPin(
+        alias = "mytool",
+        innerKey = "com.example:tool",
+        version = "1.0.0",
+        sha256 = "old",
+      )
+
+    val err =
+      assertNotNull(
+        ensureTool(
+            alias = "mytool",
+            entry = ToolEntry(tomlCoords, classifier = null),
+            paths = paths,
+            lockfile = lockfile,
+            netDeps = deps,
+          )
+          .getError()
+      )
+    val mismatch = assertIs<ToolResolutionError.LockfileMismatch>(err)
+    assertEquals("mytool", mismatch.alias)
+    assertEquals(tomlCoords, mismatch.tomlCoords)
+    assertEquals(Coordinate("com.example", "tool", "1.0.0"), mismatch.lockedCoords)
+    assertTrue(deps.downloads.isEmpty(), "mismatch must not trigger network")
+    assertTrue(deps.copies.isEmpty(), "mismatch must not trigger copy")
+  }
+
+  // ----- Failure path: LockfileMismatch (classifier differs) -----
+  @Test
+  fun classifierDivergenceBetweenTomlAndLockfileSurfacesAsLockfileMismatch() {
+    val tomlCoords = Coordinate("com.example", "tool", "1.0.0")
+    val deps = fakeDeps()
+
+    // Lockfile entry pins the same group:artifact:version but with a different classifier.
+    val lockfile =
+      lockfileWithToolPin(
+        alias = "mytool",
+        innerKey = "com.example:tool:sources",
+        version = "1.0.0",
+        sha256 = "old",
+      )
+
+    val err =
+      assertNotNull(
+        ensureTool(
+            alias = "mytool",
+            entry = ToolEntry(tomlCoords, classifier = "all"),
+            paths = paths,
+            lockfile = lockfile,
+            netDeps = deps,
+          )
+          .getError()
+      )
+    val mismatch = assertIs<ToolResolutionError.LockfileMismatch>(err)
+    assertEquals("all", mismatch.tomlClassifier)
+    assertEquals("sources", mismatch.lockedClassifier)
+  }
+
+  // ----- Failure path: LockfileMismatch (group differs) -----
+  @Test
+  fun groupArtifactDivergenceSurfacesAsLockfileMismatch() {
+    val tomlCoords = Coordinate("com.example", "tool", "1.0.0")
+    val deps = fakeDeps()
+    // Different group on the locked side — inner key won't match the toml entry, but the alias
+    // already has a pin so we must surface a mismatch rather than treat it as first run.
+    val lockfile =
+      lockfileWithToolPin(
+        alias = "mytool",
+        innerKey = "io.other:tool",
+        version = "1.0.0",
+        sha256 = "old",
+      )
+
+    val err =
+      assertNotNull(
+        ensureTool(
+            alias = "mytool",
+            entry = ToolEntry(tomlCoords, classifier = null),
+            paths = paths,
+            lockfile = lockfile,
+            netDeps = deps,
+          )
+          .getError()
+      )
+    assertIs<ToolResolutionError.LockfileMismatch>(err)
+  }
+
+  // ----- Failure path: cache jar SHA-256 mismatch with lockfile pin -----
+  @Test
+  fun cacheShaMismatchWithPinSurfacesAsIntegrityMismatchAndDoesNotRefetch() {
+    val coords = Coordinate("com.example", "tool", "1.0.0")
+    val toolsJarPath = paths.toolsBundleJarPath("mytool", "1.0.0", "tool-1.0.0.jar")
+    // The on-disk jar hashes to "tampered" but the lockfile pin says "expected" — integrity
+    // failure must not auto-refetch (R3.3 in design.md), it must surface to the user.
+    val deps =
+      fakeDeps(
+        cachedFiles = mutableSetOf(toolsJarPath),
+        sha256Results = mapOf(toolsJarPath to "tampered"),
+      )
+
+    val lockfile =
+      lockfileWithToolPin(
+        alias = "mytool",
+        innerKey = "com.example:tool",
+        version = "1.0.0",
+        sha256 = "expected",
+      )
+
+    val err =
+      assertNotNull(
+        ensureTool(
+            alias = "mytool",
+            entry = ToolEntry(coords, classifier = null),
+            paths = paths,
+            lockfile = lockfile,
+            netDeps = deps,
+          )
+          .getError()
+      )
+    val integrity = assertIs<ToolResolutionError.IntegrityMismatch>(err)
+    assertEquals("expected", integrity.expected)
+    assertEquals("tampered", integrity.actual)
+    assertTrue(
+      deps.downloads.isEmpty(),
+      "integrity mismatch must NOT trigger automatic refetch (got ${deps.downloads})",
+    )
+  }
+
+  // ----- Failure path: network fetch fails (all repos return 404) -----
+  @Test
+  fun allRepos404SurfaceAsResolveFailedWithAttemptedUrls() {
+    val coords = Coordinate("com.example", "tool", "1.0.0")
+    val tried = listOf("https://repo1/", "https://repo2/")
+    val deps = fakeDeps(downloadResult = { url, _ -> Err(DownloadError.HttpFailed(url, 404)) })
+    val lockfile = emptyLockfile()
+
+    val err =
+      assertNotNull(
+        ensureTool(
+            alias = "mytool",
+            entry = ToolEntry(coords, classifier = null),
+            paths = paths,
+            lockfile = lockfile,
+            netDeps = deps,
+            repos = tried,
+          )
+          .getError()
+      )
+    val resolveFailed = assertIs<ToolResolutionError.ResolveFailed>(err)
+    assertEquals("mytool", resolveFailed.alias)
+    assertEquals(coords, resolveFailed.coords)
+    assertEquals(
+      2,
+      resolveFailed.attempts.size,
+      "expected 2 repo URLs, got ${resolveFailed.attempts}",
+    )
+    assertTrue(
+      resolveFailed.attempts.all { it.contains("com/example/tool/1.0.0/tool-1.0.0.jar") },
+      "attempts must include the jar URL: ${resolveFailed.attempts}",
+    )
   }
 
   // ----- Helpers -----

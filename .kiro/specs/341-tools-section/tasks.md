@@ -93,7 +93,7 @@
   - _Boundary: ToolResolution_
   - _Depends: 1.1, 1.2, 2.2, 3.1, 4.1_
 
-- [ ] 4.3 `ToolResolution.ensureTool` の failure-path (mismatch / integrity / network) を実装
+- [x] 4.3 `ToolResolution.ensureTool` の failure-path (mismatch / integrity / network) を実装
   - toml の coords と lockfile の resolved coords が group:artifact:version[:classifier] のいずれかで不一致なら `LockfileMismatch` を返す (R4.3、 design.md 固定 message)
   - cache 上の jar が SHA-256 mismatch なら `IntegrityMismatch` を返し、 自動 refetch しない (R3.3)
   - network 取得不能 (全 repo 404 / 接続不能) は `ResolveFailed` を返す、 試行 repo URL を message に含める (R3.4)
