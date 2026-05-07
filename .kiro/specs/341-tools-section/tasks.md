@@ -76,7 +76,7 @@
 
 ## 4. Resolve: BundleResolver 拡張 と ToolResolution
 
-- [ ] 4.1 `BundleResolver.resolveSingleArtifact` (transitive-skip mode) を expose
+- [x] 4.1 `BundleResolver.resolveSingleArtifact` (transitive-skip mode) を expose
   - 既存 `resolveBundle` の childLookup を `{ emptyList() }` に固定する薄い wrapper を導入、 もしくは既存 internal 関数を `internal` から `internal kolt.usertool` に open
   - 単一 coordinate を受け取り、 transitive を fetch せず POM + jar を返す経路にする
   - 既存 `[classpaths]` 経路に regression が出ないことを既存 BundleResolver テストで担保
