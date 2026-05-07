@@ -1,5 +1,6 @@
 package kolt.cli
 
+import com.github.michaelbull.result.fold
 import com.github.michaelbull.result.getOrElse
 import kolt.build.Profile
 import kolt.config.versionString
@@ -83,6 +84,13 @@ fun main(args: Array<String>) {
     "fetch" -> doFetch().getOrElse { exitProcess(it) }
     "update" -> doUpdate().getOrElse { exitProcess(it) }
     "tree" -> doTree().getOrElse { exitProcess(it) }
+    "tool" -> {
+      // The Ok value carries the tool's own exit code (verbatim propagation, R2.2);
+      // the Err value carries kolt's own ToolError-mapped exit code (R5.4). Both flow
+      // through exitProcess so the parent shell observes the right code.
+      val exit = doTool(filteredArgs.drop(1)).fold(success = { it }, failure = { it })
+      exitProcess(exit)
+    }
     "toolchain" -> doToolchain(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
     "daemon" -> doDaemon(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
     "cache" -> doCache(filteredArgs.drop(1)).getOrElse { exitProcess(it) }
@@ -165,6 +173,7 @@ private fun printUsage() {
   eprintln("  fetch      Resolve dependencies and download JARs")
   eprintln("  update     Re-resolve dependencies and update kolt.lock")
   eprintln("  tree       Show dependency tree")
+  eprintln("  tool       Run a [tools] alias (kolt tool run <alias> [-- args...])")
   eprintln("  toolchain  Manage toolchains (install, list, remove)")
   eprintln("  daemon     Manage compiler daemons (stop)")
   eprintln("  cache      Manage the global dependency cache (clean)")

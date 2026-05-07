@@ -137,7 +137,7 @@
   - _Boundary: ToolCommands_
   - _Depends: 4.2, 4.3, 5.2_
 
-- [ ] 6.2 `Main.kt` の `when (filteredArgs[0])` に `"tool"` case と printUsage を追加
+- [x] 6.2 `Main.kt` の `when (filteredArgs[0])` に `"tool"` case と printUsage を追加
   - `"tool" -> doTool(filteredArgs.drop(1)).getOrElse { exitProcess(it) }` を既存 case 群に並べる
   - `printUsage()` に `kolt tool run <alias> [-- args...]` の help 1 行を追加
   - 観測完了条件: `kolt --help` 出力に新 line が含まれ、 `kolt tool run` の引数経路が他コマンドと干渉しない
