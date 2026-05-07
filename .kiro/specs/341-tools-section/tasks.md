@@ -156,7 +156,7 @@
 
 ## 7. Validation: E2E と ADR 改訂
 
-- [ ] 7.1 fixture runnable jar を使った CLI E2E を追加
+- [x] 7.1 fixture runnable jar を使った CLI E2E を追加
   - `src/nativeTest/resources/` (もしくは既存 fixture 配置場所) に「argv を JSON で stdout に echo して exit code を引数で受け取る」極小 runnable jar を commit
   - `kolt tool run <fixture-alias> <args...>` で argv が verbatim にツールに届くこと、 exit code がツール側の指定値そのままで返ることを assert (R2.1, R2.2, R5.1)
   - 観測完了条件: `kolt test` で新 E2E test が green、 self-host CI (`self-host-post`) も既存通り通過
@@ -181,3 +181,4 @@
 ## Implementation Notes
 
 - 各 task の commit 前に `./scripts/fmt.sh` (もしくは `kolt fmt`) を必ず実行する。 pre-commit hook が tree 全体に対して `fmt.sh --check` を走らせるため、 staged files 外でも未 format があると commit が reject される。 implementer subagent も READY_FOR_REVIEW 前に fmt を回しておくと、 parent の commit 段階での fmt-fail retry が減る。
+- Task 7.1 の E2E は in-process dispatch + libarchive 製の fixture jar + stub `exec`/`resolveJavaBin` で実装した。 real `kolt.kexe` の subprocess fork は WSL2 9p 上で重く、 design intent (argv passthrough + exit code propagation) は `launch` の inject 点経由で完全に carry できるため。 fixture jar 自体は libarchive で書いた本物の zip + MANIFEST.MF なので、 launcher の MANIFEST 読パスは production と同じ経路を通る。 real fork/exec の経路は ToolLauncherTest と self-host smoke が引き続き cover する。
