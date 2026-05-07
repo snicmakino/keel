@@ -145,7 +145,7 @@
   - _Boundary: Main_
   - _Depends: 6.1_
 
-- [ ] 6.3 (P) `doUpdateInner` を `[tools]` の re-resolve にも対応するよう拡張
+- [x] 6.3 (P) `doUpdateInner` を `[tools]` の re-resolve にも対応するよう拡張
   - 既存 `[dependencies]` 経路と並べて `config.tools` を seed として `BundleResolver.resolveSingleArtifact` を回し、 `Lockfile.toolsBundles` を rewrite
   - `kolt update` の出力に「updating tools…」段を追加、 `[tools]` が空ならスキップ
   - 既存 `[dependencies]` の更新挙動に regression なし (既存 `DependencyCommandsTest` パス)
