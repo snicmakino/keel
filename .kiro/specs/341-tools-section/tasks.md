@@ -22,7 +22,7 @@
   - _Requirements: 3.1, 3.2_
   - _Boundary: KoltPaths_
 
-- [ ] 1.3 (P) ExitCode.kt に `EXIT_TOOL_ERROR = 7` を追加
+- [x] 1.3 (P) ExitCode.kt に `EXIT_TOOL_ERROR = 7` を追加
   - 既存 `EXIT_LOCK_TIMEOUT = 6` の次の slot に const 追加、 命名は kolt 既存 semantic (BUILD/CONFIG/DEPENDENCY/TEST/FORMAT/LOCK_TIMEOUT) に並べる
   - 既存 exit code 値 (0/1/2/3/4/5/6/127) と非衝突であることをテストで assert (mechanical sweep)
   - 観測完了条件: `EXIT_TOOL_ERROR = 7` を import して使えるようになり、 `ExitCode.kt` の他 const と整合
