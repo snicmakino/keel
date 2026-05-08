@@ -105,7 +105,7 @@
   - _Depends: 1.3, 4.1, 4.2, 4.3_
   - _Boundary: kolt.config.Config (ktoml catch + renderConfigError) + cli consumers_
 
-- [ ] 4.5 ktoml message-format pin test (`ConfigParseMessageFormatTest`) を追加
+- [x] 4.5 ktoml message-format pin test (`ConfigParseMessageFormatTest`) を追加
   - `tmp/kolt.toml` に故意に壊した TOML (構文エラー / unknown top-level / unknown nested) を生成、 ktoml decode を呼んで実 exception の `message` 文字列を取得
   - regex `^Line \\d+: ` と `^Unknown key received: <[^>]+> in scope <[^>]*>` の 2 つが現行 ktoml 0.7.1 出力と一致することを assert
   - ktoml major bump 時にこのテストが RED 化することで形式変更を検知。 README にこの test の役割をコメントとして書く
