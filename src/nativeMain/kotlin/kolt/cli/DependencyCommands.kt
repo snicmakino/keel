@@ -12,6 +12,8 @@ import kolt.concurrency.ProjectLock
 import kolt.config.*
 import kolt.infra.*
 import kolt.infra.output.eprintDiagnostic
+import kolt.infra.output.eprintError
+import kolt.infra.output.eprintWarning
 import kolt.resolve.*
 import kolt.usertool.ToolEntry
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -26,14 +28,14 @@ private fun doAddInner(args: List<String>): Result<Unit, Int> {
       when (error) {
         is AddArgsError.MissingCoordinate ->
           eprintln("usage: kolt add <group:artifact[:version]> [--test]")
-        is AddArgsError.InvalidFormat -> eprintln("error: invalid coordinate '${error.input}'")
+        is AddArgsError.InvalidFormat -> eprintError("invalid coordinate '${error.input}'")
       }
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
   val toml =
     readFileAsString(KOLT_TOML).getOrElse { error ->
-      eprintln("error: could not read ${error.path}")
+      eprintError("could not read ${error.path}")
       return Err(EXIT_CONFIG_ERROR)
     }
 
@@ -61,8 +63,8 @@ private fun doAddInner(args: List<String>): Result<Unit, Int> {
     addDependencyToToml(toml, groupArtifact, version, addArgs.isTest).getOrElse { error ->
       when (error) {
         is AlreadyExists ->
-          eprintln(
-            "error: '${error.groupArtifact}' already exists in ${if (addArgs.isTest) "[test-dependencies]" else "[dependencies]"}"
+          eprintError(
+            "'${error.groupArtifact}' already exists in ${if (addArgs.isTest) "[test-dependencies]" else "[dependencies]"}"
           )
       }
       return Err(EXIT_DEPENDENCY_ERROR)
@@ -85,7 +87,7 @@ private fun doAddInner(args: List<String>): Result<Unit, Int> {
   }
 
   writeFileAsString(KOLT_TOML, updatedToml).getOrElse { error ->
-    eprintln("error: could not write ${error.path}")
+    eprintError("could not write ${error.path}")
     return Err(EXIT_CONFIG_ERROR)
   }
 
@@ -104,14 +106,14 @@ private fun doRemoveInner(args: List<String>): Result<Unit, Int> {
     parseRemoveArgs(args).getOrElse { error ->
       when (error) {
         is RemoveArgsError.MissingCoordinate -> eprintln("usage: kolt remove <group:artifact>")
-        is RemoveArgsError.InvalidFormat -> eprintln("error: invalid coordinate '${error.input}'")
+        is RemoveArgsError.InvalidFormat -> eprintError("invalid coordinate '${error.input}'")
       }
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
   val toml =
     readFileAsString(KOLT_TOML).getOrElse { error ->
-      eprintln("error: could not read ${error.path}")
+      eprintError("could not read ${error.path}")
       return Err(EXIT_CONFIG_ERROR)
     }
 
@@ -122,7 +124,7 @@ private fun doRemoveInner(args: List<String>): Result<Unit, Int> {
   }
 
   writeFileAsString(KOLT_TOML, result.newToml).getOrElse { error ->
-    eprintln("error: could not write ${error.path}")
+    eprintError("could not write ${error.path}")
     return Err(EXIT_CONFIG_ERROR)
   }
 
@@ -144,14 +146,14 @@ private fun fetchLatestVersion(
 ): Result<String, Int> {
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_DEPENDENCY_ERROR)
     }
   val groupPath = group.replace('.', '/')
   val metadataPath = "${paths.cacheBase}/$groupPath/$artifact/maven-metadata.xml"
 
   ensureDirectoryRecursive("${paths.cacheBase}/$groupPath/$artifact").getOrElse { error ->
-    eprintln("error: could not create directory ${error.path}")
+    eprintError("could not create directory ${error.path}")
     return Err(EXIT_DEPENDENCY_ERROR)
   }
 
@@ -172,17 +174,17 @@ private fun fetchLatestVersion(
 
   val xml =
     readFileAsString(metadataPath).getOrElse { error ->
-      eprintln("error: could not read ${error.path}")
+      eprintError("could not read ${error.path}")
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
   val resolution =
     parseMetadataXml(xml).getOrElse { error ->
-      eprintln("error: ${error.message}")
+      eprintError("${error.message}")
       return Err(EXIT_DEPENDENCY_ERROR)
     }
   if (resolution.fallbackToPrerelease) {
-    eprintln("warning: no stable release found for $group:$artifact; using ${resolution.version}")
+    eprintWarning("no stable release found for $group:$artifact; using ${resolution.version}")
   }
   return Ok(resolution.version)
 }
@@ -227,7 +229,7 @@ private fun doUpdateInner(): Result<Unit, Int> {
 
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
@@ -297,7 +299,7 @@ private fun doUpdateInner(): Result<Unit, Int> {
   val lockfile = mainAndBundleLockfile.copy(toolsBundles = toolsBundles)
   val lockJson = serializeLockfile(lockfile)
   writeFileAsString(LOCK_FILE, lockJson).getOrElse { error ->
-    eprintln("error: could not write ${error.path}")
+    eprintError("could not write ${error.path}")
     return Err(EXIT_DEPENDENCY_ERROR)
   }
   val toolsCount = toolsBundles.values.sumOf { it.size }
@@ -368,7 +370,7 @@ internal fun doTree(): Result<Unit, Int> {
 
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
@@ -457,7 +459,7 @@ internal fun parseDependencyLockTimeoutMs(): Long {
 // EXIT_DEPENDENCY_ERROR (the deps tree of CLI exit codes — task 3.2).
 internal inline fun <T> withDependencyLock(crossinline body: () -> Result<T, Int>): Result<T, Int> {
   ensureDirectoryRecursive(BUILD_DIR).getOrElse { error ->
-    eprintln("error: could not create directory ${error.path}")
+    eprintError("could not create directory ${error.path}")
     return Err(EXIT_DEPENDENCY_ERROR)
   }
   val timeoutMs = parseDependencyLockTimeoutMs()
@@ -472,15 +474,14 @@ private fun mapDependencyLockErrorToExitCode(error: LockError, requestedTimeoutM
   when (error) {
     is LockError.TimedOut -> {
       val reportedMs = if (error.waitedMs > 0L) error.waitedMs else requestedTimeoutMs
-      eprintln(
-        "error: lock acquisition timed out after ${reportedMs}ms; " +
-          "another kolt build may be stuck"
+      eprintError(
+        "lock acquisition timed out after ${reportedMs}ms; " + "another kolt build may be stuck"
       )
       EXIT_LOCK_TIMEOUT
     }
     is LockError.IoError -> {
-      eprintln(
-        "error: could not acquire build lock at $BUILD_DIR/.kolt-build.lock " +
+      eprintError(
+        "could not acquire build lock at $BUILD_DIR/.kolt-build.lock " +
           "(errno=${error.errno}: ${error.message})"
       )
       EXIT_DEPENDENCY_ERROR

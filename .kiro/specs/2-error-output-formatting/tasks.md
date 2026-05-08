@@ -185,7 +185,7 @@
   - _Depends: 1.3, 3.1, 4.4, 6.3_
   - _Boundary: kolt.cli.BuildCommands (raw eprintln sites — daemon forward line は 6.3 所有、 ConfigError display は 4.4 所有のため対象外)_
 
-- [ ] 7.2 (P) `DependencyCommands.kt` の残り raw eprintln 呼び出しを置換
+- [x] 7.2 (P) `DependencyCommands.kt` の残り raw eprintln 呼び出しを置換
   - 対象: `kolt fetch` / `kolt update` / `kolt tree` / `kolt add` / `kolt remove` の error / warning 出力
   - 各置換で R6.4 (subprocess wrap pattern) を破壊しないよう注意 — daemon body forward + kolt headline の順序を 7.1 と同じ規則で維持
   - 既存 string-snapshot test の更新
