@@ -203,7 +203,7 @@
   - _Boundary: kolt.cli (ToolCommands + InfoCommand + ScaffoldIO + DaemonCommand + CacheCommand) — ConfigError display sites は 4.4 所有のため再 migration しない_
 
 - [ ] 8. Validation: integration / E2E pin
-- [ ] 8.1 (P) `NO_COLOR` / `--no-color` / TTY-redirect の E2E smoke (cross-cutting)
+- [x] 8.1 (P) `NO_COLOR` / `--no-color` / TTY-redirect の E2E smoke (cross-cutting)
   - `kolt --no-color build <synthetic-fail-fixture>` の stderr に ANSI escape (`\\x1B[`) が一切含まれないこと (R2.4)
   - `NO_COLOR=1 kolt build <fail>` で同上 (R2.3)
   - `kolt build <fail> 2>log.txt` (stderr redirect) で log.txt に ANSI 含まれないこと (R2.2)
