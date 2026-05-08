@@ -104,6 +104,21 @@ class PromptTest {
   }
 
   @Test
+  fun ttyTargetPromptSeparatesJvmFromNativeWithMarker() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "", ""))
+
+    doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
+
+    val joined = io.outputs.joinToString("\n")
+    val markerIdx = joined.indexOf("-- native --")
+    val jvmIdx = joined.indexOf("1) jvm")
+    val firstNativeIdx = joined.indexOf("2) linuxArm64")
+    assertTrue(markerIdx >= 0, "native separator missing: $joined")
+    assertTrue(markerIdx > jvmIdx, "separator must come after jvm line: $joined")
+    assertTrue(markerIdx < firstNativeIdx, "separator must precede first native line: $joined")
+  }
+
+  @Test
   fun ttyKindPromptAcceptsNumericInput() {
     val io = FakeScaffoldIO(tty = true, inputs = listOf("2", "", ""))
 

@@ -84,10 +84,16 @@ private fun promptKind(io: ScaffoldIO, policy: ColorPolicy): Result<ScaffoldKind
 
 private fun promptTarget(io: ScaffoldIO, policy: ColorPolicy): Result<String, String> {
   io.println("Targets:")
+  var nativeHeaderEmitted = false
   PROMPT_TARGETS.forEachIndexed { idx, name ->
-    val color = if (name == DEFAULT_SCAFFOLD_TARGET) AnsiCodes.CYAN else AnsiCodes.YELLOW
+    val isJvm = name == DEFAULT_SCAFFOLD_TARGET
+    if (!isJvm && !nativeHeaderEmitted) {
+      io.println("  -- native --")
+      nativeHeaderEmitted = true
+    }
+    val color = if (isJvm) AnsiCodes.CYAN else AnsiCodes.YELLOW
     val coloredName = colored(name, color, policy)
-    val suffix = if (name == DEFAULT_SCAFFOLD_TARGET) " (default)" else ""
+    val suffix = if (isJvm) " (default)" else ""
     io.println("  ${idx + 1}) $coloredName$suffix")
   }
   io.println(">")
