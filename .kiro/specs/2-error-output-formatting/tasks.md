@@ -12,7 +12,7 @@
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
   - _Boundary: kolt.infra.output value types_
 
-- [ ] 1.2 (P) `ColorPolicy` sealed class と `fromEnv` / `install` / `current` を実装
+- [x] 1.2 (P) `ColorPolicy` sealed class と `fromEnv` / `install` / `current` を実装
   - `ColorPolicy.Always / Never / Auto(isStderrTty, isStdoutTty)` sealed 階層
   - `fromEnv(noColorFlag)` の決定順: `noColorFlag → NO_COLOR env → isatty(STDERR/STDOUT_FILENO)` を実装
   - module-level `var currentPolicy` を `install` で更新、 `current()` で読む。 startup 1 回計算契約をコメントに残す
