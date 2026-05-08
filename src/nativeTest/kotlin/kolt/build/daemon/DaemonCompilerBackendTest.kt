@@ -13,6 +13,7 @@ import kolt.daemon.wire.Message
 import kolt.daemon.wire.Severity
 import kolt.infra.ProcessError
 import kolt.infra.net.UnixSocketError
+import kolt.infra.output.ColorPolicy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -65,12 +66,13 @@ private fun sampleRequest() =
 
 private fun newBackend(
   connector: DaemonConnector,
-  spawner: DaemonSpawner = { _, _ -> Ok(Unit) },
+  spawner: DaemonSpawner = { _, _, _ -> Ok(Unit) },
   clock: FakeClock = FakeClock(),
   pluginJars: Map<String, List<String>> = emptyMap(),
   kotlinLanguageVersion: String? = null,
   kotlinCompilerVersion: String? = null,
   warnSink: (String) -> Unit = {},
+  colorPolicy: () -> ColorPolicy = { ColorPolicy.Never },
 ): DaemonCompilerBackend =
   DaemonCompilerBackend(
     javaBin = "/opt/jdk/bin/java",
@@ -87,6 +89,7 @@ private fun newBackend(
     clockMs = clock.clock,
     sleeper = clock.sleeper,
     warnSink = warnSink,
+    colorPolicy = colorPolicy,
   )
 
 class DaemonCompilerBackendHappyPathTest {
@@ -250,7 +253,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
     val backend =
       newBackend(
         connector = { Ok(FakeConnection()) },
-        spawner = { _, _ ->
+        spawner = { _, _, _ ->
           spawnCalls++
           Ok(Unit)
         },
@@ -276,7 +279,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
     val backend =
       newBackend(
         connector = connector,
-        spawner = { argv, _ ->
+        spawner = { argv, _, _ ->
           captured = argv
           Ok(Unit)
         },
@@ -309,7 +312,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
     val backend =
       newBackend(
         connector = connector,
-        spawner = { argv, _ ->
+        spawner = { argv, _, _ ->
           captured = argv
           Ok(Unit)
         },
@@ -341,7 +344,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
     val backend =
       newBackend(
         connector = connector,
-        spawner = { argv, _ ->
+        spawner = { argv, _, _ ->
           captured = argv
           Ok(Unit)
         },
@@ -373,7 +376,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
     val backend =
       newBackend(
         connector = connector,
-        spawner = { argv, _ ->
+        spawner = { argv, _, _ ->
           captured = argv
           Ok(Unit)
         },
@@ -404,7 +407,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
     val backend =
       newBackend(
         connector = connector,
-        spawner = { argv, _ ->
+        spawner = { argv, _, _ ->
           captured = argv
           Ok(Unit)
         },
@@ -434,7 +437,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
     val backend =
       newBackend(
         connector = connector,
-        spawner = { argv, _ ->
+        spawner = { argv, _, _ ->
           captured = argv
           Ok(Unit)
         },
@@ -469,7 +472,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
     val backend =
       newBackend(
         connector = connector,
-        spawner = { _, _ ->
+        spawner = { _, _, _ ->
           spawnCalls++
           Ok(Unit)
         },
@@ -506,7 +509,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
     val backend =
       newBackend(
         connector = connector,
-        spawner = { _, _ ->
+        spawner = { _, _, _ ->
           spawnCalls++
           Ok(Unit)
         },
@@ -533,7 +536,7 @@ class DaemonCompilerBackendConnectAndSpawnTest {
       Err(UnixSocketError.ConnectFailed(it, platform.posix.ENOENT, "No such file"))
     }
     val backend =
-      newBackend(connector = connector, spawner = { _, _ -> Err(ProcessError.ForkFailed) })
+      newBackend(connector = connector, spawner = { _, _, _ -> Err(ProcessError.ForkFailed) })
     val err = assertNotNull(backend.compile(sampleRequest()).getError())
     val unavailable = assertIs<CompileError.BackendUnavailable.Other>(err)
     assertTrue(unavailable.detail.contains("spawn"))
@@ -547,7 +550,8 @@ class DaemonCompilerBackendConnectAndSpawnTest {
       attempts++
       Err(UnixSocketError.ConnectFailed(it, platform.posix.ENOENT, "No such file"))
     }
-    val backend = newBackend(connector = connector, spawner = { _, _ -> Ok(Unit) }, clock = clock)
+    val backend =
+      newBackend(connector = connector, spawner = { _, _, _ -> Ok(Unit) }, clock = clock)
     val err = assertNotNull(backend.compile(sampleRequest()).getError())
     val unavailable = assertIs<CompileError.BackendUnavailable.Other>(err)
     assertTrue(unavailable.detail.contains("within 10000ms"))
@@ -712,5 +716,68 @@ class IsRetryableConnectErrorTest {
   @Test
   fun invalidArgumentIsNotRetryable() {
     assertFalse(isRetryableConnectError(UnixSocketError.InvalidArgument("too long")))
+  }
+}
+
+class DaemonCompilerBackendNoColorEnvTest {
+
+  // When ColorPolicy disables stderr color, the daemon spawn must carry
+  // NO_COLOR=1 so the JVM daemon (and the kotlinc subprocess it spawns) emits
+  // plain diagnostics.
+  @Test
+  fun spawnEnvIncludesNoColorWhenColorPolicyDisablesStderr() {
+    var capturedEnv: Map<String, String>? = null
+    var attempt = 0
+    val connector: DaemonConnector = { path ->
+      attempt++
+      if (attempt == 1) {
+        Err(UnixSocketError.ConnectFailed(path, platform.posix.ENOENT, "No such file"))
+      } else {
+        Ok(FakeConnection())
+      }
+    }
+    val backend =
+      newBackend(
+        connector = connector,
+        spawner = { _, _, env ->
+          capturedEnv = env
+          Ok(Unit)
+        },
+        colorPolicy = { ColorPolicy.Never },
+      )
+    backend.compile(sampleRequest())
+    val env = assertNotNull(capturedEnv, "spawner must have been invoked after ENOENT")
+    assertEquals("1", env["NO_COLOR"], "expected NO_COLOR=1 in spawn env, got: $env")
+  }
+
+  // When color is enabled, kolt must not inject NO_COLOR — the daemon (and
+  // its kotlinc subprocess) inherits parent env verbatim.
+  @Test
+  fun spawnEnvOmitsNoColorWhenColorPolicyAllowsStderr() {
+    var capturedEnv: Map<String, String>? = null
+    var attempt = 0
+    val connector: DaemonConnector = { path ->
+      attempt++
+      if (attempt == 1) {
+        Err(UnixSocketError.ConnectFailed(path, platform.posix.ENOENT, "No such file"))
+      } else {
+        Ok(FakeConnection())
+      }
+    }
+    val backend =
+      newBackend(
+        connector = connector,
+        spawner = { _, _, env ->
+          capturedEnv = env
+          Ok(Unit)
+        },
+        colorPolicy = { ColorPolicy.Always },
+      )
+    backend.compile(sampleRequest())
+    val env = assertNotNull(capturedEnv, "spawner must have been invoked after ENOENT")
+    assertFalse(
+      env.containsKey("NO_COLOR"),
+      "expected spawn env to omit NO_COLOR when color enabled, got: $env",
+    )
   }
 }

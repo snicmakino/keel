@@ -147,7 +147,7 @@
   - _Boundary: kolt.cli.Main (parseKoltArgs unknown flag path)_
 
 - [ ] 6. Subprocess color forwarding (env injection + daemon blob strip)
-- [ ] 6.1 (P) kotlinc subprocess (direct + JVM daemon spawn) への `NO_COLOR` env injection
+- [x] 6.1 (P) kotlinc subprocess (direct + JVM daemon spawn) への `NO_COLOR` env injection
   - `kolt.build.SubprocessCompilerBackend` の subprocess 起動 helper に `if (!ColorPolicy.current().shouldColor(Stream.Stderr)) put("NO_COLOR", "1")` を入れる。 caller (`BuildCommands` 等) は ColorPolicy を意識しない
   - JVM daemon の spawn 経路 (`kolt.build.daemon.*`) でも同じ env injection を入れる、 daemon 自体が起動する kotlinc 子プロセスにも env が継承されるよう確認
   - 既存 subprocess 起動経路の other env (`JAVA_HOME` 等) 設定を退化させないこと

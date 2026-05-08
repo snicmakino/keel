@@ -4,6 +4,7 @@ import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getError
 import kolt.infra.ProcessError
 import kolt.infra.fileExists
+import kolt.infra.output.ColorPolicy
 import kolt.infra.removeDirectoryRecursive
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -269,6 +270,81 @@ class SubprocessCompilerBackendIntegrationTest {
     val error = backend.compile(request).getError()
     if (error != null) {
       kotlin.test.fail("expected sh to see JAVA_HOME, got error: $error")
+    }
+  }
+
+  // When ColorPolicy disables stderr color, the child kotlinc must see
+  // NO_COLOR=1 in its env so the compiler emits plain (non-ANSI) diagnostics.
+  @Test
+  fun compileInjectsNoColorEnvWhenColorPolicyDisablesStderr() {
+    val backend = SubprocessCompilerBackend(kotlincBin = "sh", colorPolicy = { ColorPolicy.Never })
+    val request =
+      CompileRequest(
+        workingDir = "",
+        classpath = emptyList(),
+        sources = listOf("-c", "[ \"\$NO_COLOR\" = \"1\" ]"),
+        outputPath = "/dev/null",
+        moduleName = "probe",
+        extraArgs = emptyList(),
+      )
+    val error = backend.compile(request).getError()
+    if (error != null) {
+      kotlin.test.fail("expected sh to see NO_COLOR=1, got error: $error")
+    }
+  }
+
+  // When ColorPolicy enables color, kolt must NOT inject NO_COLOR — the child
+  // should inherit parent env verbatim so kotlinc keeps emitting ANSI codes
+  // for fd-inherit pass-through.
+  @OptIn(ExperimentalForeignApi::class)
+  @Test
+  fun compileDoesNotInjectNoColorEnvWhenColorPolicyAllowsStderr() {
+    val previous = platform.posix.getenv("NO_COLOR")?.toKString()
+    platform.posix.unsetenv("NO_COLOR")
+    try {
+      val backend =
+        SubprocessCompilerBackend(kotlincBin = "sh", colorPolicy = { ColorPolicy.Always })
+      val request =
+        CompileRequest(
+          workingDir = "",
+          classpath = emptyList(),
+          sources = listOf("-c", "[ -z \"\$NO_COLOR\" ]"),
+          outputPath = "/dev/null",
+          moduleName = "probe",
+          extraArgs = emptyList(),
+        )
+      val error = backend.compile(request).getError()
+      if (error != null) {
+        kotlin.test.fail("expected sh to see NO_COLOR unset, got error: $error")
+      }
+    } finally {
+      if (previous != null) platform.posix.setenv("NO_COLOR", previous, 1)
+    }
+  }
+
+  // JAVA_HOME injection must still work when NO_COLOR is also injected — both
+  // env entries land in the child without one displacing the other.
+  @Test
+  fun compileSetsBothJavaHomeAndNoColorWhenColorDisabledAndJavaHomeSupplied() {
+    val backend =
+      SubprocessCompilerBackend(
+        kotlincBin = "sh",
+        javaHome = "/managed/jdk/home",
+        colorPolicy = { ColorPolicy.Never },
+      )
+    val request =
+      CompileRequest(
+        workingDir = "",
+        classpath = emptyList(),
+        sources =
+          listOf("-c", "[ \"\$JAVA_HOME\" = \"/managed/jdk/home\" ] && [ \"\$NO_COLOR\" = \"1\" ]"),
+        outputPath = "/dev/null",
+        moduleName = "probe",
+        extraArgs = emptyList(),
+      )
+    val error = backend.compile(request).getError()
+    if (error != null) {
+      kotlin.test.fail("expected sh to see both JAVA_HOME and NO_COLOR, got error: $error")
     }
   }
 

@@ -16,6 +16,8 @@ import kolt.infra.ProcessError
 import kolt.infra.eprintln
 import kolt.infra.net.UnixSocket
 import kolt.infra.net.UnixSocketError
+import kolt.infra.output.ColorPolicy
+import kolt.infra.output.Stream
 import kolt.infra.spawnDetached
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.alloc
@@ -49,6 +51,10 @@ internal constructor(
   private val sleeper: (Int) -> Unit = defaultSleeper,
   private val onSpawn: () -> Unit = {},
   private val warnSink: (String) -> Unit = ::eprintln,
+  // Seam: tests drive both color branches without mutating the global
+  // ColorPolicy. Production callers leave the default and the CLI's
+  // startup `ColorPolicy.install` governs behavior.
+  private val colorPolicy: () -> ColorPolicy = ColorPolicy::current,
 ) : CompilerBackend {
 
   constructor(
@@ -117,7 +123,13 @@ internal constructor(
     } ?: return Ok(first.get()!!)
 
     onSpawn()
-    val spawnErr = spawner(spawnArgv(), logPath).getError()
+    val spawnEnv = buildMap {
+      // Propagate to the JVM daemon and the kotlinc subprocesses it spawns
+      // (Java's ProcessBuilder default inherits env). With color enabled we
+      // inject nothing so the daemon inherits parent env verbatim.
+      if (!colorPolicy().shouldColor(Stream.Stderr)) put("NO_COLOR", "1")
+    }
+    val spawnErr = spawner(spawnArgv(), logPath, spawnEnv).getError()
     if (spawnErr != null) {
       return Err(CompileError.BackendUnavailable.Other("daemon spawn failed: $spawnErr"))
     }
@@ -197,7 +209,8 @@ internal class SocketDaemonConnection(private val socket: UnixSocket) : DaemonCo
 
 internal typealias DaemonConnector = (String) -> Result<DaemonConnection, UnixSocketError>
 
-internal typealias DaemonSpawner = (List<String>, String?) -> Result<Unit, ProcessError>
+internal typealias DaemonSpawner =
+  (List<String>, String?, Map<String, String>) -> Result<Unit, ProcessError>
 
 internal val defaultDaemonConnector: DaemonConnector = { path ->
   val socketResult = UnixSocket.connect(path)
@@ -205,7 +218,9 @@ internal val defaultDaemonConnector: DaemonConnector = { path ->
   if (err != null) Err(err) else Ok(SocketDaemonConnection(socketResult.get()!!))
 }
 
-internal val defaultDaemonSpawner: DaemonSpawner = { argv, logPath -> spawnDetached(argv, logPath) }
+internal val defaultDaemonSpawner: DaemonSpawner = { argv, logPath, extraEnv ->
+  spawnDetached(argv, logPath, extraEnv)
+}
 
 internal val defaultSleeper: (Int) -> Unit = { ms -> usleep((ms * 1000).toUInt()) }
 
