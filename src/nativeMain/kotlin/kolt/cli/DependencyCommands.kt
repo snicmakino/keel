@@ -38,9 +38,9 @@ private fun doAddInner(args: List<String>): Result<Unit, Int> {
     }
 
   val config =
-    parseConfig(toml).getOrElse { error ->
+    parseConfig(toml, path = absoluteKoltTomlPath()).getOrElse { error ->
       when (error) {
-        is ConfigError.ParseFailed -> eprintln("error: ${error.message}")
+        is ConfigError.ParseFailed -> eprintDiagnostic(renderConfigError(error))
       }
       return Err(EXIT_CONFIG_ERROR)
     }

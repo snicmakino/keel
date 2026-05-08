@@ -7,6 +7,8 @@ import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getError
 import com.github.michaelbull.result.getOrElse
+import kolt.infra.output.RenderedDiagnostic
+import kolt.infra.output.Severity
 import kolt.resolve.compareVersions
 import kolt.usertool.RawToolEntry
 import kolt.usertool.ToolEntry
@@ -132,7 +134,11 @@ data class KoltConfig(
   @SerialName("run") val runSection: RunSection = RunSection(),
 )
 
-private val toml = Toml(inputConfig = TomlInputConfig(ignoreUnknownNames = true))
+// Strict-unknown-keys lets a typo in a top-level section (`[koltn]` for
+// `[kotlin]`) surface as a `ParseFailed` instead of silently being dropped;
+// the catch path below uses parseUnknownKey to attach a Did-you-mean hint
+// for top-level typos.
+private val toml = Toml(inputConfig = TomlInputConfig(ignoreUnknownNames = false))
 
 // Two-tier parse: ktoml deserializes into the Raw* classes (target/main/sources
 // optional, plus `targets` map for `[build.targets.X]`). parseConfig then
@@ -423,7 +429,10 @@ private fun resolveEffectiveTarget(raw: RawBuildSection): Result<String, ConfigE
   return Ok(scalar)
 }
 
-fun parseConfig(tomlString: String): Result<KoltConfig, ConfigError> {
+// `path` is the kolt.toml location the caller read `tomlString` from,
+// surfaced verbatim in the rendered diagnostic when populated. Internal
+// validation paths and tests omit it (defaults to null).
+fun parseConfig(tomlString: String, path: String? = null): Result<KoltConfig, ConfigError> {
   return try {
     val raw = toml.decodeFromString(RawKoltConfig.serializer(), tomlString)
     // Validation order is load-bearing: tests match on canonical error
@@ -528,10 +537,42 @@ fun parseConfig(tomlString: String): Result<KoltConfig, ConfigError> {
       )
     )
   } catch (e: SerializationException) {
-    Err(ConfigError.ParseFailed("failed to parse kolt.toml: ${e.message}"))
+    Err(buildKtomlParseError(e.message, path))
   } catch (e: IllegalArgumentException) {
-    Err(ConfigError.ParseFailed("failed to parse kolt.toml: ${e.message}"))
+    Err(buildKtomlParseError(e.message, path))
   }
+}
+
+private fun buildKtomlParseError(rawMessage: String?, path: String?): ConfigError.ParseFailed {
+  val (lineNo, detail) = extractKtomlLineNo(rawMessage)
+  val (keyPath, suggestion) = parseUnknownKey(detail)
+  val headline = "failed to parse kolt.toml: $detail"
+  return ConfigError.ParseFailed(
+    message = headline,
+    path = path,
+    lineNo = lineNo,
+    keyPath = keyPath,
+    suggestion = suggestion,
+  )
+}
+
+// Renders a ParseFailed into the writer-ready diagnostic shape. The headline
+// already begins with `failed to parse kolt.toml: ...` for ktoml-origin
+// errors; legacy validation errors carry a domain-specific message and just
+// pass through. Location and key-path lines are only added when populated.
+fun renderConfigError(e: ConfigError.ParseFailed): RenderedDiagnostic {
+  val context = buildList {
+    val location =
+      when {
+        e.path != null && e.lineNo != null -> "${e.path}:${e.lineNo}"
+        e.path != null -> e.path
+        else -> null
+      }
+    if (location != null) add("at $location")
+    if (e.keyPath != null) add("key: ${e.keyPath}")
+  }
+  val hint = e.suggestion?.let { "Did you mean `$it`?" }
+  return RenderedDiagnostic(Severity.Error, e.message, context, hint)
 }
 
 internal fun KoltConfig.isLibrary(): Boolean = kind == "lib"

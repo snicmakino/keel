@@ -96,7 +96,7 @@
   - _Requirements: 3.1_
   - _Boundary: kolt.config (ConfigError data class shape)_
 
-- [ ] 4.4 ktoml 例外 catch 節を新 helper 経由にし、 `renderConfigError` を実装、 cli caller を更新
+- [x] 4.4 ktoml 例外 catch 節を新 helper 経由にし、 `renderConfigError` を実装、 cli caller を更新
   - `Config.kt:520-524` の catch 節を `extractKtomlLineNo` + `parseUnknownKey` 経由にし、 `ParseFailed(message, path = absKoltTomlPath, lineNo = ..., keyPath = ..., suggestion = ...)` を構築
   - `renderConfigError(e: ConfigError.ParseFailed): RenderedDiagnostic` を実装: headline = `e.message`、 context = `["at {path}:{lineNo}", "key: {keyPath}"]` (path / lineNo / keyPath が null なら該当行省略)、 hint = `suggestion?.let { "Did you mean \`$it\`?" }`
   - cli caller (`BuildCommands.kt:251`, `DependencyCommands.kt:42`) の `eprintln("error: ${error.message}")` を `eprintDiagnostic(renderConfigError(error))` に置換。 `WatchChangeDispatch.kt:76` / `InfoCommand.kt:380` は `.message` を文字列として再加工する経路なので renderer 経由に書き換え (情報が落ちないよう確認)

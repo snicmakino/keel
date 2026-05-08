@@ -25,6 +25,7 @@ import kolt.concurrency.LockHandle
 import kolt.concurrency.ProjectLock
 import kolt.config.*
 import kolt.infra.*
+import kolt.infra.output.eprintDiagnostic
 import kolt.resolve.buildClasspath
 import kolt.tool.*
 import kotlin.time.TimeSource
@@ -239,16 +240,22 @@ internal fun filterExistingDirs(
   return existing
 }
 
+// Resolve the absolute path the user reads as `kolt.toml`, used by parseConfig
+// to embed the file location in ParseFailed for richer renderer output.
+// Falls back to the bare filename when cwd is unknown.
+internal fun absoluteKoltTomlPath(): String =
+  currentWorkingDirectory()?.let { absolutise(KOLT_TOML, it) } ?: KOLT_TOML
+
 internal fun loadProjectConfig(): Result<KoltConfig, Int> {
   val tomlString =
     readFileAsString(KOLT_TOML).getOrElse { error ->
       eprintln("error: could not read ${error.path}")
       return Err(EXIT_CONFIG_ERROR)
     }
-  return parseConfig(tomlString)
+  return parseConfig(tomlString, path = absoluteKoltTomlPath())
     .getOrElse { error ->
       when (error) {
-        is ConfigError.ParseFailed -> eprintln("error: ${error.message}")
+        is ConfigError.ParseFailed -> eprintDiagnostic(renderConfigError(error))
       }
       return Err(EXIT_CONFIG_ERROR)
     }
@@ -265,7 +272,7 @@ internal fun parseProjectConfig(): Result<KoltConfig, ConfigError> {
     readFileAsString(KOLT_TOML).getOrElse { error ->
       return Err(ConfigError.ParseFailed("could not read ${error.path}"))
     }
-  return parseConfig(tomlString)
+  return parseConfig(tomlString, path = absoluteKoltTomlPath())
 }
 
 internal fun doCheck(

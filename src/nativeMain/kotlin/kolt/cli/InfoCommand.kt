@@ -374,7 +374,7 @@ internal fun loadProjectForInfo(): ProjectLoad {
       return ProjectLoad.ParseFailed("could not read ${err.path}")
     }
   val config =
-    parseConfig(toml).getOrElse { err ->
+    parseConfig(toml, path = absoluteKoltTomlPath()).getOrElse { err ->
       val message =
         when (err) {
           is ConfigError.ParseFailed -> err.message

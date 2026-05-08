@@ -562,7 +562,7 @@ class ConfigTest {
   }
 
   @Test
-  fun unknownFieldsAreIgnored() {
+  fun unknownTopLevelFieldSurfacesParseFailure() {
     val toml =
       """
             name = "my-app"
@@ -579,8 +579,11 @@ class ConfigTest {
         """
         .trimIndent()
 
-    val config = assertNotNull(parseConfig(toml).get())
-    assertEquals("my-app", config.name)
+    val error = assertIs<ConfigError.ParseFailed>(parseConfig(toml).getError())
+    assertTrue(
+      error.message.contains("unknown_field"),
+      "expected ktoml to surface unknown_field; got: ${error.message}",
+    )
   }
 
   @Test
