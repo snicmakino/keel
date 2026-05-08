@@ -22,7 +22,7 @@
   - _Requirements: 2.2, 2.3, 2.4, 2.5_
   - _Boundary: kolt.infra.output.ColorPolicy_
 
-- [ ] 1.3 `DiagnosticWriter` 関数群 (`eprintError` / `eprintWarning` / `eprintNote` / `eprintDiagnostic`) と `AnsiStripper` を実装
+- [x] 1.3 `DiagnosticWriter` 関数群 (`eprintError` / `eprintWarning` / `eprintNote` / `eprintDiagnostic`) と `AnsiStripper` を実装
   - 4 関数全てが `policy: ColorPolicy = ColorPolicy.current()` の default arg を持つ — caller 側 churn なしで testability を確保 (validate-design Issue 2 解決)
   - rendering algorithm: severity ラベル決定 → `policy.shouldColor(Stream.Stderr)` → ANSI wrap or plain → headline `eprintln` → context lines を 2 スペース indent で `eprintln` → hint があれば `note:` プレフィックス line で `eprintln`
   - `AnsiStripper.strip(s)` は CSI regex (`\\x1B\\[[0-?]*[ -/]*[@-~]`) で escape sequence を除去
