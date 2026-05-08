@@ -7,6 +7,7 @@ import com.github.michaelbull.result.getOrElse
 import kolt.build.formatCommand
 import kolt.config.*
 import kolt.infra.*
+import kolt.infra.output.eprintError
 import kolt.tool.*
 
 internal fun doFmt(args: List<String>): Result<Unit, Int> {
@@ -19,12 +20,12 @@ internal fun doFmt(args: List<String>): Result<Unit, Int> {
 
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_FORMAT_ERROR)
     }
   val ktfmtPath =
     ensureTool(paths, KTFMT_SPEC).getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_FORMAT_ERROR)
     }
   val managedJdkBins =
@@ -37,7 +38,7 @@ internal fun doFmt(args: List<String>): Result<Unit, Int> {
     if (isDirectory(dir)) {
       files.addAll(
         listKotlinFiles(dir).getOrElse { error ->
-          eprintln("error: could not read directory ${error.path}")
+          eprintError("could not read directory ${error.path}")
           return Err(EXIT_FORMAT_ERROR)
         }
       )
@@ -47,7 +48,7 @@ internal fun doFmt(args: List<String>): Result<Unit, Int> {
     if (isDirectory(dir)) {
       files.addAll(
         listKotlinFiles(dir).getOrElse { error ->
-          eprintln("error: could not read directory ${error.path}")
+          eprintError("could not read directory ${error.path}")
           return Err(EXIT_FORMAT_ERROR)
         }
       )
@@ -78,8 +79,8 @@ internal fun doFmt(args: List<String>): Result<Unit, Int> {
   executeCommand(cmd.args).getOrElse { error ->
     when (error) {
       is ProcessError.NonZeroExit ->
-        eprintln(if (checkOnly) "error: format check failed" else "error: formatting failed")
-      else -> eprintln("error: failed to run ktfmt")
+        eprintError(if (checkOnly) "format check failed" else "formatting failed")
+      else -> eprintError("failed to run ktfmt")
     }
     return Err(EXIT_FORMAT_ERROR)
   }

@@ -18,6 +18,7 @@ import kolt.infra.eprintln
 import kolt.infra.fileExists
 import kolt.infra.formatBytes
 import kolt.infra.homeDirectory
+import kolt.infra.output.eprintError
 import kolt.infra.readFileAsString
 import kolt.infra.readSelfExe
 import kolt.resolve.compareVersions
@@ -249,7 +250,7 @@ internal fun doInfo(args: List<String>): Result<Unit, Int> {
   // `--verbose --format=json` is equivalent to `--format=json` — json always
   // carries the full field set.
   val snap = gatherInfo(verbose = opts.verbose || opts.json)
-  snap.parseError?.let { eprintln("error: $it") }
+  snap.parseError?.let { eprintError("$it") }
   if (opts.json) {
     println(formatInfoJson(snap))
   } else {

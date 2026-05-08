@@ -18,11 +18,12 @@ import kolt.config.isValidGroup
 import kolt.config.isValidProjectName
 import kolt.config.projectNameToPackageSegment
 import kolt.infra.ensureDirectoryRecursive
-import kolt.infra.eprintln
 import kolt.infra.executeCommand
 import kolt.infra.executeCommandQuiet
 import kolt.infra.fileExists
 import kolt.infra.formatProcessError
+import kolt.infra.output.eprintError
+import kolt.infra.output.eprintWarning
 import kolt.infra.writeFileAsString
 
 internal data class ScaffoldOptions(
@@ -157,7 +158,7 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
   // doNew creates `<name>/` itself before delegating, because the precondition
   // "<name>/ must not exist" cannot be enforced from inside ensureDirectory.
   if (!targetDir.isCurrent() && !fileExists(targetDir)) {
-    eprintln("error: target directory '$targetDir' does not exist")
+    eprintError("target directory '$targetDir' does not exist")
     return Err(EXIT_CONFIG_ERROR)
   }
 
@@ -167,7 +168,7 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
       generateKoltToml(options.projectName, options.kind, options.target, options.group),
     )
     .getOrElse { error ->
-      eprintln("error: could not write ${error.path}")
+      eprintError("could not write ${error.path}")
       return Err(EXIT_BUILD_ERROR)
     }
   println("created $tomlPath")
@@ -188,7 +189,7 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
   val gitignorePath = resolveInTarget(targetDir, GITIGNORE)
   if (!fileExists(gitignorePath)) {
     writeFileAsString(gitignorePath, generateGitignore()).getOrElse { error ->
-      eprintln("error: could not write ${error.path}")
+      eprintError("could not write ${error.path}")
       return Err(EXIT_BUILD_ERROR)
     }
     println("created $gitignorePath")
@@ -203,7 +204,7 @@ internal fun scaffoldProject(targetDir: String, options: ScaffoldOptions): Resul
     if (err == null) {
       println("initialized git repository")
     } else {
-      eprintln("warning: could not run git init (${formatProcessError(err, "git init")})")
+      eprintWarning("could not run git init (${formatProcessError(err, "git init")})")
     }
   }
 
@@ -238,13 +239,13 @@ private fun writeKindFile(
 ): Result<Unit, Int> {
   val dir = nestedDir(baseDir, packageRelPath)
   ensureDirectoryRecursive(dir).getOrElse { error ->
-    eprintln("error: could not create directory ${error.path}")
+    eprintError("could not create directory ${error.path}")
     return Err(EXIT_BUILD_ERROR)
   }
   val path = "$dir/${template.name}"
   if (fileExists(path)) return Ok(Unit)
   writeFileAsString(path, template.content).getOrElse { error ->
-    eprintln("error: could not write ${error.path}")
+    eprintError("could not write ${error.path}")
     return Err(EXIT_BUILD_ERROR)
   }
   println("created $path")

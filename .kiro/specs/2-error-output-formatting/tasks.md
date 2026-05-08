@@ -194,7 +194,7 @@
   - _Depends: 1.3, 3.1, 4.4_
   - _Boundary: kolt.cli.DependencyCommands (raw eprintln sites)_
 
-- [ ] 7.3 (P) `ToolCommands.kt` および残り cli 系ファイル (InfoCommand / ScaffoldIO / DaemonCommand / CacheCommand 等) の raw eprintln 呼び出しを置換
+- [x] 7.3 (P) `ToolCommands.kt` および残り cli 系ファイル (InfoCommand / ScaffoldIO / DaemonCommand / CacheCommand 等) の raw eprintln 呼び出しを置換
   - 各 file 内の raw `eprintln("error:...` / `eprintln("warning:...` を typed writer に migrate
   - `printUsage()` の help 出力はそのまま (情報表示、 severity 装飾不要 — informational `eprintln` はそのまま許容)
   - 観察可能な完了: 全 cli/* ファイルで raw `eprintln("error:...` / `eprintln("warning:...` 0 件、 `kolt info` / `kolt daemon` / `kolt cache` の自動テスト green

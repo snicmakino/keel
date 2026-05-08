@@ -17,6 +17,8 @@ import kolt.build.resolveUserJdkHome
 import kolt.config.*
 import kolt.infra.*
 import kolt.infra.output.eprintDiagnostic
+import kolt.infra.output.eprintError
+import kolt.infra.output.eprintWarning
 import kolt.resolve.*
 
 internal const val LOCK_FILE = "kolt.lock"
@@ -65,8 +67,8 @@ internal fun resolveDependencies(
   allowLockfileMigration: Boolean = false,
 ): Result<JvmResolutionOutcome, Int> {
   for (dep in findOverlappingDependencies(config.dependencies, config.testDependencies)) {
-    eprintln(
-      "warning: '${dep.groupArtifact}' is in both [dependencies] (${dep.mainVersion}) and [test-dependencies] (${dep.testVersion}); using ${dep.mainVersion}"
+    eprintWarning(
+      "'${dep.groupArtifact}' is in both [dependencies] (${dep.mainVersion}) and [test-dependencies] (${dep.testVersion}); using ${dep.mainVersion}"
     )
   }
 
@@ -83,14 +85,14 @@ internal fun resolveDependencies(
 
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
   val lockJsonOnDisk =
     if (fileExists(LOCK_FILE)) {
       readFileAsString(LOCK_FILE).getOrElse { error ->
-        eprintln("warning: could not read $LOCK_FILE: ${error.path}")
+        eprintWarning("could not read $LOCK_FILE: ${error.path}")
         null
       }
     } else null
@@ -102,18 +104,18 @@ internal fun resolveDependencies(
       is LockfileLoadResult.Loaded -> outcome.lockfile
       is LockfileLoadResult.Absent -> null
       is LockfileLoadResult.Corrupt -> {
-        eprintln("warning: ${outcome.message}")
+        eprintWarning("${outcome.message}")
         null
       }
       is LockfileLoadResult.UnsupportedAndMigrationAllowed -> {
-        eprintln(
-          "warning: kolt.lock v${outcome.version} detected, regenerating as v$LOCKFILE_VERSION (one-time migration for v0.X)"
+        eprintWarning(
+          "kolt.lock v${outcome.version} detected, regenerating as v$LOCKFILE_VERSION (one-time migration for v0.X)"
         )
         null
       }
       is LockfileLoadResult.UnsupportedAndMigrationDenied -> {
-        eprintln(
-          "error: kolt.lock v${outcome.version} is no longer supported, run 'kolt fetch' to regenerate"
+        eprintError(
+          "kolt.lock v${outcome.version} is no longer supported, run 'kolt fetch' to regenerate"
         )
         return Err(EXIT_DEPENDENCY_ERROR)
       }
@@ -155,7 +157,7 @@ internal fun resolveDependencies(
     val lockfile = buildLockfileFromResolved(config, resolveResult.deps, bundleDeps)
     val lockJson = serializeLockfile(lockfile)
     writeFileAsString(LOCK_FILE, lockJson).getOrElse { error ->
-      eprintln("error: could not write ${error.path}")
+      eprintError("could not write ${error.path}")
       return Err(EXIT_DEPENDENCY_ERROR)
     }
   }
@@ -364,7 +366,7 @@ private fun writeWorkspaceFiles(config: KoltConfig, paths: KoltPaths, deps: List
   val sdkHomePath = resolveWorkspaceSdkHomePath(config, paths)
   val workspaceJson = generateWorkspaceJson(config, mainDeps, testDeps, sdkHomePath = sdkHomePath)
   writeFileAsString(WORKSPACE_JSON, workspaceJson).getOrElse { error ->
-    eprintln("warning: could not write $WORKSPACE_JSON: ${error.path}")
+    eprintWarning("could not write $WORKSPACE_JSON: ${error.path}")
     return
   }
 }

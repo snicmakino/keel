@@ -9,6 +9,8 @@ import kolt.config.KoltConfig
 import kolt.config.NATIVE_TARGETS
 import kolt.config.NOTIFICATION_MARKER
 import kolt.infra.*
+import kolt.infra.output.eprintError
+import kolt.infra.output.eprintWarning
 import kotlin.concurrent.AtomicInt
 import kotlinx.cinterop.*
 import platform.linux.IN_CREATE
@@ -69,7 +71,7 @@ private data class KoltTomlEffect(
 private fun setupWatches(watchDirs: List<String>, config: KoltConfig): WatchSetup? {
   val watcher =
     InotifyWatcher.create().getOrElse { err ->
-      eprintln("error: failed to initialize inotify: $err")
+      eprintError("failed to initialize inotify: $err")
       return null
     }
   val wdKinds = mutableMapOf<Int, WatchKind>()
@@ -105,11 +107,11 @@ private fun setupWatches(watchDirs: List<String>, config: KoltConfig): WatchSetu
 private fun reportWatchError(err: InotifyError) {
   when (err) {
     is InotifyError.WatchLimitExceeded ->
-      eprintln(
-        "error: inotify watch limit exceeded on ${err.path}\n" +
+      eprintError(
+        "inotify watch limit exceeded on ${err.path}\n" +
           "hint: increase with: sudo sysctl -w fs.inotify.max_user_watches=65536"
       )
-    else -> eprintln("error: inotify watch failed: $err")
+    else -> eprintError("inotify watch failed: $err")
   }
 }
 
@@ -190,7 +192,7 @@ internal fun watchCommandLoop(
 ) {
   var currentConfig =
     loadProjectConfig().getOrElse {
-      eprintln("error: cannot start watch mode with invalid config")
+      eprintError("cannot start watch mode with invalid config")
       return
     }
   val initialSetup =
@@ -227,7 +229,7 @@ internal fun watchCommandLoop(
           val rebuilt =
             setupWatches(collectWatchPaths(currentConfig, command), currentConfig)
               ?: run {
-                eprintln("error: failed to rebuild watcher after kolt.toml change; exiting watch")
+                eprintError("failed to rebuild watcher after kolt.toml change; exiting watch")
                 return false
               }
           watcher = rebuilt.watcher
@@ -247,7 +249,7 @@ internal fun watchCommandLoop(
   while (!shouldExit()) {
     val events =
       watcher.pollEvents(timeoutMs = 500).getOrElse {
-        if (!shouldExit()) eprintln("warning: inotify read failed")
+        if (!shouldExit()) eprintWarning("inotify read failed")
         break
       }
     if (shouldExit()) break
@@ -409,7 +411,7 @@ internal fun watchRunLoop(
           val rebuilt =
             setupWatches(collectWatchPaths(currentConfig, "run"), currentConfig)
               ?: run {
-                eprintln("error: failed to rebuild watcher after kolt.toml change; exiting watch")
+                eprintError("failed to rebuild watcher after kolt.toml change; exiting watch")
                 return KoltTomlEffect(
                   breakInnerLoop = true,
                   shouldRebuild = false,
@@ -460,7 +462,7 @@ internal fun watchRunLoop(
     val projectRoot =
       currentWorkingDirectory()
         ?: run {
-          eprintln("error: could not determine current working directory")
+          eprintError("could not determine current working directory")
           break
         }
     val runCmd =
@@ -471,7 +473,7 @@ internal fun watchRunLoop(
       }
     val childPid = spawnInProcessGroup(runCmd.args)
     if (childPid < 0) {
-      eprintln("error: failed to spawn application")
+      eprintError("failed to spawn application")
       break
     }
 

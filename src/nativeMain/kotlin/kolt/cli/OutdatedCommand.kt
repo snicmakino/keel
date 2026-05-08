@@ -9,6 +9,7 @@ import kolt.config.resolveKoltPaths
 import kolt.infra.downloadFile
 import kolt.infra.ensureDirectoryRecursive
 import kolt.infra.eprintln
+import kolt.infra.output.eprintError
 import kolt.infra.readFileAsString
 import kolt.resolve.RepositoryDownloadFailure
 import kolt.resolve.buildMetadataDownloadUrl
@@ -34,7 +35,7 @@ private fun doOutdatedInner(opts: OutdatedOptions): Result<Unit, Int> {
 
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_DEPENDENCY_ERROR)
     }
 
@@ -124,11 +125,11 @@ private fun shortMetadataFailure(failure: RepositoryDownloadFailure): String =
 
 private fun reportArgsError(error: OutdatedArgsError) {
   when (error) {
-    is OutdatedArgsError.UnknownFlag -> eprintln("error: unknown flag '${error.flag}'")
+    is OutdatedArgsError.UnknownFlag -> eprintError("unknown flag '${error.flag}'")
     is OutdatedArgsError.MissingFilterValue ->
-      eprintln("error: --filter requires a value (e.g. --filter major,minor)")
+      eprintError("--filter requires a value (e.g. --filter major,minor)")
     is OutdatedArgsError.InvalidFilter ->
-      eprintln("error: invalid filter token '${error.token}' (expected major|minor|patch)")
+      eprintError("invalid filter token '${error.token}' (expected major|minor|patch)")
   }
   eprintln("usage: kolt outdated [--filter <major,minor,patch>] [--json]")
 }
