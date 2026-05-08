@@ -71,7 +71,7 @@
   - _Boundary: kolt.usertool.ToolError + その cli consumer_
 
 - [ ] 4. kolt.toml 設定エラー enrichment (path / lineNo / keyPath / suggestion)
-- [ ] 4.1 ktoml 例外 message から `Line N: ` プレフィックスを抽出する helper を実装
+- [x] 4.1 ktoml 例外 message から `Line N: ` プレフィックスを抽出する helper を実装
   - `extractKtomlLineNo(message: String?): Pair<Int?, String>` を `kolt.config` 内 internal で定義
   - regex `^Line (\\d+): ` で前置きにマッチ、 数値 + 残りメッセージを返す。 message null / マッチなし / `Line abc:` (toIntOrNull fail) の 3 fallback で `null` to original を返す
   - テスト: `"Line 5: foo" → (5, "foo")`、 `"foo" → (null, "foo")`、 `null → (null, "")`、 `"Line abc: foo" → (null, "Line abc: foo")` の 4 ケース
@@ -79,7 +79,7 @@
   - _Requirements: 3.2_
   - _Boundary: kolt.config (extractKtomlLineNo)_
 
-- [ ] 4.2 unknown key 検出 + top-level section の Did-you-mean を実装
+- [x] 4.2 unknown key 検出 + top-level section の Did-you-mean を実装
   - `KNOWN_TOP_LEVEL_SECTIONS` を `["build", "cinterop", "classpaths", "dependencies", "fmt", "kotlin", "repositories", "run", "test", "tools"]` の sorted hardcoded list として定義 (R3.4 narrow scope)
   - `parseUnknownKey(detail: String): Pair<String?, String?>` を実装、 ktoml の `"Unknown key received: <X> in scope <Y>"` regex 抽出。 `Y` が空 (top-level) のとき `closestMatch(X, KNOWN_TOP_LEVEL_SECTIONS)` を呼ぶ、 ネストでは suggestion なし (key path だけ返す)
   - テスト: top-level typo (`<koltn>` in scope `<>`) → key="koltn", suggestion="kotlin"、 nested unknown (`<compilerr>` in scope `<kotlin>`) → key="compilerr", suggestion=null、 regex 不一致 → both null
