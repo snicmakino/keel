@@ -12,7 +12,7 @@ import kolt.infra.MkdirFailed
 import kolt.infra.OpenFailed
 import kolt.infra.Sha256Error
 import kolt.infra.WriteFailed
-import kolt.infra.eprintln
+import kolt.infra.output.eprintWarning
 import kolt.resolve.PluginFetchError
 import kolt.resolve.PluginFetcherDeps
 import kolt.resolve.fetchEnabledPluginJars
@@ -36,7 +36,7 @@ private fun defaultPluginFetcherDeps(): PluginFetcherDeps =
     override fun writeFileAsString(path: String, content: String): Result<Unit, WriteFailed> =
       kolt.infra.writeFileAsString(path, content)
 
-    override fun warn(message: String) = eprintln("warning: $message")
+    override fun warn(message: String) = eprintWarning(message)
   }
 
 internal fun resolveEnabledPluginJarPaths(

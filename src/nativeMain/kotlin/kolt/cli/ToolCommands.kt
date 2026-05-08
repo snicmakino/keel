@@ -11,6 +11,9 @@ import kolt.infra.CopyFailed
 import kolt.infra.copyFile
 import kolt.infra.eprintln
 import kolt.infra.fileExists
+import kolt.infra.output.eprintDiagnostic
+import kolt.infra.output.eprintError
+import kolt.infra.output.eprintWarning
 import kolt.infra.readFileAsString
 import kolt.infra.writeFileAsString
 import kolt.resolve.LOCKFILE_VERSION
@@ -81,7 +84,7 @@ internal fun doTool(args: List<String>): Result<Int, Int> {
         is ToolArgError.MissingSubcommand,
         is ToolArgError.MissingAlias -> Err(EXIT_CONFIG_ERROR)
         is ToolArgError.UnknownSubcommand -> {
-          eprintln("error: unknown 'kolt tool' subcommand '${err.subcommand}'")
+          eprintError("unknown 'kolt tool' subcommand '${err.subcommand}'")
           Err(EXIT_CONFIG_ERROR)
         }
       }
@@ -99,7 +102,7 @@ private fun doToolRun(alias: String, toolArgs: List<String>): Result<Int, Int> {
     }
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_CONFIG_ERROR)
     }
   val entry =
@@ -126,7 +129,7 @@ internal fun lookupToolEntry(alias: String, config: KoltConfig): Result<ToolEntr
   val entry = config.tools[alias]
   if (entry != null) return Ok(entry)
   val toolError = ToolError.UnknownAlias(alias = alias, knownAliases = config.tools.keys.toList())
-  eprintln(toolError.formatStderr())
+  eprintDiagnostic(toolError.render())
   return Err(toolError.toExitCode())
 }
 
@@ -178,7 +181,7 @@ internal fun runToolWithDeps(
 }
 
 private fun surfaceToolError(error: ToolError): Result<Int, Int> {
-  eprintln(error.formatStderr())
+  eprintDiagnostic(error.render())
   return Err(error.toExitCode())
 }
 
@@ -186,7 +189,7 @@ private fun loadLockfileForTool(config: KoltConfig): Result<Lockfile, Int> {
   val lockJson =
     if (fileExists(LOCK_FILE)) {
       readFileAsString(LOCK_FILE).getOrElse { error ->
-        eprintln("warning: could not read $LOCK_FILE: ${error.path}")
+        eprintWarning("could not read $LOCK_FILE: ${error.path}")
         null
       }
     } else null
@@ -202,7 +205,7 @@ private fun loadLockfileForTool(config: KoltConfig): Result<Lockfile, Int> {
         )
       )
     is LockfileLoadResult.Corrupt -> {
-      eprintln("warning: ${outcome.message}")
+      eprintWarning("${outcome.message}")
       Ok(
         Lockfile(
           version = LOCKFILE_VERSION,
@@ -214,7 +217,7 @@ private fun loadLockfileForTool(config: KoltConfig): Result<Lockfile, Int> {
     }
     is LockfileLoadResult.UnsupportedAndMigrationAllowed,
     is LockfileLoadResult.UnsupportedAndMigrationDenied -> {
-      eprintln("error: $LOCK_FILE requires regeneration via 'kolt fetch'")
+      eprintError("$LOCK_FILE requires regeneration via 'kolt fetch'")
       Err(EXIT_DEPENDENCY_ERROR)
     }
   }
@@ -237,7 +240,7 @@ private fun writeFirstFetchLockEntry(
   val updated = lockfile.copy(toolsBundles = updatedToolsBundles)
   val json = serializeLockfile(updated)
   writeFileAsString(LOCK_FILE, json).getOrElse { error ->
-    eprintln("error: could not write ${error.path}")
+    eprintError("could not write ${error.path}")
     return Err(EXIT_DEPENDENCY_ERROR)
   }
   return Ok(Unit)

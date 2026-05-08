@@ -15,6 +15,7 @@ import kolt.infra.fileExists as infraFileExists
 import kolt.infra.listFiles as infraListFiles
 import kolt.infra.listSubdirectories as infraListSubdirectories
 import kolt.infra.net.UnixSocket
+import kolt.infra.output.eprintError
 import kolt.nativedaemon.wire.FrameCodec as NativeFrameCodec
 import kolt.nativedaemon.wire.Message as NativeMessage
 
@@ -32,7 +33,7 @@ internal fun doDaemon(args: List<String>): Result<Unit, Int> {
     "stop" -> doDaemonStop(args.drop(1))
     "reap" -> doDaemonReap()
     else -> {
-      eprintln("error: unknown daemon command '${args[0]}'")
+      eprintError("unknown daemon command '${args[0]}'")
       printDaemonUsage()
       Err(EXIT_CONFIG_ERROR)
     }
@@ -43,7 +44,7 @@ private fun doDaemonStop(args: List<String>): Result<Unit, Int> {
   val all = args.contains("--all")
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_CONFIG_ERROR)
     }
 
@@ -53,7 +54,7 @@ private fun doDaemonStop(args: List<String>): Result<Unit, Int> {
     val cwd =
       currentWorkingDirectory()
         ?: run {
-          eprintln("error: could not determine project directory")
+          eprintError("could not determine project directory")
           return Err(EXIT_CONFIG_ERROR)
         }
     val hash = projectHashOf(cwd)
@@ -163,7 +164,7 @@ private fun sendNativeShutdown(socketPath: String): Boolean {
 private fun doDaemonReap(): Result<Unit, Int> {
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_CONFIG_ERROR)
     }
   val result = reapStaleDaemons(paths.daemonBaseDir)

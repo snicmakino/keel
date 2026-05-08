@@ -6,6 +6,7 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
 import kolt.config.*
 import kolt.infra.*
+import kolt.infra.output.eprintError
 import kolt.tool.installJdkToolchain
 import kolt.tool.installKonancToolchain
 import kolt.tool.installKotlincToolchain
@@ -44,22 +45,22 @@ private fun doToolchainInstall(): Result<Unit, Int> {
     }
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_CONFIG_ERROR)
     }
   installKotlincToolchain(config.kotlin.effectiveCompiler, paths).getOrElse {
-    eprintln("error: ${it.message}")
+    eprintError("${it.message}")
     return Err(EXIT_BUILD_ERROR)
   }
   if (config.build.jdk != null) {
     installJdkToolchain(config.build.jdk, paths).getOrElse {
-      eprintln("error: ${it.message}")
+      eprintError("${it.message}")
       return Err(EXIT_BUILD_ERROR)
     }
   }
   if (config.build.target in NATIVE_TARGETS) {
     installKonancToolchain(config.kotlin.effectiveCompiler, paths).getOrElse {
-      eprintln("error: ${it.message}")
+      eprintError("${it.message}")
       return Err(EXIT_BUILD_ERROR)
     }
   }
@@ -69,7 +70,7 @@ private fun doToolchainInstall(): Result<Unit, Int> {
 private fun doToolchainList(): Result<Unit, Int> {
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_CONFIG_ERROR)
     }
   val kotlincVersions = listInstalledVersions("${paths.toolchainsDir}/kotlinc")
@@ -146,17 +147,17 @@ private fun doToolchainRemove(args: List<String>): Result<Unit, Int> {
 
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_CONFIG_ERROR)
     }
   val toolchainPath = resolveToolchainPathForRemove(parsed.name, parsed.version, paths)
   if (toolchainPath == null) {
-    eprintln("error: ${parsed.name} ${parsed.version} is not installed")
+    eprintError("${parsed.name} ${parsed.version} is not installed")
     return Err(EXIT_BUILD_ERROR)
   }
 
   removeDirectoryRecursive(toolchainPath).getOrElse { err ->
-    eprintln("error: could not remove ${parsed.name} ${parsed.version}: ${err.path}")
+    eprintError("could not remove ${parsed.name} ${parsed.version}: ${err.path}")
     return Err(EXIT_BUILD_ERROR)
   }
   println("removed ${parsed.name} ${parsed.version}")

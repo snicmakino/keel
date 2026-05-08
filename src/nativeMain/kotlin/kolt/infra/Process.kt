@@ -75,7 +75,11 @@ fun executeCommand(
 // Double-fork detach. Ok(Unit) means the fork chain completed, not
 // that execvp succeeded — callers must poll the socket to confirm.
 @OptIn(ExperimentalForeignApi::class)
-fun spawnDetached(args: List<String>, logPath: String? = null): Result<Unit, ProcessError> {
+fun spawnDetached(
+  args: List<String>,
+  logPath: String? = null,
+  extraEnv: Map<String, String> = emptyMap(),
+): Result<Unit, ProcessError> {
   if (args.isEmpty()) return Err(ProcessError.EmptyArgs)
 
   val pid1 = fork()
@@ -88,6 +92,12 @@ fun spawnDetached(args: List<String>, logPath: String? = null): Result<Unit, Pro
     val pid2 = fork()
     if (pid2 < 0) _exit(127)
     if (pid2 > 0) _exit(0)
+
+    // After the second fork the grandchild owns its process image, so setenv
+    // here cannot leak back to the kolt CLI parent or sibling subprocesses.
+    for ((key, value) in extraEnv) {
+      setenv(key, value, 1)
+    }
 
     val devNull = open("/dev/null", O_RDWR)
     val logFd =

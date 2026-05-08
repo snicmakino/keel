@@ -61,4 +61,31 @@ class SpawnDetachedTest {
     val content = readFileAsString(logPath).get() ?: "<missing>"
     error("log capture failed. content so far:\n$content")
   }
+
+  // extraEnv lets callers inject NO_COLOR=1 (or similar) into a detached
+  // grandchild without contaminating the parent env. Verify the grandchild
+  // observes the entry by writing it through to a log file.
+  @Test
+  fun extraEnvIsVisibleInGrandchildEnvironment() {
+    val logPath = "$scratch.log"
+    deleteFile(logPath)
+    val result =
+      spawnDetached(
+        listOf("/bin/sh", "-c", "echo NO_COLOR=\$NO_COLOR"),
+        logPath = logPath,
+        extraEnv = mapOf("NO_COLOR" to "1"),
+      )
+    assertNull(result.getError(), "spawn failed: ${result.getError()}")
+    val deadline = kotlin.time.TimeSource.Monotonic.markNow().plus(kotlin.time.Duration.parse("2s"))
+    while (true) {
+      if (fileExists(logPath)) {
+        val content = readFileAsString(logPath).get() ?: ""
+        if (content.contains("NO_COLOR=1")) return
+      }
+      if (deadline.hasPassedNow()) break
+      platform.posix.usleep(20_000u)
+    }
+    val content = readFileAsString(logPath).get() ?: "<missing>"
+    error("extraEnv not propagated. log so far:\n$content")
+  }
 }

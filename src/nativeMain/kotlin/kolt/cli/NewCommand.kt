@@ -6,41 +6,42 @@ import com.github.michaelbull.result.getOrElse
 import kolt.infra.ensureDirectory
 import kolt.infra.eprintln
 import kolt.infra.fileExists
+import kolt.infra.output.eprintError
 
 internal fun doNew(args: List<String>, io: ScaffoldIO = SystemScaffoldIO): Result<Unit, Int> {
   val parsed =
     parseInitArgs(args).getOrElse { msg ->
-      eprintln("error: $msg")
+      eprintError(msg)
       return Err(EXIT_CONFIG_ERROR)
     }
 
   val projectName =
     parsed.projectName
       ?: run {
-        eprintln("error: kolt new requires a project name")
+        eprintError("kolt new requires a project name")
         eprintln("usage: kolt new <name> [--lib|--app] [--target <target>] [--group <group>]")
         return Err(EXIT_CONFIG_ERROR)
       }
 
   validateProjectName(projectName).getOrElse { msg ->
-    eprintln("error: $msg")
+    eprintError(msg)
     return Err(EXIT_CONFIG_ERROR)
   }
 
   if (fileExists(projectName)) {
-    eprintln("error: directory '$projectName' already exists")
+    eprintError("directory '$projectName' already exists")
     eprintln("  use `kolt init` to scaffold inside an existing directory")
     return Err(EXIT_CONFIG_ERROR)
   }
 
   val resolved =
     resolveInteractive(parsed, io).getOrElse { msg ->
-      eprintln("error: $msg")
+      eprintError(msg)
       return Err(EXIT_CONFIG_ERROR)
     }
 
   ensureDirectory(projectName).getOrElse { error ->
-    eprintln("error: could not create directory ${error.path}")
+    eprintError("could not create directory ${error.path}")
     return Err(EXIT_BUILD_ERROR)
   }
 

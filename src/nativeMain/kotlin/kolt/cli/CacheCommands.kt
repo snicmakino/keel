@@ -12,6 +12,7 @@ import kolt.infra.directorySize
 import kolt.infra.eprintln
 import kolt.infra.fileExists
 import kolt.infra.formatBytes
+import kolt.infra.output.eprintError
 import kolt.infra.removeDirectoryRecursive
 
 internal data class CacheCleanArgs(val includeTools: Boolean)
@@ -83,7 +84,7 @@ private fun doCacheClean(args: List<String>): Result<Unit, Int> {
 
   val paths =
     resolveKoltPaths().getOrElse {
-      eprintln("error: $it")
+      eprintError("$it")
       return Err(EXIT_CONFIG_ERROR)
     }
 
@@ -91,7 +92,7 @@ private fun doCacheClean(args: List<String>): Result<Unit, Int> {
   for (path in result.removedPaths) println("removed $path")
 
   if (result.error != null) {
-    eprintln("error: could not remove ${result.error.path}")
+    eprintError("could not remove ${result.error.path}")
     if (result.freedBytes > 0) {
       println("partially freed ${formatBytes(result.freedBytes)} before failure")
     }
