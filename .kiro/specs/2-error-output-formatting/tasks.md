@@ -233,7 +233,7 @@
   - _Depends: 5.1, 6.1, 6.2, 6.3_
   - _Boundary: end-to-end (kotlinc / konanc subprocess + daemon)_
 
-- [ ] 8.4 (P) `kolt info --format=json` の no-ANSI 検証 (R7.1 pin)
+- [x] 8.4 (P) `kolt info --format=json` の no-ANSI 検証 (R7.1 pin)
   - `kolt info --format=json` を TTY 環境 (isatty stub or 実 TTY) で実行、 stdout 出力に ANSI escape が含まれないこと
   - `--no-color` / `NO_COLOR=1` / TTY-redirect の各組合せでも stdout JSON は変化しない (severity 系の writer が stdout に漏れない契約)
   - 観察可能な完了: integration test green、 JSON 出力が `JSON.parse` 可能で ANSI 0 件
