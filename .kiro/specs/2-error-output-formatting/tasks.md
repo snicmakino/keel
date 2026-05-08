@@ -222,7 +222,7 @@
   - _Depends: 5.2, 5.3_
   - _Boundary: kolt.cli.Main (unknown subcommand / flag E2E)_
 
-- [ ] 8.3 (P) `SubprocessColorForwardingIntegrationTest` — kotlinc / konanc が `NO_COLOR=1` を honor することの実機 pin (validate-design Issue 3 解決)
+- [x] 8.3 (P) `SubprocessColorForwardingIntegrationTest` — kotlinc / konanc が `NO_COLOR=1` を honor することの実機 pin (validate-design Issue 3 解決)
   - fixture: 故意に compile error を起こす `*.kt` を配置した tmp project
   - シナリオ 1: `NO_COLOR=1 kolt --no-daemon build` (kotlinc direct subprocess 経路) — stderr に `\\x1B[` 含まれない
   - シナリオ 2: `kolt --no-color --no-daemon build` (同上、 flag 経由)
