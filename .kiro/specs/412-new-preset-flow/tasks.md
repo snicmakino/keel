@@ -14,9 +14,9 @@
 
 ## Phase 2: Core — preset prompt and native sub-prompt for the no-flag path
 
-- [ ] 2. Core
+- [x] 2. Core
 
-- [ ] 2.1 Replace the no-flag dispatch with a 4-preset prompt followed by an optional native sub-prompt
+- [x] 2.1 Replace the no-flag dispatch with a 4-preset prompt followed by an optional native sub-prompt
   - Introduce two private prompt functions inside the prompt module:
     - A preset prompt that emits header `Presets:`, four numbered lines (`1) jvm app (default)`, `2) jvm lib`, `3) native app`, `4) native lib`), the `>` input line, and applies the same numeric-only input policy as the existing kind prompt — empty / EOF → option 1, `1..4` → that option, anything else → `Result.Err` carrying the invalid input and the expected range.
     - A native sub-prompt that emits header `Native target:` and five numbered lines in share order (`1) linuxX64 (default)`, `2) macosArm64`, `3) mingwX64`, `4) linuxArm64`, `5) macosX64 (deprecated)`) with the same numeric-only policy — empty / EOF → option 1, `1..5` → that option, anything else → `Result.Err`.

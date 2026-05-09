@@ -66,29 +66,35 @@ class PromptTest {
   }
 
   @Test
-  fun ttyNoFlagsPromptsKindThenTargetThenGroup() {
-    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "", ""))
+  fun ttyNoFlagsPromptsPresetThenGroupForJvm() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", ""))
 
     doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
 
     val joined = io.outputs.joinToString("\n")
-    val kindIdx = joined.indexOf("Kinds:")
-    val targetIdx = joined.indexOf("Targets:")
+    val presetIdx = joined.indexOf("Presets:")
     val groupIdx = joined.indexOf("Group (")
-    assertTrue(kindIdx >= 0, "kind prompt missing: $joined")
-    assertTrue(targetIdx > kindIdx, "target must follow kind: $joined")
-    assertTrue(groupIdx > targetIdx, "group must follow target: $joined")
+    assertTrue(presetIdx >= 0, "preset prompt missing: $joined")
+    assertTrue(groupIdx > presetIdx, "group must follow preset: $joined")
+    assertFalse(
+      joined.contains("Native target:"),
+      "jvm preset must not trigger native sub-prompt: $joined",
+    )
+    assertFalse(joined.contains("Kinds:"), "no-flag path must not emit kind prompt: $joined")
+    assertFalse(joined.contains("Targets:"), "no-flag path must not emit target prompt: $joined")
   }
 
   @Test
-  fun ttyKindPromptListsOptionsOnePerLineWithNumbers() {
-    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "", ""))
+  fun ttyPresetPromptListsFourOptionsOnePerLineWithNumbers() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", ""))
 
     doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
 
     val joined = io.outputs.joinToString("\n")
-    assertTrue(joined.contains("  1) app (default)"), "missing numbered app line: $joined")
-    assertTrue(joined.contains("  2) lib"), "missing numbered lib line: $joined")
+    assertTrue(joined.contains("  1) jvm app (default)"), "missing numbered jvm app line: $joined")
+    assertTrue(joined.contains("  2) jvm lib"), "missing numbered jvm lib line: $joined")
+    assertTrue(joined.contains("  3) native app"), "missing numbered native app line: $joined")
+    assertTrue(joined.contains("  4) native lib"), "missing numbered native lib line: $joined")
   }
 
   @Test
@@ -172,14 +178,14 @@ class PromptTest {
 
   @Test
   fun ttyPromptUsesPlainArrowInputLine() {
-    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "", ""))
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", ""))
 
     doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
 
-    // The arrow is printed as its own line after each option list. Three
-    // prompts (kind, target, group) -> three `>` lines.
+    // The arrow is printed as its own line after each option list. No-flag jvm
+    // path -> two prompts (preset + group) -> two `>` lines.
     val arrowLines = io.outputs.count { it == ">" }
-    assertEquals(3, arrowLines, "expected 3 arrow lines (one per prompt), got: ${io.outputs}")
+    assertEquals(2, arrowLines, "expected 2 arrow lines (one per prompt), got: ${io.outputs}")
     assertTrue(
       io.outputs.any { it.startsWith("Group (") && it.contains("blank for none") },
       "group prompt header missing 'blank for none' hint: ${io.outputs}",
@@ -252,7 +258,8 @@ class PromptTest {
 
   @Test
   fun ttyGroupPromptValidValueNestsSource() {
-    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "", "com.example"))
+    // Inputs: preset=blank (jvm app default), group=com.example.
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "com.example"))
 
     doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
 
@@ -316,7 +323,8 @@ class PromptTest {
 
   @Test
   fun ttyGroupInvalidInputExitsNonZero() {
-    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "", "9bad"))
+    // Inputs: preset=blank (jvm app default), group="9bad" (invalid).
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "9bad"))
 
     val exit = doInit(listOf("myapp"), io, ColorPolicy.Never).getError()
 
@@ -349,25 +357,29 @@ class PromptTest {
   }
 
   @Test
-  fun ttyKindPromptColorsAppCyanAndLibYellowWhenPolicyAllows() {
-    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "", ""))
+  fun ttyPresetPromptColorsDefaultCyanAndOthersYellowWhenPolicyAllows() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", ""))
 
     doInit(listOf("myapp"), io, ColorPolicy.Always).getOrElse { error("doInit failed: exit=$it") }
 
     val joined = io.outputs.joinToString("\n")
     assertTrue(
-      joined.contains("${AnsiCodes.CYAN}app${AnsiCodes.RESET}"),
-      "expected cyan-wrapped app: $joined",
+      joined.contains("${AnsiCodes.CYAN}jvm app${AnsiCodes.RESET}"),
+      "expected cyan-wrapped 'jvm app' default: $joined",
     )
     assertTrue(
-      joined.contains("${AnsiCodes.YELLOW}lib${AnsiCodes.RESET}"),
-      "expected yellow-wrapped lib: $joined",
+      joined.contains("${AnsiCodes.YELLOW}jvm lib${AnsiCodes.RESET}"),
+      "expected yellow-wrapped 'jvm lib': $joined",
+    )
+    assertTrue(
+      joined.contains("${AnsiCodes.YELLOW}native app${AnsiCodes.RESET}"),
+      "expected yellow-wrapped 'native app': $joined",
     )
   }
 
   @Test
-  fun ttyKindPromptHasNoAnsiWhenPolicyDisables() {
-    val io = FakeScaffoldIO(tty = true, inputs = listOf("", "", ""))
+  fun ttyPresetPromptHasNoAnsiWhenPolicyDisables() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", ""))
 
     doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
 
@@ -392,6 +404,111 @@ class PromptTest {
       joined.contains("${AnsiCodes.YELLOW}linuxX64${AnsiCodes.RESET}"),
       "expected yellow-wrapped linuxX64: $joined",
     )
+  }
+
+  @Test
+  fun ttyPresetThreeShowsNativeSubPromptWithFiveOptions() {
+    // Preset 3 = native app. Inputs: preset=3, native target=blank, group=blank.
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("3", "", ""))
+
+    doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
+
+    val joined = io.outputs.joinToString("\n")
+    assertTrue(joined.contains("Native target:"), "missing native sub-prompt header: $joined")
+    assertTrue(joined.contains("  1) linuxX64 (default)"), "missing 1) linuxX64 line: $joined")
+    assertTrue(joined.contains("  2) macosArm64"), "missing 2) macosArm64 line: $joined")
+    assertTrue(joined.contains("  3) mingwX64"), "missing 3) mingwX64 line: $joined")
+    assertTrue(joined.contains("  4) linuxArm64"), "missing 4) linuxArm64 line: $joined")
+    assertTrue(
+      joined.contains("  5) macosX64 (deprecated)"),
+      "missing 5) macosX64 (deprecated) line: $joined",
+    )
+  }
+
+  @Test
+  fun ttyPresetFourAlsoShowsNativeSubPrompt() {
+    // Preset 4 = native lib. Inputs: preset=4, native target=blank, group=blank.
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("4", "", ""))
+
+    doInit(listOf("mylib"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
+
+    val joined = io.outputs.joinToString("\n")
+    assertTrue(
+      joined.contains("Native target:"),
+      "preset 4 (native lib) must trigger native sub-prompt: $joined",
+    )
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("kind = \"lib\""), "preset 4 must produce kind = lib: $toml")
+    assertTrue(
+      toml.contains("target = \"linuxX64\""),
+      "blank native sub-prompt must default to linuxX64: $toml",
+    )
+  }
+
+  @Test
+  fun ttyPresetOneSkipsNativeSubPrompt() {
+    // Preset 1 = jvm app. Inputs: preset=1, group=blank. Native sub-prompt
+    // must NOT appear because target is pinned to jvm by the preset.
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("1", ""))
+
+    doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
+
+    val joined = io.outputs.joinToString("\n")
+    assertFalse(
+      joined.contains("Native target:"),
+      "jvm preset must not trigger native sub-prompt: $joined",
+    )
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("target = \"jvm\""), "preset 1 must produce target = jvm: $toml")
+  }
+
+  @Test
+  fun ttyNativeSubPromptDefaultIsLinuxX64() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("3", "", ""))
+
+    doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
+
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(
+      toml.contains("target = \"linuxX64\""),
+      "blank native sub-prompt input must default to linuxX64: $toml",
+    )
+  }
+
+  @Test
+  fun ttyNativeSubPromptNumericTwoSelectsMacosArm64() {
+    // Native target ordering: 1) linuxX64, 2) macosArm64, 3) mingwX64, 4) linuxArm64, 5) macosX64.
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("3", "2", ""))
+
+    doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
+
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(
+      toml.contains("target = \"macosArm64\""),
+      "numeric '2' on native sub-prompt must select macosArm64: $toml",
+    )
+  }
+
+  @Test
+  fun ttyNativeSubPromptShowsDeprecatedSuffixOnMacosX64() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("3", "", ""))
+
+    doInit(listOf("myapp"), io, ColorPolicy.Never).getOrElse { error("doInit failed: exit=$it") }
+
+    val joined = io.outputs.joinToString("\n")
+    assertTrue(
+      joined.contains("  5) macosX64 (deprecated)"),
+      "expected '5) macosX64 (deprecated)' in native sub-prompt: $joined",
+    )
+  }
+
+  @Test
+  fun ttyNativeSubPromptInvalidInputExitsNonZero() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("3", "wasm"))
+
+    val exit = doInit(listOf("myapp"), io, ColorPolicy.Never).getError()
+
+    assertEquals(EXIT_CONFIG_ERROR, exit, "non-numeric native sub-prompt input must exit non-zero")
   }
 
   private fun createTempDir(prefix: String): String {
