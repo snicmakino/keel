@@ -215,7 +215,8 @@ class PromptTest {
   }
 
   @Test
-  fun ttyKindPromptRejectsNamedInput() {
+  fun ttyPresetPromptRejectsNamedInput() {
+    // No flags -> preset prompt fires first; "lib" is non-numeric and rejected.
     val io = FakeScaffoldIO(tty = true, inputs = listOf("lib"))
 
     val exit = doInit(listOf("myapp"), io, ColorPolicy.Never).getError()
@@ -303,7 +304,8 @@ class PromptTest {
   }
 
   @Test
-  fun ttyKindInvalidInputExitsNonZero() {
+  fun ttyPresetInvalidInputExitsNonZero() {
+    // No flags -> preset prompt fires first; "bogus" is non-numeric and rejected.
     val io = FakeScaffoldIO(tty = true, inputs = listOf("bogus"))
 
     val exit = doInit(listOf("myapp"), io, ColorPolicy.Never).getError()
