@@ -511,6 +511,123 @@ class PromptTest {
     assertEquals(EXIT_CONFIG_ERROR, exit, "non-numeric native sub-prompt input must exit non-zero")
   }
 
+  @Test
+  fun ttyTargetFlagJvmOnlyPromptsKindButNotPreset() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", ""))
+
+    doInit(listOf("myapp", "--target=jvm"), io, ColorPolicy.Never).getOrElse {
+      error("doInit failed: exit=$it")
+    }
+
+    val joined = io.outputs.joinToString("\n")
+    assertTrue(joined.contains("Kinds:"), "kind prompt missing when --target= alone: $joined")
+    assertFalse(
+      joined.contains("Presets:"),
+      "preset prompt must not fire when --target= set: $joined",
+    )
+    assertFalse(
+      joined.contains("Native target:"),
+      "native sub-prompt must not fire when --target= set: $joined",
+    )
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("target = \"jvm\""))
+    assertFalse(toml.contains("kind = \"lib\""))
+  }
+
+  @Test
+  fun ttyTargetFlagNativeOnlyPromptsKindButNotPreset() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf("", ""))
+
+    doInit(listOf("myapp", "--target=linuxX64"), io, ColorPolicy.Never).getOrElse {
+      error("doInit failed: exit=$it")
+    }
+
+    val joined = io.outputs.joinToString("\n")
+    assertTrue(joined.contains("Kinds:"), "kind prompt missing: $joined")
+    assertFalse(joined.contains("Presets:"))
+    assertFalse(joined.contains("Native target:"))
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("target = \"linuxX64\""))
+  }
+
+  @Test
+  fun ttyBothFlagsPinnedSkipsPresetTargetAndKindPrompts() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf(""))
+
+    doNew(listOf("mylib", "--lib", "--target=linuxX64"), io, ColorPolicy.Never).getOrElse {
+      error("doNew failed: exit=$it")
+    }
+
+    val joined = io.outputs.joinToString("\n")
+    assertFalse(joined.contains("Presets:"))
+    assertFalse(joined.contains("Kinds:"))
+    assertFalse(joined.contains("Targets:"))
+    assertFalse(joined.contains("Native target:"))
+    val toml = readFileAsString("mylib/kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("kind = \"lib\""))
+    assertTrue(toml.contains("target = \"linuxX64\""))
+  }
+
+  @Test
+  fun nonTtyLibFlagProducesJvmLibScaffold() {
+    val io = FakeScaffoldIO(tty = false, inputs = emptyList())
+
+    doInit(listOf("mylib", "--lib"), io, ColorPolicy.Never).getOrElse {
+      error("doInit failed: exit=$it")
+    }
+
+    val joined = io.outputs.joinToString("\n")
+    assertFalse(joined.contains("Presets:"))
+    assertFalse(joined.contains("Kinds:"))
+    assertFalse(joined.contains("Targets:"))
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("kind = \"lib\""))
+    assertTrue(toml.contains("target = \"jvm\""))
+  }
+
+  @Test
+  fun nonTtyTargetFlagNativeProducesAppScaffoldForThatTarget() {
+    val io = FakeScaffoldIO(tty = false, inputs = emptyList())
+
+    doInit(listOf("myapp", "--target=linuxX64"), io, ColorPolicy.Never).getOrElse {
+      error("doInit failed: exit=$it")
+    }
+
+    val joined = io.outputs.joinToString("\n")
+    assertFalse(joined.contains("Presets:"))
+    assertFalse(joined.contains("Kinds:"))
+    val toml = readFileAsString("kolt.toml").getOrElse { error("read failed") }
+    assertTrue(toml.contains("target = \"linuxX64\""))
+    assertFalse(toml.contains("kind = \"lib\""))
+  }
+
+  @Test
+  fun nonInteractiveInvalidTargetFlagExitsBeforePrompt() {
+    val io = FakeScaffoldIO(tty = true, inputs = emptyList())
+
+    val exit = doInit(listOf("myapp", "--target=wasm"), io, ColorPolicy.Never).getError()
+
+    assertEquals(EXIT_CONFIG_ERROR, exit)
+    assertFalse(fileExists("kolt.toml"), "no scaffold output on invalid target flag")
+    val joined = io.outputs.joinToString("\n")
+    assertFalse(joined.contains("Presets:"))
+    assertFalse(joined.contains("Targets:"))
+    assertFalse(joined.contains("Kinds:"))
+  }
+
+  @Test
+  fun ttyGroupFlagSuppressesGroupPrompt() {
+    val io = FakeScaffoldIO(tty = true, inputs = listOf(""))
+
+    doInit(listOf("myapp", "--group=com.example"), io, ColorPolicy.Never).getOrElse {
+      error("doInit failed: exit=$it")
+    }
+
+    val joined = io.outputs.joinToString("\n")
+    assertFalse(joined.contains("Group ("), "--group= must suppress the group prompt: $joined")
+    assertTrue(fileExists("src/com/example/myapp/Main.kt"), "scaffold must nest under group dir")
+  }
+
   private fun createTempDir(prefix: String): String {
     val template = "/tmp/${prefix}XXXXXX"
     val buf = template.encodeToByteArray().copyOf(template.length + 1)

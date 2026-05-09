@@ -30,9 +30,9 @@
 
 ## Phase 3: Coverage — explicit assertions for the remaining dispatch branches
 
-- [ ] 3. Coverage
+- [x] 3. Coverage
 
-- [ ] 3.1 Add explicit test coverage for the partial-flag and non-TTY dispatch branches
+- [x] 3.1 Add explicit test coverage for the partial-flag and non-TTY dispatch branches
   - Add `ttyTargetFlagJvmOnlyPromptsKindButNotPreset`: `doInit(["myapp", "--target=jvm"], io = TTY, inputs = ["", ""])` emits `Kinds:` and never emits `Presets:` or `Native target:`; the resulting `kolt.toml` has `target = "jvm"` and no `kind = "lib"`.
   - Add `ttyTargetFlagNativeOnlyPromptsKindButNotPreset`: `doInit(["myapp", "--target=linuxX64"], io = TTY, inputs = ["", ""])` emits `Kinds:`, never emits `Presets:` or `Native target:`, and produces `target = "linuxX64"` in the resulting toml.
   - Add `ttyBothFlagsPinnedSkipsPresetTargetAndKindPrompts`: `doNew(["mylib", "--lib", "--target=linuxX64"], io = TTY, inputs = [""])` (group blank) emits no `Presets:`, no `Kinds:`, no `Targets:`, and no `Native target:` headers; the resulting `mylib/kolt.toml` has `kind = "lib"` and `target = "linuxX64"`.
