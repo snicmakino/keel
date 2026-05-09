@@ -31,7 +31,11 @@ same niche for Kotlin that `go build` or `cargo build` fill for their languages.
 
 kolt's distinctness is not more features — it is fewer. Gradle's flexibility (Kotlin
 DSL, plugin ecosystem, multi-module orchestration) is deliberately out of scope where
-it would cost startup speed, auditability, or mental-model simplicity.
+it would cost startup speed, auditability, or mental-model simplicity. KMP-aware build
+tooling — source set hierarchy, `expect` / `actual`, per-target dependencies — is
+similarly out of scope: that surface belongs to Amper and Gradle's KMP plugin; kolt
+covers the single-target Kotlin niche (server / CLI / lib). See
+`kolt-target-model.md` for the v1 stance and the route comparison.
 
 - **No startup tax**: CLI responsiveness is immediate; heavy work is delegated to the
   warm daemon.
