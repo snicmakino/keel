@@ -12,7 +12,7 @@
   - _Requirements: 1.1, 2.1, 3.3_
   - _Boundary: ResolverProgressSink (new component)_
 
-- [ ] 1.2 Surface repository retries from the per-repository fall-through download loop
+- [x] 1.2 Surface repository retries from the per-repository fall-through download loop
   - Add a defaulted retry-against callback parameter to the download function that walks the configured repositories on 404 fall-through.
   - Fire the callback exactly when the loop is about to advance to a next repository after an HTTP 404 — never on non-404 errors and never after the final repository in the list (loop exhaustion).
   - TDD: write three failing unit tests using a list-capturing lambda — "404 then 200 fires once with the second repo", "non-404 first attempt fires zero times", "all repositories return 404 fires only on advances and not after the last" — then make them pass.

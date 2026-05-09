@@ -85,16 +85,21 @@ internal fun downloadFromRepositories(
   destPath: String,
   urlBuilder: (String) -> String,
   download: (String, String) -> Result<Unit, DownloadError>,
+  onRetry: (String) -> Unit = {},
 ): Result<Unit, RepositoryDownloadFailure> {
   if (repos.isEmpty()) return Err(RepositoryDownloadFailure.NoRepositoriesConfigured)
   val attempts = mutableListOf<RepositoryAttempt>()
-  for (repo in repos) {
+  for (i in repos.indices) {
+    val repo = repos[i]
     val url = urlBuilder(repo)
     val error = download(url, destPath).getError()
     if (error == null) return Ok(Unit)
     attempts.add(RepositoryAttempt(url, error))
     if (error !is DownloadError.HttpFailed || error.statusCode != 404) {
       return Err(RepositoryDownloadFailure.AllAttemptsFailed(attempts))
+    }
+    if (i + 1 < repos.size) {
+      onRetry(repos[i + 1])
     }
   }
   return Err(RepositoryDownloadFailure.AllAttemptsFailed(attempts))
