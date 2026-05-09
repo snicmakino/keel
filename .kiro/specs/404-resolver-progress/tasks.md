@@ -31,7 +31,7 @@
 
 - [ ] 2. Core emission
 
-- [ ] 2.1 (P) JVM transitive materialize emits per-artifact and per-retry progress for JAR fetches
+- [x] 2.1 (P) JVM transitive materialize emits per-artifact and per-retry progress for JAR fetches
   - Pre-count uncached JAR nodes before the materialize loop so the total `M` is known up front.
   - Emit the artifact-start callback (with 1-based index `N`, total `M`, and the artifact's `groupArtifact:version`) immediately before each uncached-JAR network download, and forward the retry callback to the download function so 404 retries surface against the next repository.
   - Sources fetch path remains silent: it neither emits artifact-start nor forwards a non-default retry callback.

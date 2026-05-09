@@ -215,6 +215,21 @@ private fun materialize(
   var lockChanged = false
   val resolvedDeps = mutableListOf<ResolvedDep>()
 
+  // Pre-count uncached JAR nodes so the total `M` is known before any
+  // emission. A node whose coordinate fails to parse is excluded from `M`
+  // here; the main loop returns `InvalidDependency` for it before any
+  // emission happens.
+  val total =
+    nodes.count { node ->
+      val jarGa = redirects[node.groupArtifact] ?: node.groupArtifact
+      val coord =
+        parseCoordinate(jarGa, node.version).getOrElse {
+          return@count false
+        }
+      !deps.fileExists("$cacheBase/${buildCachePath(coord)}")
+    }
+  var index = 0
+
   for (node in nodes) {
     val jarGroupArtifact = redirects[node.groupArtifact] ?: node.groupArtifact
     val coord =
@@ -232,11 +247,14 @@ private fun materialize(
       deps.ensureDirectoryRecursive(parentDir).getOrElse {
         return Err(ResolveError.DirectoryCreateFailed(parentDir))
       }
+      index += 1
+      progress.onArtifactStart(index, total, node.groupArtifact, node.version)
       downloadFromRepositories(
           repos,
           fullCachePath,
           { buildDownloadUrl(coord, it) },
           deps::downloadFile,
+          onRetry = progress::onRetryAgainst,
         )
         .getOrElse { failure ->
           return Err(ResolveError.DownloadFailed(node.groupArtifact, failure))
