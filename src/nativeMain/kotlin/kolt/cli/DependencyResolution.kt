@@ -26,6 +26,22 @@ private const val WORKSPACE_JSON = "workspace.json"
 
 internal fun createResolverDeps(): ResolverDeps = defaultResolverDeps()
 
+private class StderrProgressSink(private val emit: (String) -> Unit = ::eprintln) :
+  ResolverProgressSink {
+  override fun onArtifactStart(index: Int, total: Int, groupArtifact: String, version: String) {
+    emit("[$index/$total] $groupArtifact:$version")
+  }
+
+  override fun onRetryAgainst(repository: String) {
+    emit("  -> retry against $repository")
+  }
+}
+
+internal fun newStderrProgressSink(): ResolverProgressSink = StderrProgressSink()
+
+internal fun newStderrProgressSinkForTest(emit: (String) -> Unit): ResolverProgressSink =
+  StderrProgressSink(emit)
+
 // Splits the resolved jars by origin so the JVM kind=app tail in BuildCommands
 // can emit the runtime classpath manifest (ADR 0027 §1) from main-only jars,
 // while `kolt test` can still build its compile/run classpath from the union.

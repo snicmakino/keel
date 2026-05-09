@@ -61,7 +61,7 @@
 
 - [ ] 3. Integration
 
-- [ ] 3.1 Add the production stderr sink and a CLI-internal constructor helper
+- [x] 3.1 Add the production stderr sink and a CLI-internal constructor helper
   - Introduce a private CLI sink class that formats the artifact-start callback as `[N/M] groupArtifact:version` and the retry-against callback as `  -> retry against <repository>`, both via the existing stderr writer.
   - Provide an internal helper that constructs a fresh sink instance per top-level resolver invocation, so multiple CLI entries can share the wiring without duplicating it.
   - Add a unit test that injects a String-capturing emit lambda into the sink and asserts the exact two formatted lines for a synthetic `(2,5)` artifact-start and a sample retry against a repository URL.
