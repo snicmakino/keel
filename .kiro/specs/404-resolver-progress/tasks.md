@@ -2,7 +2,7 @@
 
 ## Phase 1: Foundation — sink contract, retry callback, signature plumbing
 
-- [ ] 1. Foundation
+- [x] 1. Foundation
 
 - [x] 1.1 Define the resolver progress sink contract with a recording-sink test fixture
   - Establish a sink interface with two callbacks: one fired when an artifact's network fetch is about to start, one fired when a 404 advances the per-repository fall-through to the next repository.
@@ -29,7 +29,7 @@
 
 ## Phase 2: Core — materialize-level emission per resolver path
 
-- [ ] 2. Core emission
+- [x] 2. Core emission
 
 - [x] 2.1 (P) JVM transitive materialize emits per-artifact and per-retry progress for JAR fetches
   - Pre-count uncached JAR nodes before the materialize loop so the total `M` is known up front.
@@ -59,7 +59,7 @@
 
 ## Phase 3: Integration — production CLI wiring, banner relocation, metadata-probe line
 
-- [ ] 3. Integration
+- [x] 3. Integration
 
 - [x] 3.1 Add the production stderr sink and a CLI-internal constructor helper
   - Introduce a private CLI sink class that formats the artifact-start callback as `[N/M] groupArtifact:version` and the retry-against callback as `  -> retry against <repository>`, both via the existing stderr writer.
