@@ -31,6 +31,7 @@ internal fun resolveBundle(
   existingLock: Lockfile?,
   cacheBase: String,
   deps: ResolverDeps,
+  progress: ResolverProgressSink = ResolverProgressSink.NoOp,
 ): Result<BundleResolution, ResolveError> {
   // materialize() consults existingLock.dependencies for sha-mismatch and
   // lockChanged tracking. Project the bundle's own sub-map (not main/test's)
@@ -53,6 +54,7 @@ internal fun resolveBundle(
       deps = deps,
       mainSeeds = bundleSeeds,
       testSeeds = emptyMap(),
+      progress = progress,
     )
     .map { result ->
       val jars =
@@ -107,6 +109,7 @@ fun resolveSingleArtifact(
   repos: List<String>,
   cacheBase: String,
   deps: ResolverDeps,
+  progress: ResolverProgressSink = ResolverProgressSink.NoOp,
 ): Result<SingleArtifact, ResolveError> {
   val groupArtifact = "${coord.group}:${coord.artifact}"
   val relativePath = buildRelativeJarPath(coord, classifier)
@@ -117,11 +120,13 @@ fun resolveSingleArtifact(
     deps.ensureDirectoryRecursive(parentDir).getOrElse {
       return Err(ResolveError.DirectoryCreateFailed(parentDir))
     }
+    progress.onArtifactStart(1, 1, groupArtifact, coord.version)
     downloadFromRepositories(
         repos,
         cachePath,
         { repo -> "$repo/$relativePath" },
         deps::downloadFile,
+        onRetry = progress::onRetryAgainst,
       )
       .getOrElse { failure ->
         return Err(ResolveError.DownloadFailed(groupArtifact, failure))
@@ -169,10 +174,15 @@ internal fun materialiseBundleJarsFromLock(
   bundleName: String,
   cacheBase: String,
   deps: ResolverDeps,
+  progress: ResolverProgressSink = ResolverProgressSink.NoOp,
 ): Result<Unit, ResolveError> {
   val locked = existingLock.classpathBundles[bundleName] ?: return Ok(Unit)
   val repos = config.repositories.values.toList()
   val cachePrefix = "$cacheBase/"
+  // Pre-count uncached locked jars so the total `M` is known before any
+  // emission. Cache-warm jars do not advance the index and stay silent.
+  val total = resolution.deps.count { !deps.fileExists(it.cachePath) }
+  var index = 0
   for (dep in resolution.deps) {
     if (deps.fileExists(dep.cachePath)) continue
     val relativePath =
@@ -182,11 +192,14 @@ internal fun materialiseBundleJarsFromLock(
     deps.ensureDirectoryRecursive(parentDir).getOrElse {
       return Err(ResolveError.DirectoryCreateFailed(parentDir))
     }
+    index += 1
+    progress.onArtifactStart(index, total, dep.groupArtifact, dep.version)
     downloadFromRepositories(
         repos,
         dep.cachePath,
         { repo -> "$repo/$relativePath" },
         deps::downloadFile,
+        onRetry = progress::onRetryAgainst,
       )
       .getOrElse { failure ->
         return Err(ResolveError.DownloadFailed(dep.groupArtifact, failure))

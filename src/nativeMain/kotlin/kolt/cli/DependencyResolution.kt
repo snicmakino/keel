@@ -26,6 +26,22 @@ private const val WORKSPACE_JSON = "workspace.json"
 
 internal fun createResolverDeps(): ResolverDeps = defaultResolverDeps()
 
+private class StderrProgressSink(private val emit: (String) -> Unit = ::eprintln) :
+  ResolverProgressSink {
+  override fun onArtifactStart(index: Int, total: Int, groupArtifact: String, version: String) {
+    emit("[$index/$total] $groupArtifact:$version")
+  }
+
+  override fun onRetryAgainst(repository: String) {
+    emit("  -> retry against $repository")
+  }
+}
+
+internal fun newStderrProgressSink(): ResolverProgressSink = StderrProgressSink()
+
+internal fun newStderrProgressSinkForTest(emit: (String) -> Unit): ResolverProgressSink =
+  StderrProgressSink(emit)
+
 // Splits the resolved jars by origin so the JVM kind=app tail in BuildCommands
 // can emit the runtime classpath manifest (ADR 0027 §1) from main-only jars,
 // while `kolt test` can still build its compile/run classpath from the union.
@@ -121,8 +137,9 @@ internal fun resolveDependencies(
       }
     }
 
-  println("resolving dependencies...")
+  eprintln("resolving dependencies...")
   val resolverDeps = createResolverDeps()
+  val progress = newStderrProgressSink()
   val resolveResult =
     resolve(
         config,
@@ -131,6 +148,7 @@ internal fun resolveDependencies(
         resolverDeps,
         mainSeeds = mainSeeds,
         testSeeds = testSeeds,
+        progress = progress,
       )
       .getOrElse { error ->
         eprintDiagnostic(formatResolveError(error))
@@ -141,7 +159,8 @@ internal fun resolveDependencies(
       }
 
   val bundleResolutions =
-    resolveAllBundles(config, existingLock, paths.cacheBase, resolverDeps).getOrElse { error ->
+    resolveAllBundles(config, existingLock, paths.cacheBase, resolverDeps, progress).getOrElse {
+      error ->
       eprintDiagnostic(formatResolveError(error))
       if (error is ResolveError.Sha256Mismatch) {
         eprintln("delete the cached jar and rebuild to re-download")
@@ -215,6 +234,7 @@ internal fun resolveAllBundles(
   existingLock: Lockfile?,
   cacheBase: String,
   resolverDeps: ResolverDeps,
+  progress: ResolverProgressSink = ResolverProgressSink.NoOp,
 ): Result<Map<String, BundleResolution>, ResolveError> {
   if (config.classpaths.isEmpty()) return Ok(emptyMap())
 
@@ -230,6 +250,7 @@ internal fun resolveAllBundles(
             bundleName,
             cacheBase,
             resolverDeps,
+            progress,
           )
           .getOrElse {
             return Err(it)
@@ -246,6 +267,7 @@ internal fun resolveAllBundles(
           existingLock = existingLock,
           cacheBase = cacheBase,
           deps = resolverDeps,
+          progress = progress,
         )
         .getOrElse { error ->
           return Err(error)
@@ -352,12 +374,19 @@ internal fun resolveNativeDependencies(
 ): Result<List<String>, Int> {
   if (config.dependencies.isEmpty()) return Ok(emptyList())
 
-  println("resolving native dependencies...")
+  eprintln("resolving native dependencies...")
   val result =
-    resolve(config, existingLock = null, paths.cacheBase, createResolverDeps()).getOrElse { error ->
-      eprintDiagnostic(formatResolveError(error))
-      return Err(EXIT_DEPENDENCY_ERROR)
-    }
+    resolve(
+        config,
+        existingLock = null,
+        paths.cacheBase,
+        createResolverDeps(),
+        progress = newStderrProgressSink(),
+      )
+      .getOrElse { error ->
+        eprintDiagnostic(formatResolveError(error))
+        return Err(EXIT_DEPENDENCY_ERROR)
+      }
   return Ok(result.deps.map { it.cachePath })
 }
 

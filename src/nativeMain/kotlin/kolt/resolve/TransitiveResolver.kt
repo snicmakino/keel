@@ -15,6 +15,7 @@ fun resolveTransitive(
   deps: ResolverDeps,
   mainSeeds: Map<String, String> = config.dependencies,
   testSeeds: Map<String, String> = emptyMap(),
+  progress: ResolverProgressSink = ResolverProgressSink.NoOp,
 ): Result<ResolveResult, ResolveError> {
   val repos = config.repositories.values.toList()
 
@@ -44,7 +45,7 @@ fun resolveTransitive(
         return Err(error)
       }
 
-  return materialize(nodes, redirects, config, existingLock, cacheBase, deps, repos)
+  return materialize(nodes, redirects, config, existingLock, cacheBase, deps, repos, progress)
 }
 
 // Best-effort sources fetch. Sources are editor UX — missing upstream
@@ -85,16 +86,21 @@ internal fun downloadFromRepositories(
   destPath: String,
   urlBuilder: (String) -> String,
   download: (String, String) -> Result<Unit, DownloadError>,
+  onRetry: (String) -> Unit = {},
 ): Result<Unit, RepositoryDownloadFailure> {
   if (repos.isEmpty()) return Err(RepositoryDownloadFailure.NoRepositoriesConfigured)
   val attempts = mutableListOf<RepositoryAttempt>()
-  for (repo in repos) {
+  for (i in repos.indices) {
+    val repo = repos[i]
     val url = urlBuilder(repo)
     val error = download(url, destPath).getError()
     if (error == null) return Ok(Unit)
     attempts.add(RepositoryAttempt(url, error))
     if (error !is DownloadError.HttpFailed || error.statusCode != 404) {
       return Err(RepositoryDownloadFailure.AllAttemptsFailed(attempts))
+    }
+    if (i + 1 < repos.size) {
+      onRetry(repos[i + 1])
     }
   }
   return Err(RepositoryDownloadFailure.AllAttemptsFailed(attempts))
@@ -204,9 +210,25 @@ private fun materialize(
   cacheBase: String,
   deps: ResolverDeps,
   repos: List<String>,
+  progress: ResolverProgressSink = ResolverProgressSink.NoOp,
 ): Result<ResolveResult, ResolveError> {
   var lockChanged = false
   val resolvedDeps = mutableListOf<ResolvedDep>()
+
+  // Pre-count uncached JAR nodes so the total `M` is known before any
+  // emission. A node whose coordinate fails to parse is excluded from `M`
+  // here; the main loop returns `InvalidDependency` for it before any
+  // emission happens.
+  val total =
+    nodes.count { node ->
+      val jarGa = redirects[node.groupArtifact] ?: node.groupArtifact
+      val coord =
+        parseCoordinate(jarGa, node.version).getOrElse {
+          return@count false
+        }
+      !deps.fileExists("$cacheBase/${buildCachePath(coord)}")
+    }
+  var index = 0
 
   for (node in nodes) {
     val jarGroupArtifact = redirects[node.groupArtifact] ?: node.groupArtifact
@@ -225,11 +247,14 @@ private fun materialize(
       deps.ensureDirectoryRecursive(parentDir).getOrElse {
         return Err(ResolveError.DirectoryCreateFailed(parentDir))
       }
+      index += 1
+      progress.onArtifactStart(index, total, node.groupArtifact, node.version)
       downloadFromRepositories(
           repos,
           fullCachePath,
           { buildDownloadUrl(coord, it) },
           deps::downloadFile,
+          onRetry = progress::onRetryAgainst,
         )
         .getOrElse { failure ->
           return Err(ResolveError.DownloadFailed(node.groupArtifact, failure))

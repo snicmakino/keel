@@ -1324,6 +1324,69 @@ class TransitiveResolverTest {
   }
 
   @Test
+  fun downloadFromRepositoriesOnRetryFiresOnceWithSecondRepoOn404Then200() {
+    val coord = Coordinate("com.example", "lib", "1.0.0")
+    val repo1 = "https://repo1.example.com"
+    val repo2 = "https://repo2.example.com"
+    val captured = mutableListOf<String>()
+
+    val result =
+      downloadFromRepositories(
+        repos = listOf(repo1, repo2),
+        destPath = "/cache/lib.jar",
+        urlBuilder = { repo -> buildDownloadUrl(coord, repo) },
+        download = { url, _ ->
+          if (url.startsWith(repo1)) Err(DownloadError.HttpFailed(url, 404)) else Ok(Unit)
+        },
+        onRetry = { repo -> captured.add(repo) },
+      )
+
+    assertNotNull(result.get())
+    assertEquals(listOf(repo2), captured)
+  }
+
+  @Test
+  fun downloadFromRepositoriesOnRetryFiresZeroTimesOnNon404FirstAttempt() {
+    val coord = Coordinate("com.example", "lib", "1.0.0")
+    val repo1 = "https://repo1.example.com"
+    val repo2 = "https://repo2.example.com"
+    val captured = mutableListOf<String>()
+
+    val result =
+      downloadFromRepositories(
+        repos = listOf(repo1, repo2),
+        destPath = "/cache/lib.jar",
+        urlBuilder = { repo -> buildDownloadUrl(coord, repo) },
+        download = { url, _ -> Err(DownloadError.NetworkError(url, "connection refused")) },
+        onRetry = { repo -> captured.add(repo) },
+      )
+
+    assertIs<RepositoryDownloadFailure.AllAttemptsFailed>(result.getError())
+    assertEquals(emptyList(), captured)
+  }
+
+  @Test
+  fun downloadFromRepositoriesOnRetryFiresOnlyOnAdvancesNotAfterLastWhenAll404() {
+    val coord = Coordinate("com.example", "lib", "1.0.0")
+    val repo1 = "https://repo1.example.com"
+    val repo2 = "https://repo2.example.com"
+    val repo3 = "https://repo3.example.com"
+    val captured = mutableListOf<String>()
+
+    val result =
+      downloadFromRepositories(
+        repos = listOf(repo1, repo2, repo3),
+        destPath = "/cache/lib.jar",
+        urlBuilder = { repo -> buildDownloadUrl(coord, repo) },
+        download = { url, _ -> Err(DownloadError.HttpFailed(url, 404)) },
+        onRetry = { repo -> captured.add(repo) },
+      )
+
+    assertIs<RepositoryDownloadFailure.AllAttemptsFailed>(result.getError())
+    assertEquals(listOf(repo2, repo3), captured)
+  }
+
+  @Test
   fun resolveWithCustomRepositoryUrl() {
     val customRepoBase = "https://nexus.example.com/repository/maven-public"
     val config =
