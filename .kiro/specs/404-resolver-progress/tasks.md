@@ -4,7 +4,7 @@
 
 - [ ] 1. Foundation
 
-- [ ] 1.1 Define the resolver progress sink contract with a recording-sink test fixture
+- [x] 1.1 Define the resolver progress sink contract with a recording-sink test fixture
   - Establish a sink interface with two callbacks: one fired when an artifact's network fetch is about to start, one fired when a 404 advances the per-repository fall-through to the next repository.
   - Provide a no-op companion default so existing resolver consumers inherit silent behavior without code changes.
   - Add a recording-sink test fixture that captures every callback into an ordered list, plus a baseline test that drives the recording sink directly and asserts the recorded sequence matches a manually-constructed reference.
