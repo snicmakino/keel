@@ -49,7 +49,7 @@
   - _Requirements: 1.1, 1.4, 2.1, 2.4, 3.1_
   - _Boundary: NativeResolver — resolveNative_
 
-- [ ] 2.3 (P) Bundle resolver paths emit per-artifact and per-retry progress
+- [x] 2.3 (P) Bundle resolver paths emit per-artifact and per-retry progress
   - Apply the same pre-count + artifact-start + retry-callback pattern to the bundle declaration path, the single-artifact bundle path, and the bundle lock-reuse materialization path.
   - The lock-reuse path is included so a stale-cache + matching-lock scenario (lockfile present, JAR evicted from cache) surfaces re-downloads instead of going silent.
   - TDD: a "three uncached bundle entries record (1,3),(2,3),(3,3)" test and a "lock-reuse with one evicted JAR records (1,1)" test, both using the recording fixture.
