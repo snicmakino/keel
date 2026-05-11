@@ -24,7 +24,7 @@
   - 観測: unit test が `Ok(JvmOnly(coord))` を assert し緑。 既存の Klib 経路テストすべて緑。
   - _Requirements: 1.1, 1.2_
 
-- [ ] 3.2 `.module` 404 + `.pom` も失敗 (404 / 5xx 等) のとき、 **元の `.module` の `DownloadFailed`** を返す
+- [x] 3.2 `.module` 404 + `.pom` も失敗 (404 / 5xx 等) のとき、 **元の `.module` の `DownloadFailed`** を返す
   - 返す error は `.module` 取得時の `RepositoryAttempt` 一覧を保持していること (ユーザーに `.module` の attempts dump が見える)。 `.pom` の attempts は捨てる。
   - 観測: `.module` 404 + `.pom` 404 の unit test で error が `.module` の attempts を保持していることを assert。 typo / 真の missing artifact を masking しない。
   - _Requirements: 1.3_

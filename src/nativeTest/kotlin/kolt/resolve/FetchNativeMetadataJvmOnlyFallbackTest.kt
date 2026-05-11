@@ -4,6 +4,7 @@ import com.github.michaelbull.result.Err
 import com.github.michaelbull.result.Ok
 import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.get
+import com.github.michaelbull.result.getError
 import kolt.infra.DownloadError
 import kolt.infra.MkdirFailed
 import kolt.infra.OpenFailed
@@ -11,6 +12,7 @@ import kolt.infra.Sha256Error
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class FetchNativeMetadataJvmOnlyFallbackTest {
 
@@ -66,5 +68,52 @@ class FetchNativeMetadataJvmOnlyFallbackTest {
     assertEquals("com.example", resolved.coordinate.group)
     assertEquals("lib", resolved.coordinate.artifact)
     assertEquals("1.0.0", resolved.coordinate.version)
+  }
+
+  // When `.module` and `.pom` both 404 across every repo, the resolver must
+  // surface the original `.module` DownloadFailed so a typo or genuinely
+  // missing artifact stays visible in the per-repo attempts dump. Returning
+  // `.pom` attempts instead would mask the real failure under a fallback
+  // path the user did not request.
+  @Test
+  fun moduleAndPomAll404ReturnsModuleAttempts() {
+    val deps =
+      object : ResolverDeps {
+        override fun fileExists(path: String): Boolean = false
+
+        override fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> = Ok(Unit)
+
+        override fun downloadFile(url: String, destPath: String): Result<Unit, DownloadError> =
+          Err(DownloadError.HttpFailed(url, 404))
+
+        override fun computeSha256(filePath: String): Result<String, Sha256Error> =
+          Err(Sha256Error(filePath))
+
+        override fun readFileContent(path: String): Result<String, OpenFailed> =
+          Err(OpenFailed(path))
+      }
+
+    val result =
+      fetchNativeMetadata(
+        groupArtifact = "com.example:lib",
+        version = "1.0.0",
+        nativeTarget = "linux_x64",
+        cacheBase = "/cache",
+        repos = listOf("https://repo1.example/", "https://repo2.example/"),
+        deps = deps,
+      )
+
+    val error = assertIs<ResolveError.DownloadFailed>(result.getError())
+    assertEquals("com.example:lib", error.groupArtifact)
+    val failure = assertIs<RepositoryDownloadFailure.AllAttemptsFailed>(error.failure)
+    assertEquals(2, failure.attempts.size)
+    assertTrue(
+      failure.attempts.all { it.url.endsWith(".module") },
+      "expected only .module attempts, got: ${failure.attempts.map { it.url }}",
+    )
+    assertTrue(
+      failure.attempts.none { it.url.endsWith(".pom") },
+      "expected no .pom attempts, got: ${failure.attempts.map { it.url }}",
+    )
   }
 }
