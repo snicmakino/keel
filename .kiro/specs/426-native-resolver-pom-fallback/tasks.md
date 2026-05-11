@@ -47,7 +47,7 @@
   - 観測: 非 stdlib coordinate (例: `org.example:fake-jvm-only`) を transitive に含む resolve で stderr に該当 note 1 行が出力され、 `resolvedDeps` に含まれていないこと。
   - _Requirements: 4.1_
 
-- [ ] 5.2 transitive JvmOnly node が `kotlin-stdlib` / `kotlin-stdlib-common` のとき、 silent skip (note を出さない) を維持する
+- [x] 5.2 transitive JvmOnly node が `kotlin-stdlib` / `kotlin-stdlib-common` のとき、 silent skip (note を出さない) を維持する
   - 既存 `isKotlinStdlib` predicate を skip 直前で short-circuit に使う。
   - 観測: transitive 上に `kotlin-stdlib-common` がある resolve で `resolvedDeps` に含まれず、 stderr に note 行が出ない (capture して空であること) こと。
   - _Requirements: 4.2_
