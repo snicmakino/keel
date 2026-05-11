@@ -87,7 +87,7 @@
   - 観測: `NativeResolverTest` の全ケースが緑、 `kotlin-stdlib-common` transitive シナリオで stderr 空。
   - _Requirements: 2.3, 3.1, 3.2_
 
-- [ ] 8.2 JVM 経路 (`TransitiveResolver` 系) を含む全テストスイートを `kolt test` で実行し、 緑であることを確認する
+- [x] 8.2 JVM 経路 (`TransitiveResolver` 系) を含む全テストスイートを `kolt test` で実行し、 緑であることを確認する
   - 検証: ルートで `kolt test`、 `kolt-jvm-compiler-daemon` で `kolt test`、 `kolt-native-compiler-daemon` で `kolt test` の 3 つすべて exit 0。
   - 検証: `TransitiveResolver.kt` / `Resolver.kt` の diff が 0 行 (`git diff src/nativeMain/kotlin/kolt/resolve/TransitiveResolver.kt` / `Resolver.kt`)。
   - 観測: スイート全体グリーン + 該当ファイル diff 空。
