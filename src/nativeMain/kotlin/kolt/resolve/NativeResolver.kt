@@ -19,7 +19,9 @@ private fun isKotlinStdlib(groupArtifact: String): Boolean =
   groupArtifact == "org.jetbrains.kotlin:kotlin-stdlib" ||
     groupArtifact == "org.jetbrains.kotlin:kotlin-stdlib-common"
 
-private data class NativeResolved(val redirect: NativeRedirect, val artifact: NativeArtifact)
+private sealed class NativeResolved {
+  data class Klib(val redirect: NativeRedirect, val artifact: NativeArtifact) : NativeResolved()
+}
 
 /**
  * Resolves Kotlin/Native dependencies via the shared resolution kernel ([fixpointResolve]).
@@ -71,9 +73,13 @@ fun resolveNative(
   val total =
     nodes.count { node ->
       val resolved = processed["${node.groupArtifact}:${node.version}"] ?: return@count false
-      val targetCoord =
-        Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
-      !deps.fileExists("$cacheBase/${buildKlibCachePath(targetCoord)}")
+      when (resolved) {
+        is NativeResolved.Klib -> {
+          val targetCoord =
+            Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
+          !deps.fileExists("$cacheBase/${buildKlibCachePath(targetCoord)}")
+        }
+      }
     }
   var index = 0
 
@@ -82,48 +88,56 @@ fun resolveNative(
       processed["${node.groupArtifact}:${node.version}"]
         ?: return Err(ResolveError.MetadataParseFailed(node.groupArtifact))
 
-    val targetCoord =
-      Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
-    val klibCachePath = "$cacheBase/${buildKlibCachePath(targetCoord)}"
+    when (resolved) {
+      is NativeResolved.Klib -> {
+        val targetCoord =
+          Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
+        val klibCachePath = "$cacheBase/${buildKlibCachePath(targetCoord)}"
 
-    if (!deps.fileExists(klibCachePath)) {
-      val parentDir = klibCachePath.substringBeforeLast('/')
-      deps.ensureDirectoryRecursive(parentDir).getOrElse {
-        return Err(ResolveError.DirectoryCreateFailed(parentDir))
-      }
-      index += 1
-      progress.onArtifactStart(index, total, node.groupArtifact, node.version)
-      downloadFromRepositories(
-          repos,
-          klibCachePath,
-          { buildKlibDownloadUrl(targetCoord, it) },
-          deps::downloadFile,
-          onRetry = progress::onRetryAgainst,
-        )
-        .getOrElse { failure ->
-          return Err(ResolveError.DownloadFailed(node.groupArtifact, failure))
+        if (!deps.fileExists(klibCachePath)) {
+          val parentDir = klibCachePath.substringBeforeLast('/')
+          deps.ensureDirectoryRecursive(parentDir).getOrElse {
+            return Err(ResolveError.DirectoryCreateFailed(parentDir))
+          }
+          index += 1
+          progress.onArtifactStart(index, total, node.groupArtifact, node.version)
+          downloadFromRepositories(
+              repos,
+              klibCachePath,
+              { buildKlibDownloadUrl(targetCoord, it) },
+              deps::downloadFile,
+              onRetry = progress::onRetryAgainst,
+            )
+            .getOrElse { failure ->
+              return Err(ResolveError.DownloadFailed(node.groupArtifact, failure))
+            }
         }
-    }
 
-    val actualHash =
-      deps.computeSha256(klibCachePath).getOrElse {
-        return Err(ResolveError.HashComputeFailed(node.groupArtifact, it))
+        val actualHash =
+          deps.computeSha256(klibCachePath).getOrElse {
+            return Err(ResolveError.HashComputeFailed(node.groupArtifact, it))
+          }
+        if (actualHash != resolved.artifact.klibSha256) {
+          return Err(
+            ResolveError.Sha256Mismatch(
+              node.groupArtifact,
+              resolved.artifact.klibSha256,
+              actualHash,
+            )
+          )
+        }
+
+        resolvedDeps.add(
+          ResolvedDep(
+            groupArtifact = node.groupArtifact,
+            version = node.version,
+            sha256 = actualHash,
+            cachePath = klibCachePath,
+            transitive = !node.direct,
+          )
+        )
       }
-    if (actualHash != resolved.artifact.klibSha256) {
-      return Err(
-        ResolveError.Sha256Mismatch(node.groupArtifact, resolved.artifact.klibSha256, actualHash)
-      )
     }
-
-    resolvedDeps.add(
-      ResolvedDep(
-        groupArtifact = node.groupArtifact,
-        version = node.version,
-        sha256 = actualHash,
-        cachePath = klibCachePath,
-        transitive = !node.direct,
-      )
-    )
   }
 
   return Ok(ResolveResult(deps = resolvedDeps, lockChanged = false))
@@ -150,10 +164,13 @@ private fun makeNativeChildLookup(
       fetched
     }
   val children =
-    native.artifact.dependencies.mapNotNull { d ->
-      val depGA = "${d.group}:${d.module}"
-      if (isKotlinStdlib(depGA)) return@mapNotNull null
-      Child(groupArtifact = depGA, version = d.version, strict = d.strict, rejects = d.rejects)
+    when (native) {
+      is NativeResolved.Klib ->
+        native.artifact.dependencies.mapNotNull { d ->
+          val depGA = "${d.group}:${d.module}"
+          if (isKotlinStdlib(depGA)) return@mapNotNull null
+          Child(groupArtifact = depGA, version = d.version, strict = d.strict, rejects = d.rejects)
+        }
     }
   Ok(children)
 }
@@ -192,12 +209,15 @@ fun createNativeLookup(
           .getOrElse { null }
 
       resolved?.let {
-        NativeNodeInfo(
-          displayGroupArtifact = "${it.redirect.group}:${it.redirect.module}",
-          displayVersion = it.redirect.version,
-          dependencies =
-            it.artifact.dependencies.map { dep -> "${dep.group}:${dep.module}" to dep.version },
-        )
+        when (it) {
+          is NativeResolved.Klib ->
+            NativeNodeInfo(
+              displayGroupArtifact = "${it.redirect.group}:${it.redirect.module}",
+              displayVersion = it.redirect.version,
+              dependencies =
+                it.artifact.dependencies.map { dep -> "${dep.group}:${dep.module}" to dep.version },
+            )
+        }
       }
     }
   }
@@ -261,7 +281,7 @@ private fun fetchNativeMetadata(
     parseNativeArtifact(targetJson, nativeTarget)
       ?: return Err(ResolveError.MetadataParseFailed(groupArtifact))
 
-  return Ok(NativeResolved(redirect, artifact))
+  return Ok(NativeResolved.Klib(redirect, artifact))
 }
 
 /**
