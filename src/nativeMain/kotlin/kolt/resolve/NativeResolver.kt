@@ -6,6 +6,8 @@ import com.github.michaelbull.result.Result
 import com.github.michaelbull.result.getOrElse
 import kolt.config.KoltConfig
 import kolt.config.konanTargetGradleName
+import kolt.infra.DownloadError
+import kolt.infra.eprintln
 
 // Kotlin/Native bundles the stdlib in the konanc distribution — it must be
 // skipped during dependency resolution even though Gradle module metadata
@@ -19,7 +21,26 @@ private fun isKotlinStdlib(groupArtifact: String): Boolean =
   groupArtifact == "org.jetbrains.kotlin:kotlin-stdlib" ||
     groupArtifact == "org.jetbrains.kotlin:kotlin-stdlib-common"
 
-private data class NativeResolved(val redirect: NativeRedirect, val artifact: NativeArtifact)
+// Distinguishes "every repo replied 404" from any other download failure
+// (5xx, network, local write). Only the all-404 case can be interpreted as
+// "this artifact is structurally not published" and trigger the `.pom`
+// fallback; transient failures must surface as the existing DownloadFailed.
+internal fun is404OnAllAttempts(error: ResolveError): Boolean {
+  if (error !is ResolveError.DownloadFailed) return false
+  val failure = error.failure
+  if (failure !is RepositoryDownloadFailure.AllAttemptsFailed) return false
+  if (failure.attempts.isEmpty()) return false
+  return failure.attempts.all { attempt ->
+    val downloadError = attempt.error
+    downloadError is DownloadError.HttpFailed && downloadError.statusCode == 404
+  }
+}
+
+internal sealed class NativeResolved {
+  data class Klib(val redirect: NativeRedirect, val artifact: NativeArtifact) : NativeResolved()
+
+  data class JvmOnly(val coordinate: Coordinate) : NativeResolved()
+}
 
 /**
  * Resolves Kotlin/Native dependencies via the shared resolution kernel ([fixpointResolve]).
@@ -40,6 +61,7 @@ fun resolveNative(
   cacheBase: String,
   deps: ResolverDeps,
   progress: ResolverProgressSink = ResolverProgressSink.NoOp,
+  noteSink: (String) -> Unit = ::eprintln,
 ): Result<ResolveResult, ResolveError> {
   val nativeTarget = konanTargetGradleName(config.build.target)
   val repos = config.repositories.values.toList()
@@ -71,9 +93,17 @@ fun resolveNative(
   val total =
     nodes.count { node ->
       val resolved = processed["${node.groupArtifact}:${node.version}"] ?: return@count false
-      val targetCoord =
-        Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
-      !deps.fileExists("$cacheBase/${buildKlibCachePath(targetCoord)}")
+      when (resolved) {
+        is NativeResolved.Klib -> {
+          val targetCoord =
+            Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
+          !deps.fileExists("$cacheBase/${buildKlibCachePath(targetCoord)}")
+        }
+        // JvmOnly nodes have no klib artifact to download, so they contribute
+        // nothing to the M/N progress total. Keeping them out here aligns the
+        // total with the main loop's index increment, which is Klib-only.
+        is NativeResolved.JvmOnly -> false
+      }
     }
   var index = 0
 
@@ -82,54 +112,80 @@ fun resolveNative(
       processed["${node.groupArtifact}:${node.version}"]
         ?: return Err(ResolveError.MetadataParseFailed(node.groupArtifact))
 
-    val targetCoord =
-      Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
-    val klibCachePath = "$cacheBase/${buildKlibCachePath(targetCoord)}"
+    when (resolved) {
+      is NativeResolved.Klib -> {
+        val targetCoord =
+          Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
+        val klibCachePath = "$cacheBase/${buildKlibCachePath(targetCoord)}"
 
-    if (!deps.fileExists(klibCachePath)) {
-      val parentDir = klibCachePath.substringBeforeLast('/')
-      deps.ensureDirectoryRecursive(parentDir).getOrElse {
-        return Err(ResolveError.DirectoryCreateFailed(parentDir))
-      }
-      index += 1
-      progress.onArtifactStart(index, total, node.groupArtifact, node.version)
-      downloadFromRepositories(
-          repos,
-          klibCachePath,
-          { buildKlibDownloadUrl(targetCoord, it) },
-          deps::downloadFile,
-          onRetry = progress::onRetryAgainst,
-        )
-        .getOrElse { failure ->
-          return Err(ResolveError.DownloadFailed(node.groupArtifact, failure))
+        if (!deps.fileExists(klibCachePath)) {
+          val parentDir = klibCachePath.substringBeforeLast('/')
+          deps.ensureDirectoryRecursive(parentDir).getOrElse {
+            return Err(ResolveError.DirectoryCreateFailed(parentDir))
+          }
+          index += 1
+          progress.onArtifactStart(index, total, node.groupArtifact, node.version)
+          downloadFromRepositories(
+              repos,
+              klibCachePath,
+              { buildKlibDownloadUrl(targetCoord, it) },
+              deps::downloadFile,
+              onRetry = progress::onRetryAgainst,
+            )
+            .getOrElse { failure ->
+              return Err(ResolveError.DownloadFailed(node.groupArtifact, failure))
+            }
         }
-    }
 
-    val actualHash =
-      deps.computeSha256(klibCachePath).getOrElse {
-        return Err(ResolveError.HashComputeFailed(node.groupArtifact, it))
+        val actualHash =
+          deps.computeSha256(klibCachePath).getOrElse {
+            return Err(ResolveError.HashComputeFailed(node.groupArtifact, it))
+          }
+        if (actualHash != resolved.artifact.klibSha256) {
+          return Err(
+            ResolveError.Sha256Mismatch(
+              node.groupArtifact,
+              resolved.artifact.klibSha256,
+              actualHash,
+            )
+          )
+        }
+
+        resolvedDeps.add(
+          ResolvedDep(
+            groupArtifact = node.groupArtifact,
+            version = node.version,
+            sha256 = actualHash,
+            cachePath = klibCachePath,
+            transitive = !node.direct,
+          )
+        )
       }
-    if (actualHash != resolved.artifact.klibSha256) {
-      return Err(
-        ResolveError.Sha256Mismatch(node.groupArtifact, resolved.artifact.klibSha256, actualHash)
-      )
+      is NativeResolved.JvmOnly -> {
+        // Direct JvmOnly deps (other than the kotlin-stdlib bundle already
+        // filtered out in `resolveNative` above) cannot be silently skipped:
+        // the user declared the artifact in `[dependencies]`, so surface
+        // NoNativeVariant rather than continuing.
+        if (node.direct) {
+          return Err(ResolveError.NoNativeVariant(node.groupArtifact, nativeTarget))
+        }
+        // ADR 0011 §4: structural skip generalises the kotlin-stdlib-common
+        // silent-skip policy; stdlib coordinates remain silent here, every
+        // other JvmOnly transitive surfaces a single stderr note so a build
+        // log records which artifact had no native variant.
+        if (!isKotlinStdlib(node.groupArtifact)) {
+          noteSink(
+            "note: ${node.groupArtifact}:${node.version} has no Gradle Module Metadata; skipping for native target"
+          )
+        }
+      }
     }
-
-    resolvedDeps.add(
-      ResolvedDep(
-        groupArtifact = node.groupArtifact,
-        version = node.version,
-        sha256 = actualHash,
-        cachePath = klibCachePath,
-        transitive = !node.direct,
-      )
-    )
   }
 
   return Ok(ResolveResult(deps = resolvedDeps, lockChanged = false))
 }
 
-private fun makeNativeChildLookup(
+internal fun makeNativeChildLookup(
   processed: MutableMap<String, NativeResolved>,
   nativeTarget: String,
   cacheBase: String,
@@ -150,10 +206,16 @@ private fun makeNativeChildLookup(
       fetched
     }
   val children =
-    native.artifact.dependencies.mapNotNull { d ->
-      val depGA = "${d.group}:${d.module}"
-      if (isKotlinStdlib(depGA)) return@mapNotNull null
-      Child(groupArtifact = depGA, version = d.version, strict = d.strict, rejects = d.rejects)
+    when (native) {
+      is NativeResolved.Klib ->
+        native.artifact.dependencies.mapNotNull { d ->
+          val depGA = "${d.group}:${d.module}"
+          if (isKotlinStdlib(depGA)) return@mapNotNull null
+          Child(groupArtifact = depGA, version = d.version, strict = d.strict, rejects = d.rejects)
+        }
+      // JvmOnly nodes have no Gradle Module Metadata, so no transitive children
+      // are descended.
+      is NativeResolved.JvmOnly -> emptyList()
     }
   Ok(children)
 }
@@ -192,12 +254,24 @@ fun createNativeLookup(
           .getOrElse { null }
 
       resolved?.let {
-        NativeNodeInfo(
-          displayGroupArtifact = "${it.redirect.group}:${it.redirect.module}",
-          displayVersion = it.redirect.version,
-          dependencies =
-            it.artifact.dependencies.map { dep -> "${dep.group}:${dep.module}" to dep.version },
-        )
+        when (it) {
+          is NativeResolved.Klib ->
+            NativeNodeInfo(
+              displayGroupArtifact = "${it.redirect.group}:${it.redirect.module}",
+              displayVersion = it.redirect.version,
+              dependencies =
+                it.artifact.dependencies.map { dep -> "${dep.group}:${dep.module}" to dep.version },
+            )
+          // JvmOnly artifacts have no Gradle Module Metadata, so the tree
+          // surfaces them as a leaf at the original (root) coordinate with no
+          // children. The "JVM-only" UI label is intentionally out of scope.
+          is NativeResolved.JvmOnly ->
+            NativeNodeInfo(
+              displayGroupArtifact = "${it.coordinate.group}:${it.coordinate.artifact}",
+              displayVersion = it.coordinate.version,
+              dependencies = emptyList(),
+            )
+        }
       }
     }
   }
@@ -206,8 +280,14 @@ fun createNativeLookup(
 /**
  * Fetches and parses both the root `.module` (for the available-at redirect) and the
  * platform-specific `.module` (for the klib file + dependencies) for a single coordinate.
+ *
+ * When the root `.module` returns 404 from every repository, falls back to fetching the same
+ * coordinate's `.pom` for existence-only confirmation. If the `.pom` is available, the artifact is
+ * structurally JVM-only (no Gradle Module Metadata published) and is returned as
+ * `NativeResolved.JvmOnly`. The `.pom` body is not parsed; downstream materialization decides how
+ * to handle the variant.
  */
-private fun fetchNativeMetadata(
+internal fun fetchNativeMetadata(
   groupArtifact: String,
   version: String,
   nativeTarget: String,
@@ -229,8 +309,23 @@ private fun fetchNativeMetadata(
         repos = repos,
         deps = deps,
       )
-      .getOrElse {
-        return Err(it)
+      .getOrElse { moduleError ->
+        if (is404OnAllAttempts(moduleError)) {
+          val pomResult =
+            fetchAndRead(
+              coord = rootCoord,
+              relativePath = buildPomCachePath(rootCoord),
+              urlBuilder = { buildPomDownloadUrl(rootCoord, it) },
+              cacheBase = cacheBase,
+              repos = repos,
+              deps = deps,
+            )
+          if (pomResult.isErr) {
+            return Err(moduleError)
+          }
+          return Ok(NativeResolved.JvmOnly(rootCoord))
+        }
+        return Err(moduleError)
       }
 
   if (!isValidGradleModuleJson(rootJson)) {
@@ -261,7 +356,7 @@ private fun fetchNativeMetadata(
     parseNativeArtifact(targetJson, nativeTarget)
       ?: return Err(ResolveError.MetadataParseFailed(groupArtifact))
 
-  return Ok(NativeResolved(redirect, artifact))
+  return Ok(NativeResolved.Klib(redirect, artifact))
 }
 
 /**

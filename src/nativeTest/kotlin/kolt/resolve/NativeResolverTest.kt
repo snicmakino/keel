@@ -171,6 +171,10 @@ class NativeResolverTest {
 
   @Test
   fun skipsKotlinStdlibCommonAsDirectDependencyToo() {
+    // Direct kotlin-stdlib-common is dropped by the name-based
+    // `directDeps = filterKeys { !isKotlinStdlib(it) }` short-circuit
+    // and must not emit the JvmOnly stderr note (the structural fallback path
+    // never even runs for these entries).
     val config =
       testConfig(target = "linuxX64")
         .copy(
@@ -194,14 +198,23 @@ class NativeResolverTest {
         sha256 = mapOf("/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.klib" to "h"),
       )
 
-    val result = resolveNative(config, "/cache", deps)
+    val capturedNotes = mutableListOf<String>()
+    val result = resolveNative(config, "/cache", deps, noteSink = { capturedNotes += it })
     val resolved = assertNotNull(result.get())
     assertEquals(1, resolved.deps.size)
     assertEquals("com.example:lib", resolved.deps[0].groupArtifact)
+    assertEquals(
+      emptyList(),
+      capturedNotes,
+      "kotlin-stdlib-common direct skip must remain silent (no stderr note)",
+    )
   }
 
   @Test
   fun skipsKotlinStdlibAsDirectDependencyToo() {
+    // Direct kotlin-stdlib is dropped by the name-based
+    // `directDeps = filterKeys { !isKotlinStdlib(it) }` short-circuit
+    // and must not emit the JvmOnly stderr note.
     val config =
       testConfig(target = "linuxX64")
         .copy(
@@ -222,10 +235,106 @@ class NativeResolverTest {
         sha256 = mapOf("/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.klib" to "h"),
       )
 
-    val result = resolveNative(config, "/cache", deps)
+    val capturedNotes = mutableListOf<String>()
+    val result = resolveNative(config, "/cache", deps, noteSink = { capturedNotes += it })
     val resolved = assertNotNull(result.get())
     assertEquals(1, resolved.deps.size)
     assertEquals("com.example:lib", resolved.deps[0].groupArtifact)
+    assertEquals(
+      emptyList(),
+      capturedNotes,
+      "kotlin-stdlib direct skip must remain silent (no stderr note)",
+    )
+  }
+
+  @Test
+  fun transitiveKotlinStdlibCommonIsSilentSkipNoStderrNote() {
+    // Silent skip for kotlin-stdlib-common on the transitive path
+    // must not produce the JvmOnly stderr note even though the structural
+    // fallback would otherwise emit one. childLookup's isKotlinStdlib
+    // filter strips the child before fetchNativeMetadata; the
+    // materialization-time short-circuit is defensive backup that this
+    // fixture does not exercise directly.
+    val config =
+      testConfig(target = "linuxX64").copy(dependencies = mapOf("com.example:lib" to "1.0.0"))
+
+    val libRoot = rootModuleJson("com.example", "lib-linuxx64", "1.0.0")
+    val libPlatform =
+      platformModuleJson(
+        klibFileName = "lib-linuxx64-1.0.0.klib",
+        klibSha256 = "h",
+        dependencies =
+          listOf(NativeDependency("org.jetbrains.kotlin", "kotlin-stdlib-common", "1.8.21")),
+      )
+
+    val deps =
+      fakeDeps(
+        contents =
+          mapOf(
+            "/cache/com/example/lib/1.0.0/lib-1.0.0.module" to libRoot,
+            "/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.module" to libPlatform,
+          ),
+        sha256 = mapOf("/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.klib" to "h"),
+      )
+
+    val capturedNotes = mutableListOf<String>()
+    val result = resolveNative(config, "/cache", deps, noteSink = { capturedNotes += it })
+
+    val resolved = assertNotNull(result.get())
+    assertEquals(1, resolved.deps.size)
+    assertEquals("com.example:lib", resolved.deps[0].groupArtifact)
+    assertFalse(
+      resolved.deps.any { it.groupArtifact == "org.jetbrains.kotlin:kotlin-stdlib-common" },
+      "kotlin-stdlib-common must not appear in resolvedDeps",
+    )
+    assertEquals(
+      emptyList(),
+      capturedNotes,
+      "kotlin-stdlib-common transitive skip must remain silent (no stderr note)",
+    )
+  }
+
+  @Test
+  fun transitiveKotlinStdlibIsSilentSkipNoStderrNote() {
+    // Silent skip for kotlin-stdlib on the transitive path
+    // must not produce the JvmOnly stderr note. Mirrors the kotlin-stdlib-common
+    // case so the predicate's coverage is exercised end-to-end.
+    val config =
+      testConfig(target = "linuxX64").copy(dependencies = mapOf("com.example:lib" to "1.0.0"))
+
+    val libRoot = rootModuleJson("com.example", "lib-linuxx64", "1.0.0")
+    val libPlatform =
+      platformModuleJson(
+        klibFileName = "lib-linuxx64-1.0.0.klib",
+        klibSha256 = "h",
+        dependencies = listOf(NativeDependency("org.jetbrains.kotlin", "kotlin-stdlib", "2.0.0")),
+      )
+
+    val deps =
+      fakeDeps(
+        contents =
+          mapOf(
+            "/cache/com/example/lib/1.0.0/lib-1.0.0.module" to libRoot,
+            "/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.module" to libPlatform,
+          ),
+        sha256 = mapOf("/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.klib" to "h"),
+      )
+
+    val capturedNotes = mutableListOf<String>()
+    val result = resolveNative(config, "/cache", deps, noteSink = { capturedNotes += it })
+
+    val resolved = assertNotNull(result.get())
+    assertEquals(1, resolved.deps.size)
+    assertEquals("com.example:lib", resolved.deps[0].groupArtifact)
+    assertFalse(
+      resolved.deps.any { it.groupArtifact == "org.jetbrains.kotlin:kotlin-stdlib" },
+      "kotlin-stdlib must not appear in resolvedDeps",
+    )
+    assertEquals(
+      emptyList(),
+      capturedNotes,
+      "kotlin-stdlib transitive skip must remain silent (no stderr note)",
+    )
   }
 
   @Test
