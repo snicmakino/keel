@@ -171,6 +171,10 @@ class NativeResolverTest {
 
   @Test
   fun skipsKotlinStdlibCommonAsDirectDependencyToo() {
+    // Direct kotlin-stdlib-common is dropped by the name-based
+    // `directDeps = filterKeys { !isKotlinStdlib(it) }` short-circuit
+    // and must not emit the JvmOnly stderr note (the structural fallback path
+    // never even runs for these entries).
     val config =
       testConfig(target = "linuxX64")
         .copy(
@@ -194,14 +198,23 @@ class NativeResolverTest {
         sha256 = mapOf("/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.klib" to "h"),
       )
 
-    val result = resolveNative(config, "/cache", deps)
+    val capturedNotes = mutableListOf<String>()
+    val result = resolveNative(config, "/cache", deps, noteSink = { capturedNotes += it })
     val resolved = assertNotNull(result.get())
     assertEquals(1, resolved.deps.size)
     assertEquals("com.example:lib", resolved.deps[0].groupArtifact)
+    assertEquals(
+      emptyList(),
+      capturedNotes,
+      "kotlin-stdlib-common direct skip must remain silent (no stderr note)",
+    )
   }
 
   @Test
   fun skipsKotlinStdlibAsDirectDependencyToo() {
+    // Direct kotlin-stdlib is dropped by the name-based
+    // `directDeps = filterKeys { !isKotlinStdlib(it) }` short-circuit
+    // and must not emit the JvmOnly stderr note.
     val config =
       testConfig(target = "linuxX64")
         .copy(
@@ -222,16 +235,22 @@ class NativeResolverTest {
         sha256 = mapOf("/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.klib" to "h"),
       )
 
-    val result = resolveNative(config, "/cache", deps)
+    val capturedNotes = mutableListOf<String>()
+    val result = resolveNative(config, "/cache", deps, noteSink = { capturedNotes += it })
     val resolved = assertNotNull(result.get())
     assertEquals(1, resolved.deps.size)
     assertEquals("com.example:lib", resolved.deps[0].groupArtifact)
+    assertEquals(
+      emptyList(),
+      capturedNotes,
+      "kotlin-stdlib direct skip must remain silent (no stderr note)",
+    )
   }
 
   @Test
   fun transitiveKotlinStdlibCommonIsSilentSkipNoStderrNote() {
-    // Requirement 4.2: silent skip for kotlin-stdlib-common on the transitive
-    // path must not produce the JvmOnly stderr note even though the structural
+    // Silent skip for kotlin-stdlib-common on the transitive path
+    // must not produce the JvmOnly stderr note even though the structural
     // fallback would otherwise emit one. Defends the user-visible contract
     // against future regressions in either the childLookup filter or the
     // materialization-time isKotlinStdlib short-circuit.
@@ -276,7 +295,7 @@ class NativeResolverTest {
 
   @Test
   fun transitiveKotlinStdlibIsSilentSkipNoStderrNote() {
-    // Requirement 4.2: silent skip for kotlin-stdlib on the transitive path
+    // Silent skip for kotlin-stdlib on the transitive path
     // must not produce the JvmOnly stderr note. Mirrors the kotlin-stdlib-common
     // case so the predicate's coverage is exercised end-to-end.
     val config =

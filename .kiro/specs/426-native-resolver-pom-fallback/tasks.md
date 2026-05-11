@@ -81,7 +81,7 @@
   - _Requirements: 3.3, 6.1, 6.2, 6.3_
 
 - [ ] 8. Validation: 既存テストの regression と JVM 経路の不変確認
-- [ ] 8.1 既存の `NativeResolverTest` 内で `kotlin-stdlib-common` が transitive 上で扱われる経路を構造的 fallback (新分岐) で通すように調整し、 silent skip 維持を assert する
+- [x] 8.1 既存の `NativeResolverTest` 内で `kotlin-stdlib-common` が transitive 上で扱われる経路を構造的 fallback (新分岐) で通すように調整し、 silent skip 維持を assert する
   - 既存テストが「`.module` 404 を fatal として assert」していた場合は「fallback 後の Ok」に書き換える。 既存の `isKotlinStdlib` 名前 short-circuit が silent path として残ること (stderr に note が出ないこと) を assert に追加する。
   - direct `kotlin-stdlib` 経路 (`directDeps = filterKeys { !isKotlinStdlib(it) }`) が無傷であること (Req 2.3) も既存テストで担保されている前提を確認、 もし無ければ 1 ケース追加する。
   - 観測: `NativeResolverTest` の全ケースが緑、 `kotlin-stdlib-common` transitive シナリオで stderr 空。
