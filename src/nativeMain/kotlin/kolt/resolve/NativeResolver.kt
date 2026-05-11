@@ -99,8 +99,9 @@ fun resolveNative(
             Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
           !deps.fileExists("$cacheBase/${buildKlibCachePath(targetCoord)}")
         }
-        // JvmOnly nodes have no klib artifact; full pre-count/progress handling
-        // lands in task 5.x. Excluded from total here keeps M/N accurate.
+        // JvmOnly nodes have no klib artifact to download, so they contribute
+        // nothing to the M/N progress total. Keeping them out here aligns the
+        // total with the main loop's index increment, which is Klib-only.
         is NativeResolved.JvmOnly -> false
       }
     }
@@ -262,9 +263,9 @@ fun createNativeLookup(
               dependencies =
                 it.artifact.dependencies.map { dep -> "${dep.group}:${dep.module}" to dep.version },
             )
-          // JvmOnly tree representation (root coord, empty deps) lands in
-          // task 6.1; this minimal mapping keeps the when exhaustive and
-          // surfaces the root coordinate as a leaf in the meantime.
+          // JvmOnly artifacts have no Gradle Module Metadata, so the tree
+          // surfaces them as a leaf at the original (root) coordinate with no
+          // children. The "JVM-only" UI label is intentionally out of scope.
           is NativeResolved.JvmOnly ->
             NativeNodeInfo(
               displayGroupArtifact = "${it.coordinate.group}:${it.coordinate.artifact}",

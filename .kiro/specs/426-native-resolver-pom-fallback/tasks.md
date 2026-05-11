@@ -64,7 +64,7 @@
   - _Requirements: 1.2, 4.3_
 
 - [ ] 6. Core: deps tree lookup の JvmOnly 対応
-- [ ] 6.1 `createNativeLookup` (deps tree 用) を JvmOnly variant に対応させる
+- [x] 6.1 `createNativeLookup` (deps tree 用) を JvmOnly variant に対応させる
   - JvmOnly node に対して `NativeNodeInfo(displayGroupArtifact = "${rootCoord.group}:${rootCoord.artifact}", displayVersion = rootCoord.version, dependencies = emptyList())` を返す。
   - tree 表示で JvmOnly が leaf として現れるが、 UI の "JVM 専用" ラベル付与は本仕様の対象外 (out of boundary)。
   - 観測: createNativeLookup の unit test で JvmOnly node が空 dependencies と root coordinate を持つ `NativeNodeInfo` を返すこと。
