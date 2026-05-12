@@ -173,7 +173,8 @@ class DependencyTest {
   @Test
   fun buildKlibDownloadUrlProducesCorrectMavenCentralUrl() {
     val coord = Coordinate("org.jetbrains.kotlinx", "kotlinx-coroutines-core-linuxx64", "1.9.0")
-    val url = buildKlibDownloadUrl(coord, MAVEN_CENTRAL_BASE)
+    val url =
+      buildKlibDownloadUrl(coord, MAVEN_CENTRAL_BASE, "kotlinx-coroutines-core-linuxx64-1.9.0.klib")
     assertEquals(
       "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-linuxx64/1.9.0/kotlinx-coroutines-core-linuxx64-1.9.0.klib",
       url,
@@ -183,7 +184,12 @@ class DependencyTest {
   @Test
   fun buildKlibDownloadUrlWithCustomBaseUrl() {
     val coord = Coordinate("com.example", "lib-linuxx64", "1.0.0")
-    val url = buildKlibDownloadUrl(coord, "https://nexus.example.com/repository/maven-public")
+    val url =
+      buildKlibDownloadUrl(
+        coord,
+        "https://nexus.example.com/repository/maven-public",
+        "lib-linuxx64-1.0.0.klib",
+      )
     assertEquals(
       "https://nexus.example.com/repository/maven-public/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.klib",
       url,
@@ -191,11 +197,36 @@ class DependencyTest {
   }
 
   @Test
+  fun buildKlibDownloadUrlForCinteropSubKlib() {
+    val coord = Coordinate("io.ktor", "ktor-utils-linuxx64", "3.4.3")
+    val url =
+      buildKlibDownloadUrl(
+        coord,
+        MAVEN_CENTRAL_BASE,
+        "ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib",
+      )
+    assertEquals(
+      "https://repo1.maven.org/maven2/io/ktor/ktor-utils-linuxx64/3.4.3/ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib",
+      url,
+    )
+  }
+
+  @Test
   fun buildKlibCachePathProducesRelativePath() {
     val coord = Coordinate("org.jetbrains.kotlinx", "atomicfu-linuxx64", "0.25.0")
-    val path = buildKlibCachePath(coord)
+    val path = buildKlibCachePath(coord, "atomicfu-linuxx64-0.25.0.klib")
     assertEquals(
       "org/jetbrains/kotlinx/atomicfu-linuxx64/0.25.0/atomicfu-linuxx64-0.25.0.klib",
+      path,
+    )
+  }
+
+  @Test
+  fun buildKlibCachePathForCinteropSubKlib() {
+    val coord = Coordinate("io.ktor", "ktor-utils-linuxx64", "3.4.3")
+    val path = buildKlibCachePath(coord, "ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib")
+    assertEquals(
+      "io/ktor/ktor-utils-linuxx64/3.4.3/ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib",
       path,
     )
   }

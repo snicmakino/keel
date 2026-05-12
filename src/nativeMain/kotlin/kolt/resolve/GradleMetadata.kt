@@ -38,11 +38,15 @@ fun parseJvmRedirect(moduleJson: String): JvmRedirect? {
 
 data class NativeRedirect(val group: String, val module: String, val version: String)
 
-data class NativeArtifact(
-  val klibFileUrl: String,
-  val klibSha256: String,
-  val dependencies: List<NativeDependency>,
-)
+// Kotlin/Native variants can ship multiple `.klib` files per variant: the
+// platform klib plus zero or more cinterop sub-klibs (e.g. ktor-utils ships
+// `ktor-utils-linuxx64-3.4.3.klib` together with
+// `ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib`). All sub-klibs must
+// be fetched and passed to konanc as `-l` so manifest-declared cinterop
+// dependencies link correctly. See issue #430 and ADR 0010.
+data class NativeArtifact(val klibFiles: List<KlibFile>, val dependencies: List<NativeDependency>)
+
+data class KlibFile(val url: String, val sha256: String)
 
 data class NativeDependency(
   val group: String,
@@ -84,7 +88,8 @@ fun parseNativeArtifact(moduleJson: String, nativeTarget: String): NativeArtifac
 
   for (variant in metadata.variants) {
     if (!matchesNativeVariant(variant.attributes, nativeTarget)) continue
-    val klibFile = variant.files.firstOrNull { it.url.endsWith(".klib") } ?: continue
+    val klibFiles = variant.files.filter { it.url.endsWith(".klib") }
+    if (klibFiles.isEmpty()) continue
     val deps =
       variant.dependencies.map { d ->
         val version = d.version.selectedVersion()
@@ -98,8 +103,7 @@ fun parseNativeArtifact(moduleJson: String, nativeTarget: String): NativeArtifac
         )
       }
     return NativeArtifact(
-      klibFileUrl = klibFile.url,
-      klibSha256 = klibFile.sha256,
+      klibFiles = klibFiles.map { KlibFile(url = it.url, sha256 = it.sha256) },
       dependencies = deps,
     )
   }

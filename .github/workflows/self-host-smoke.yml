@@ -244,6 +244,49 @@ jobs:
           cd kolt-native-compiler-daemon
           "$GITHUB_WORKSPACE/bootstrap-kexe/kolt.kexe" build
 
+      # #430 regression guard: a Kotlin/Native variant can publish multiple
+      # `.klib` files (platform klib + cinterop sub-klibs). Pre-#430, the
+      # resolver fetched only the first file and dropped the cinterop
+      # sub-klib; konanc then emitted stubs that failed at runtime with
+      # `IrLinkageError`. The fixture under spike/native-ktor-cinterop-smoke
+      # depends on io.ktor:ktor-utils:3.4.3, whose linuxX64 variant ships
+      # a `cinterop-threadUtils` sub-klib alongside the main klib. The
+      # io.ktor:ktor-io transitive adds a second sub-klib pair (mutex).
+      #
+      # `~/.kolt/cache/io/ktor` is wiped first so a stale pre-#430 single-
+      # klib cache from prior CI runs (the toolchain cache restores all of
+      # ~/.kolt) cannot mask a regression. `~/.kolt/daemon` is wiped for the
+      # same reason as the JVM canary step above. The daemon canary uses
+      # positive + negative grep per memory's daemon canary pattern; the
+      # cinterop file-exists check is the actual #430 assertion.
+      - name: Ktor cinterop sub-klib smoke (#430)
+        env:
+          KOLT_NATIVE_DAEMON_JAR: ${{ github.workspace }}/kolt-native-compiler-daemon/build/debug/kolt-native-compiler-daemon.jar
+        run: |
+          set -euo pipefail
+          rm -rf "$HOME/.kolt/cache/io/ktor"
+          rm -rf "$HOME/.kolt/daemon"
+          cd spike/native-ktor-cinterop-smoke
+          rm -rf build
+          "$GITHUB_WORKSPACE/bootstrap-kexe/kolt.kexe" run 2> kolt-run.stderr
+          echo "--- kolt-run.stderr ---"
+          cat kolt-run.stderr
+          echo "--- end stderr ---"
+          CINTEROP="$HOME/.kolt/cache/io/ktor/ktor-utils-linuxx64/3.4.3/ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib"
+          if [ ! -f "$CINTEROP" ]; then
+            echo "#430 regression: cinterop sub-klib was not fetched to $CINTEROP" >&2
+            exit 1
+          fi
+          if ! grep -q 'starting native compiler daemon' kolt-run.stderr; then
+            echo "Canary failed: native daemon spawn path not reached" >&2
+            exit 1
+          fi
+          if grep -q 'falling back to subprocess' kolt-run.stderr; then
+            echo "Canary failed: native daemon fell back to subprocess" >&2
+            exit 1
+          fi
+          echo "#430 smoke OK: cinterop sub-klib fetched, daemon engaged"
+
       - name: Assemble tarball
         run: |
           set -euo pipefail
