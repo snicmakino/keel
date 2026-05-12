@@ -59,10 +59,20 @@ Kiro-style Spec-Driven Development on an agentic SDLC
 
 ## When SDD applies
 
-- Default: SDD for new features, cross-cutting refactors, or behavior changes not covered by existing spec/ADR.
-- Skip to TDD only when the contract is pinned in `.kiro/specs/` or `docs/adr/` and the issue's DoD is concrete with no design choice in play.
-- When skipping, fold any contract delta into the closest existing ADR (1–2 lines) — don't open a new ADR for a touch-up.
-- State the SDD-vs-TDD call at kickoff before code-touching tools. Borderline → SDD.
+Default to TDD. SDD when one of these holds:
+- New wire format, cache layout, lockfile schema, or public CLI surface
+- Issue body presents options ("A or B?") instead of a fix direction
+- 3+ files or a new module need to be touched
+
+Bug fix shortcut: if a failing test can be written that reproduces the bug, TDD is sufficient — no spec needed.
+
+Mid-task escalation: if scope grows during TDD (new options surface, surface area expands beyond the original fix direction), pause, file a follow-up issue that captures the new shape, and run SDD on that issue. Don't grow the current PR to absorb the new scope.
+
+Fold any contract delta into the closest existing ADR (1-2 lines) — don't open a new ADR for a touch-up.
+
+Borderline → TDD. SDD escalation stays available mid-task; the inverse doesn't.
+
+State the call at kickoff in 1 sentence before code-touching tools.
 
 ## Minimal Workflow
 - Phase 0 (optional): `/kiro-steering`, `/kiro-steering-custom`
