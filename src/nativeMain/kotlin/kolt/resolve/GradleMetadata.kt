@@ -38,11 +38,15 @@ fun parseJvmRedirect(moduleJson: String): JvmRedirect? {
 
 data class NativeRedirect(val group: String, val module: String, val version: String)
 
-data class NativeArtifact(
-  val klibFileUrl: String,
-  val klibSha256: String,
-  val dependencies: List<NativeDependency>,
-)
+// Kotlin/Native variants can ship multiple `.klib` files per variant: the
+// platform klib plus zero or more cinterop sub-klibs (e.g. ktor-utils ships
+// `ktor-utils-linuxx64-3.4.3.klib` together with
+// `ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib`). All sub-klibs must
+// be fetched and passed to konanc as `-l` so manifest-declared cinterop
+// dependencies link correctly. See ADR 0010.
+data class NativeArtifact(val klibFiles: List<KlibFile>, val dependencies: List<NativeDependency>)
+
+data class KlibFile(val url: String, val sha256: String)
 
 data class NativeDependency(
   val group: String,
@@ -84,7 +88,17 @@ fun parseNativeArtifact(moduleJson: String, nativeTarget: String): NativeArtifac
 
   for (variant in metadata.variants) {
     if (!matchesNativeVariant(variant.attributes, nativeTarget)) continue
-    val klibFile = variant.files.firstOrNull { it.url.endsWith(".klib") } ?: continue
+    val klibFiles = variant.files.filter { it.url.endsWith(".klib") }
+    if (klibFiles.isEmpty()) continue
+    // `GradleFile.url` is concatenated verbatim as the trailing path segment
+    // of the cache write target. A url containing `..`, `/`, or `\` would
+    // let malformed or hostile metadata escape the coordinate's cache
+    // directory and write elsewhere on disk. Reject the whole metadata
+    // rather than silently dropping the offending entry, so a wrong-shape
+    // .module fails loudly. Legitimate klib filenames are bare basenames
+    // (`<artifact>-<version>[-cinterop-<name>].klib`) — none of these
+    // checks reject a well-formed file.
+    if (klibFiles.any { !isSafeKlibFilename(it.url) }) return null
     val deps =
       variant.dependencies.map { d ->
         val version = d.version.selectedVersion()
@@ -98,8 +112,7 @@ fun parseNativeArtifact(moduleJson: String, nativeTarget: String): NativeArtifac
         )
       }
     return NativeArtifact(
-      klibFileUrl = klibFile.url,
-      klibSha256 = klibFile.sha256,
+      klibFiles = klibFiles.map { KlibFile(url = it.url, sha256 = it.sha256) },
       dependencies = deps,
     )
   }
@@ -113,6 +126,9 @@ internal fun isValidGradleModuleJson(moduleJson: String): Boolean =
   } catch (_: Exception) {
     false
   }
+
+private fun isSafeKlibFilename(url: String): Boolean =
+  !url.contains('/') && !url.contains('\\') && !url.contains("..")
 
 private fun matchesNativeVariant(attrs: Map<String, JsonPrimitive>, nativeTarget: String): Boolean =
   attrs["org.jetbrains.kotlin.platform.type"]?.content == "native" &&

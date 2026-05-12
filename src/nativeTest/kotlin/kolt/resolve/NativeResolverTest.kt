@@ -61,6 +61,57 @@ class NativeResolverTest {
     assertFalse(resolved.deps[0].transitive)
   }
 
+  // A single Klib node with two klib files (platform klib + cinterop
+  // sub-klib) must download both, sha-verify both, and emit one ResolvedDep
+  // per klib so konanc receives `-l <platform> -l <cinterop>` at link time.
+  @Test
+  fun resolvesAllKlibsForVariantWithCinteropSubKlib() {
+    val config =
+      testConfig(target = "linuxX64").copy(dependencies = mapOf("io.ktor:ktor-utils" to "3.4.3"))
+
+    val rootModule =
+      rootModuleJson(
+        redirectGroup = "io.ktor",
+        redirectModule = "ktor-utils-linuxx64",
+        redirectVersion = "3.4.3",
+      )
+    val platformModule =
+      platformModuleJsonMulti(
+        klibs =
+          listOf(
+            "ktor-utils-linuxx64-3.4.3.klib" to "main-hash",
+            "ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib" to "cinterop-hash",
+          )
+      )
+
+    val mainKlibPath = "/cache/io/ktor/ktor-utils-linuxx64/3.4.3/ktor-utils-linuxx64-3.4.3.klib"
+    val cinteropKlibPath =
+      "/cache/io/ktor/ktor-utils-linuxx64/3.4.3/ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib"
+
+    val deps =
+      fakeDeps(
+        contents =
+          mapOf(
+            "/cache/io/ktor/ktor-utils/3.4.3/ktor-utils-3.4.3.module" to rootModule,
+            "/cache/io/ktor/ktor-utils-linuxx64/3.4.3/ktor-utils-linuxx64-3.4.3.module" to
+              platformModule,
+          ),
+        sha256 = mapOf(mainKlibPath to "main-hash", cinteropKlibPath to "cinterop-hash"),
+      )
+
+    val result = resolveNative(config, "/cache", deps)
+    val resolved = assertNotNull(result.get())
+
+    assertEquals(2, resolved.deps.size)
+    val cachePaths = resolved.deps.map { it.cachePath }.toSet()
+    assertEquals(setOf(mainKlibPath, cinteropKlibPath), cachePaths)
+    resolved.deps.forEach { dep ->
+      assertEquals("io.ktor:ktor-utils", dep.groupArtifact)
+      assertEquals("3.4.3", dep.version)
+      assertFalse(dep.transitive)
+    }
+  }
+
   @Test
   fun resolvesSingleTransitiveDep() {
     val config =
@@ -1100,6 +1151,57 @@ class NativeResolverTest {
         }
     """
       .trimIndent()
+
+  // Multi-klib platform module shaped after ktor-utils-linuxx64-3.4.3.module:
+  // a single linuxX64ApiElements-published variant whose `files[]` lists the
+  // platform klib plus one or more cinterop sub-klibs. Each entry is
+  // (url, sha256).
+  private fun platformModuleJsonMulti(
+    klibs: List<Pair<String, String>>,
+    dependencies: List<NativeDependency> = emptyList(),
+  ): String {
+    val filesJson =
+      klibs.joinToString(",\n") { (url, sha256) ->
+        """
+              {
+                "name": "$url",
+                "url": "$url",
+                "sha256": "$sha256"
+              }
+            """
+          .trimIndent()
+      }
+    val depsJson =
+      dependencies.joinToString(",\n") { d ->
+        """
+              {
+                "group": "${d.group}",
+                "module": "${d.module}",
+                "version": { "requires": "${d.version}" }
+              }
+            """
+          .trimIndent()
+      }
+    return """
+            {
+              "formatVersion": "1.1",
+              "variants": [
+                {
+                  "name": "linuxX64ApiElements-published",
+                  "attributes": {
+                    "org.gradle.category": "library",
+                    "org.gradle.usage": "kotlin-api",
+                    "org.jetbrains.kotlin.native.target": "linux_x64",
+                    "org.jetbrains.kotlin.platform.type": "native"
+                  },
+                  "dependencies": [$depsJson],
+                  "files": [$filesJson]
+                }
+              ]
+            }
+        """
+      .trimIndent()
+  }
 
   private fun platformModuleJson(
     klibFileName: String,

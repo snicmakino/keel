@@ -10,7 +10,7 @@ date: 2026-04-13
 - Native artifacts (`.klib`) and their transitive dependencies are not described in POMs — the only authoritative source is Gradle Module Metadata (`.module` JSON). (§1)
 - `NativeResolver` walks `.module` files exclusively; `TransitiveResolver` (JVM) walks POMs, calling `parseJvmRedirect` for KMP redirects only. (§2)
 - The dispatch is a single `if (config.target == "native")` in `Resolver.resolve()`; the two pipelines share `ResolverDeps`, `ResolveError`, `ResolveResult`, and download helpers. (§3)
-- For each dependency, `NativeResolver` follows the `available-at` redirect to the target-specific module, extracts the `.klib` url + sha256 from `files[]`, and recurses on `dependencies[]`. (§4)
+- For each dependency, `NativeResolver` follows the `available-at` redirect to the target-specific module, extracts every `.klib` url + sha256 from `files[]` (platform klib plus any cinterop sub-klibs), and recurses on `dependencies[]`. (§4)
 - sha256 values are read from `files[].sha256` in the metadata — not fetched from `.sha256` sidecars — eliminating one round-trip per artifact. (§5)
 
 ## Context and Problem Statement
@@ -52,8 +52,8 @@ Shared: `ResolverDeps`, `ResolveError`, `ResolveResult`, `downloadFromRepositori
 
 For each dependency, `NativeResolver`:
 1. Fetches the root `.module` and finds the `available-at` redirect for the current native target via `parseNativeRedirect`.
-2. Fetches the redirect-target `.module` and extracts the `.klib` file reference (url + sha256) and `dependencies[]` via `parseNativeArtifact`.
-3. Verifies the `.klib` sha256 against the value declared in `files[]`.
+2. Fetches the redirect-target `.module` and extracts every `.klib` file reference (url + sha256) in `files[]` and `dependencies[]` via `parseNativeArtifact`. A variant may publish multiple klibs — the platform klib plus zero or more cinterop sub-klibs (e.g. `ktor-utils-linuxx64-3.4.3.klib` and `ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib`); all are fetched and passed to konanc as `-l` so manifest-declared cinterop dependencies link at build time. See #430.
+3. Verifies each `.klib`'s sha256 against the value declared in `files[]`.
 4. Recurses on the variant's `dependencies[]`.
 
 `GradleMetadata.kt` reads four attributes (`platform.type`, `native.target`, `usage`, `category`), the `available-at` block, and `files[]` / `dependencies[]`. The full Gradle metadata 1.1 spec is not implemented. The decoder is configured `ignoreUnknownKeys = true` so schema evolution does not break kolt.
@@ -93,3 +93,4 @@ Verified by `NativeResolverTest.kt` integration tests that download real KMP art
 - PR #55 — Phase B-2, `NativeResolver` wired into `Resolver.resolve`
 - ADR 0005 — JVM redirect handling; shares `GradleMetadata.kt` with this resolver
 - ADR 0011 — kotlin-stdlib skip; load-bearing assumption that depends on this resolver design
+- #430 — Multi-klib per variant: `NativeArtifact` carries `klibFiles: List<KlibFile>` so platform + cinterop sub-klibs are all fetched and linked

@@ -463,10 +463,11 @@ class GradleMetadataTest {
 
     val artifact = parseNativeArtifact(json, "linux_x64")
 
-    assertEquals("kotlinx-coroutines-core-linuxx64-1.9.0.klib", artifact?.klibFileUrl)
+    assertEquals(1, artifact?.klibFiles?.size)
+    assertEquals("kotlinx-coroutines-core-linuxx64-1.9.0.klib", artifact?.klibFiles?.get(0)?.url)
     assertEquals(
       "651d39f4ebfdd8218c30cc4c9239194dc23483a2ed8feae161749226f02f76fe",
-      artifact?.klibSha256,
+      artifact?.klibFiles?.get(0)?.sha256,
     )
     val deps = artifact?.dependencies.orEmpty()
     assertEquals(2, deps.size)
@@ -538,8 +539,9 @@ class GradleMetadataTest {
 
     val artifact = parseNativeArtifact(json, "linux_x64")
 
-    assertEquals("lib-linuxx64-1.0.klib", artifact?.klibFileUrl)
-    assertEquals("def", artifact?.klibSha256)
+    assertEquals(1, artifact?.klibFiles?.size)
+    assertEquals("lib-linuxx64-1.0.klib", artifact?.klibFiles?.get(0)?.url)
+    assertEquals("def", artifact?.klibFiles?.get(0)?.sha256)
     assertEquals(0, artifact?.dependencies?.size)
   }
 
@@ -572,6 +574,79 @@ class GradleMetadataTest {
   fun parseNativeArtifactReturnsNullForInvalidJson() {
     assertNull(parseNativeArtifact("not json", "linux_x64"))
   }
+
+  // `GradleFile.url` is concatenated verbatim into the cache path, so an
+  // url containing `..` would let malformed metadata write outside the
+  // coordinate's cache directory. Reject the whole metadata loudly rather
+  // than silently dropping the offending entry. Repeat for `/` and `\` to
+  // cover the same surface.
+  @Test
+  fun parseNativeArtifactRejectsParentDirSegmentInKlibUrl() {
+    val json = singleFileVariantJson(url = "../../../etc/passwd.klib", sha256 = "evil")
+    assertNull(parseNativeArtifact(json, "linux_x64"))
+  }
+
+  @Test
+  fun parseNativeArtifactRejectsForwardSlashInKlibUrl() {
+    val json = singleFileVariantJson(url = "subdir/lib.klib", sha256 = "evil")
+    assertNull(parseNativeArtifact(json, "linux_x64"))
+  }
+
+  @Test
+  fun parseNativeArtifactRejectsBackslashInKlibUrl() {
+    val json = singleFileVariantJson(url = "subdir\\lib.klib", sha256 = "evil")
+    assertNull(parseNativeArtifact(json, "linux_x64"))
+  }
+
+  @Test
+  fun parseNativeArtifactRejectsMetadataWhenOnlyOneOfMultipleKlibsIsUnsafe() {
+    val json =
+      """
+        {
+          "formatVersion": "1.1",
+          "variants": [
+            {
+              "name": "linuxX64ApiElements-published",
+              "attributes": {
+                "org.gradle.category": "library",
+                "org.gradle.usage": "kotlin-api",
+                "org.jetbrains.kotlin.native.target": "linux_x64",
+                "org.jetbrains.kotlin.platform.type": "native"
+              },
+              "files": [
+                { "name": "main", "url": "lib-linuxx64-1.0.klib", "sha256": "ok" },
+                { "name": "evil", "url": "../escape.klib", "sha256": "bad" }
+              ]
+            }
+          ]
+        }
+        """
+        .trimIndent()
+
+    assertNull(parseNativeArtifact(json, "linux_x64"))
+  }
+
+  private fun singleFileVariantJson(url: String, sha256: String): String =
+    """
+        {
+          "formatVersion": "1.1",
+          "variants": [
+            {
+              "name": "linuxX64ApiElements-published",
+              "attributes": {
+                "org.gradle.category": "library",
+                "org.gradle.usage": "kotlin-api",
+                "org.jetbrains.kotlin.native.target": "linux_x64",
+                "org.jetbrains.kotlin.platform.type": "native"
+              },
+              "files": [
+                { "name": "lib", "url": "$url", "sha256": "$sha256" }
+              ]
+            }
+          ]
+        }
+        """
+      .trimIndent()
 
   @Test
   fun parseNativeArtifactPicksKlibFileAmongMultiple() {
@@ -608,8 +683,61 @@ class GradleMetadataTest {
 
     val artifact = parseNativeArtifact(json, "linux_x64")
 
-    assertEquals("lib-linuxx64-2.0.klib", artifact?.klibFileUrl)
-    assertEquals("good", artifact?.klibSha256)
+    assertEquals(1, artifact?.klibFiles?.size)
+    assertEquals("lib-linuxx64-2.0.klib", artifact?.klibFiles?.get(0)?.url)
+    assertEquals("good", artifact?.klibFiles?.get(0)?.sha256)
+  }
+
+  // ktor-utils-linuxx64-3.4.3.module ships the linuxX64ApiElements-published
+  // variant with two .klib files in `files[]`: the platform klib plus a
+  // cinterop sub-klib (here, threadUtils). The parser must collect both so
+  // konanc can link the cinterop dependency at build time.
+  @Test
+  fun parseNativeArtifactReturnsAllKlibFilesPerVariant() {
+    val json =
+      """
+        {
+          "formatVersion": "1.1",
+          "variants": [
+            {
+              "name": "linuxX64ApiElements-published",
+              "attributes": {
+                "artifactType": "org.jetbrains.kotlin.klib",
+                "org.gradle.category": "library",
+                "org.gradle.usage": "kotlin-api",
+                "org.jetbrains.kotlin.native.target": "linux_x64",
+                "org.jetbrains.kotlin.platform.type": "native"
+              },
+              "files": [
+                {
+                  "name": "ktor-utils-linuxX64Main-3.4.3.klib",
+                  "url": "ktor-utils-linuxx64-3.4.3.klib",
+                  "size": 100,
+                  "sha256": "main-hash"
+                },
+                {
+                  "name": "ktor-utils-linuxX64Cinterop-threadUtilsMain-3.4.3.klib",
+                  "url": "ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib",
+                  "size": 50,
+                  "sha256": "cinterop-hash"
+                }
+              ]
+            }
+          ]
+        }
+        """
+        .trimIndent()
+
+    val artifact = parseNativeArtifact(json, "linux_x64")
+
+    assertEquals(2, artifact?.klibFiles?.size)
+    assertEquals("ktor-utils-linuxx64-3.4.3.klib", artifact?.klibFiles?.get(0)?.url)
+    assertEquals("main-hash", artifact?.klibFiles?.get(0)?.sha256)
+    assertEquals(
+      "ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib",
+      artifact?.klibFiles?.get(1)?.url,
+    )
+    assertEquals("cinterop-hash", artifact?.klibFiles?.get(1)?.sha256)
   }
 
   @Test

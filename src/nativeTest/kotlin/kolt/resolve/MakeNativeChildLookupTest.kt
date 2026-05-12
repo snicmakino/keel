@@ -76,8 +76,7 @@ class MakeNativeChildLookupTest {
     val redirect = NativeRedirect("com.example", "lib-linuxx64", "1.0.0")
     val artifact =
       NativeArtifact(
-        klibFileUrl = "lib-linuxx64-1.0.0.klib",
-        klibSha256 = "h",
+        klibFiles = listOf(KlibFile(url = "lib-linuxx64-1.0.0.klib", sha256 = "h")),
         dependencies =
           listOf(
             NativeDependency(
@@ -118,8 +117,7 @@ class MakeNativeChildLookupTest {
     val redirect = NativeRedirect("com.example", "lib-linuxx64", "1.0.0")
     val artifact =
       NativeArtifact(
-        klibFileUrl = "lib-linuxx64-1.0.0.klib",
-        klibSha256 = "h",
+        klibFiles = listOf(KlibFile(url = "lib-linuxx64-1.0.0.klib", sha256 = "h")),
         dependencies =
           listOf(
             NativeDependency("org.jetbrains.kotlin", "kotlin-stdlib", "2.0.0"),

@@ -1,0 +1,23 @@
+name = "ktor-cinterop-smoke"
+version = "0.1.0"
+kind = "app"
+
+[kotlin]
+version = "2.3.20"
+
+[build]
+target = "linuxX64"
+main = "smoke.main"
+sources = ["src/main/kotlin"]
+test_sources = []
+
+[repositories]
+maven_central = "https://repo1.maven.org/maven2"
+
+# io.ktor:ktor-utils-linuxx64 publishes both the platform klib and a
+# `cinterop-threadUtils` sub-klib in its linuxX64ApiElements-published
+# variant. Depending on ktor-utils alone exercises kolt's multi-klib
+# resolution path — the resolver must fetch every `.klib` in `files[]`
+# and pass them all to konanc as `-l`. See ADR 0010.
+[dependencies]
+"io.ktor:ktor-utils" = "3.4.3"

@@ -89,7 +89,9 @@ fun resolveNative(
   // Pre-count uncached klib nodes so the total `M` is known before any
   // emission. Nodes whose redirect metadata is missing are excluded from
   // `M` here; the main loop returns `MetadataParseFailed` for them before
-  // any emission happens.
+  // any emission happens. A variant with multiple klibs (platform klib +
+  // cinterop sub-klibs) counts as a single node — progress ticks per
+  // artifact, not per klib file, so the M/N counter stays artifact-shaped.
   val total =
     nodes.count { node ->
       val resolved = processed["${node.groupArtifact}:${node.version}"] ?: return@count false
@@ -97,7 +99,9 @@ fun resolveNative(
         is NativeResolved.Klib -> {
           val targetCoord =
             Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
-          !deps.fileExists("$cacheBase/${buildKlibCachePath(targetCoord)}")
+          resolved.artifact.klibFiles.any { klibFile ->
+            !deps.fileExists("$cacheBase/${buildKlibCachePath(targetCoord, klibFile.url)}")
+          }
         }
         // JvmOnly nodes have no klib artifact to download, so they contribute
         // nothing to the M/N progress total. Keeping them out here aligns the
@@ -116,50 +120,59 @@ fun resolveNative(
       is NativeResolved.Klib -> {
         val targetCoord =
           Coordinate(resolved.redirect.group, resolved.redirect.module, resolved.redirect.version)
-        val klibCachePath = "$cacheBase/${buildKlibCachePath(targetCoord)}"
-
-        if (!deps.fileExists(klibCachePath)) {
-          val parentDir = klibCachePath.substringBeforeLast('/')
-          deps.ensureDirectoryRecursive(parentDir).getOrElse {
-            return Err(ResolveError.DirectoryCreateFailed(parentDir))
+        val klibPaths =
+          resolved.artifact.klibFiles.map { klibFile ->
+            klibFile to "$cacheBase/${buildKlibCachePath(targetCoord, klibFile.url)}"
           }
+        val anyMissing = klibPaths.any { (_, path) -> !deps.fileExists(path) }
+        if (anyMissing) {
           index += 1
           progress.onArtifactStart(index, total, node.groupArtifact, node.version)
-          downloadFromRepositories(
-              repos,
-              klibCachePath,
-              { buildKlibDownloadUrl(targetCoord, it) },
-              deps::downloadFile,
-              onRetry = progress::onRetryAgainst,
-            )
-            .getOrElse { failure ->
-              return Err(ResolveError.DownloadFailed(node.groupArtifact, failure))
+        }
+
+        for ((klibFile, klibCachePath) in klibPaths) {
+          if (!deps.fileExists(klibCachePath)) {
+            val parentDir = klibCachePath.substringBeforeLast('/')
+            deps.ensureDirectoryRecursive(parentDir).getOrElse {
+              return Err(ResolveError.DirectoryCreateFailed(parentDir))
             }
-        }
-
-        val actualHash =
-          deps.computeSha256(klibCachePath).getOrElse {
-            return Err(ResolveError.HashComputeFailed(node.groupArtifact, it))
+            downloadFromRepositories(
+                repos,
+                klibCachePath,
+                { buildKlibDownloadUrl(targetCoord, it, klibFile.url) },
+                deps::downloadFile,
+                onRetry = progress::onRetryAgainst,
+              )
+              .getOrElse { failure ->
+                return Err(ResolveError.DownloadFailed(node.groupArtifact, failure))
+              }
           }
-        if (actualHash != resolved.artifact.klibSha256) {
-          return Err(
-            ResolveError.Sha256Mismatch(
-              node.groupArtifact,
-              resolved.artifact.klibSha256,
-              actualHash,
+
+          val actualHash =
+            deps.computeSha256(klibCachePath).getOrElse {
+              return Err(ResolveError.HashComputeFailed(node.groupArtifact, it))
+            }
+          if (actualHash != klibFile.sha256) {
+            return Err(
+              ResolveError.Sha256Mismatch(
+                groupArtifact = node.groupArtifact,
+                expected = klibFile.sha256,
+                actual = actualHash,
+                fileName = klibFile.url,
+              )
+            )
+          }
+
+          resolvedDeps.add(
+            ResolvedDep(
+              groupArtifact = node.groupArtifact,
+              version = node.version,
+              sha256 = actualHash,
+              cachePath = klibCachePath,
+              transitive = !node.direct,
             )
           )
         }
-
-        resolvedDeps.add(
-          ResolvedDep(
-            groupArtifact = node.groupArtifact,
-            version = node.version,
-            sha256 = actualHash,
-            cachePath = klibCachePath,
-            transitive = !node.direct,
-          )
-        )
       }
       is NativeResolved.JvmOnly -> {
         // Direct JvmOnly deps (other than the kotlin-stdlib bundle already
