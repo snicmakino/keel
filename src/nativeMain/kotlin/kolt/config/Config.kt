@@ -567,49 +567,6 @@ fun parseConfig(tomlString: String, path: String? = null): Result<KoltConfig, Co
   }
 }
 
-// ktoml decodes a flat-form `[repositories]\n<name> = "<url>"` into the
-// Map<String, RawRepository> schema by reporting <name> as an unknown key at
-// rootNode scope — byte-identical to a real top-level typo. The exception
-// alone is not deterministic enough to substitute the message, so we keep the
-// raw ktoml error intact and append a migration hint paragraph keyed on the
-// input containing `[repositories]` plus the offending key matching the name
-// that would appear under that table. Conservative: skip the hint when the
-// input has no `[repositories]` header so legitimate top-level typos like
-// `koltn = "stray"` are not corrupted.
-private val REPOSITORIES_HEADER_REGEX = Regex("(?m)^\\s*\\[repositories\\]\\s*$")
-
-private fun buildKtomlParseError(
-  rawMessage: String?,
-  path: String?,
-  tomlString: String,
-): ConfigError.ParseFailed {
-  val (lineNo, detail) = extractKtomlLineNo(rawMessage)
-  val (keyPath, suggestion) = parseUnknownKey(detail)
-  val baseHeadline = "failed to parse kolt.toml: $detail"
-  val migrationHint =
-    if (keyPath != null && REPOSITORIES_HEADER_REGEX.containsMatchIn(tomlString)) {
-      val nameRegex =
-        Regex(
-          "(?ms)^\\s*\\[repositories\\]\\s*\\R(?:[^\\[]*?\\R)?\\s*\"?" +
-            Regex.escape(keyPath) +
-            "\"?\\s*="
-        )
-      if (nameRegex.containsMatchIn(tomlString)) {
-        "repositories schema migrated to sub-table form; " +
-          "expected '[repositories.<name>] url = \"...\"', " +
-          "got string value at '$keyPath'"
-      } else null
-    } else null
-  val headline = if (migrationHint != null) "$baseHeadline -- $migrationHint" else baseHeadline
-  return ConfigError.ParseFailed(
-    message = headline,
-    path = path,
-    lineNo = lineNo,
-    keyPath = keyPath,
-    suggestion = if (migrationHint != null) null else suggestion,
-  )
-}
-
 // Renders a ParseFailed into the writer-ready diagnostic shape. The headline
 // already begins with `failed to parse kolt.toml: ...` for ktoml-origin
 // errors; legacy validation errors carry a domain-specific message and just

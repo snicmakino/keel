@@ -93,7 +93,7 @@ Each implementation sub-task pairs the failing test (RED) and its passing implem
 
 - [ ] 3. Overlay decode, error path, and merge for sys_props
 
-- [ ] 3.1 Thread source-file path through `KtomlMessageParse` for both root-scope and nested-scope unknown keys
+- [x] 3.1 Thread source-file path through `KtomlMessageParse` for both root-scope and nested-scope unknown keys
   - Update the existing ktoml-error wrapper so it accepts a source-file path parameter, used to identify whether the offending file is `kolt.toml` or `kolt.local.toml`.
   - Cover both the `Unknown key received: <k> in scope <rootNode>` branch (already pinned in `ConfigParseMessageFormatTest`) and the nested-scope branch (`scope <run>`, `scope <test>`, etc.) — the latter uses the scope info already returned by `parseUnknownKey` and was previously unattributed to a source file.
   - Extend `ConfigParseMessageFormatTest` with new pinned cases for the nested-scope path so the error format is recorded before 3.2 consumes it.

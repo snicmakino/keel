@@ -139,4 +139,96 @@ class ConfigParseMessageFormatTest {
       return assertNotNull(e.message, "ktoml exception had null message")
     }
   }
+
+  // Overlay-shaped probe: pins ktoml's nested-scope unknown-key message format
+  // for an input shaped like `kolt.local.toml` (an unknown sub-key under a
+  // known section like `[run]`). The shape is already pinned by
+  // `unknownNestedKeyMessageMatchesAndCarriesParentScope`, but task 3.2's
+  // overlay decoder will route the same ktoml error through
+  // `buildKtomlParseError` with `sourceFile = "kolt.local.toml"`; this case
+  // records the message shape with a probe that matches the overlay schema
+  // surface so a ktoml bump that reshapes the nested-scope variant surfaces
+  // RED in both root-scope and overlay-scope paths.
+  @Serializable private data class OverlayProbeRun(val sys_props: Map<String, String> = emptyMap())
+
+  @Serializable
+  private data class OverlayProbe(
+    val run: OverlayProbeRun = OverlayProbeRun(),
+    val name: String = "",
+  )
+
+  @Test
+  fun unknownNestedKeyMessageOnOverlayShapedProbeCarriesParentScope() {
+    val raw = "[run]\nstray = \"unknown\"\n"
+    val message =
+      try {
+        strictToml.decodeFromString(OverlayProbe.serializer(), raw)
+        fail("expected TomlDecodingException for input: $raw")
+      } catch (e: TomlDecodingException) {
+        assertNotNull(e.message, "ktoml exception had null message")
+      }
+    val regex = Regex("Unknown key received: <([^>]+)> in scope <([^>]*)>")
+    val match = regex.find(message)
+    assertNotNull(
+      match,
+      "ktoml unknown-nested-key (overlay-shaped) message did not match expected format; " +
+        "actual: $message",
+    )
+    val (key, scope) = match.destructured
+    assertEquals("stray", key, "full ktoml message: $message")
+    assertEquals("run", scope, "full ktoml message: $message")
+  }
+
+  @Test
+  fun buildKtomlParseErrorHeadlineDefaultsToKoltToml() {
+    val err =
+      buildKtomlParseError(
+        rawMessage = "Line 3: Unknown key received: <foo> in scope <rootNode>",
+        path = "kolt.toml",
+        tomlString = "name = \"x\"\nversion = \"0.1\"\nfoo = \"stray\"\n",
+      )
+    assertEquals(
+      true,
+      err.message.startsWith("failed to parse kolt.toml: "),
+      "expected default headline to be `failed to parse kolt.toml: ...`; actual: ${err.message}",
+    )
+  }
+
+  @Test
+  fun buildKtomlParseErrorHeadlineRespectsSourceFileOverride() {
+    val err =
+      buildKtomlParseError(
+        rawMessage = "Line 1: Unknown key received: <foo> in scope <run>",
+        path = "kolt.local.toml",
+        tomlString = "[run]\nfoo = \"x\"\n",
+        sourceFile = "kolt.local.toml",
+      )
+    assertEquals(
+      true,
+      err.message.startsWith("failed to parse kolt.local.toml: "),
+      "expected overlay headline to be `failed to parse kolt.local.toml: ...`; " +
+        "actual: ${err.message}",
+    )
+  }
+
+  @Test
+  fun buildKtomlParseErrorSkipsRepositoriesMigrationHintForOverlay() {
+    // The overlay's `[repositories.<name>]` schema is sub-table only by design,
+    // so the flat-form migration hint must not fire when sourceFile is the
+    // overlay file. Conservative scoping protects the overlay diagnostic from
+    // a misleading hint that points at a kolt.toml-only schema move.
+    val flatRepositoriesInput = "[repositories]\ncentral = \"https://repo1.maven.org/maven2\"\n"
+    val err =
+      buildKtomlParseError(
+        rawMessage = "Unknown key received: <central> in scope <rootNode>",
+        path = "kolt.local.toml",
+        tomlString = flatRepositoriesInput,
+        sourceFile = "kolt.local.toml",
+      )
+    assertEquals(
+      false,
+      err.message.contains("repositories schema migrated to sub-table form"),
+      "overlay headline must not include the kolt.toml migration hint; actual: ${err.message}",
+    )
+  }
 }
