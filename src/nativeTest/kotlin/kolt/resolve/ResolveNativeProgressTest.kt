@@ -172,6 +172,99 @@ class ResolveNativeProgressTest {
     """
       .trimIndent()
 
+  // A node with N klibs must still increment progress once, not N times:
+  // M/N counts artifacts, not file downloads. Regression guard for the
+  // per-node-not-per-klib invariant in resolveNative's pre-count + loop.
+  @Test
+  fun multiKlibVariantStillTicksProgressOnceForTheNode() {
+    val config =
+      testConfig(target = "linuxX64").copy(dependencies = mapOf("com.example:lib" to "1.0.0"))
+
+    val rootModule = rootModuleJson("com.example", "lib-linuxx64", "1.0.0")
+    val platformModule =
+      platformModuleJsonMulti(
+        klibs =
+          listOf(
+            "lib-linuxx64-1.0.0.klib" to "h-main",
+            "lib-linuxx64-1.0.0-cinterop-something.klib" to "h-cinterop",
+          )
+      )
+
+    val deps =
+      fakeDeps(
+        contents =
+          mapOf(
+            "/cache/com/example/lib/1.0.0/lib-1.0.0.module" to rootModule,
+            "/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.module" to platformModule,
+          ),
+        sha256 =
+          mapOf(
+            "/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0.klib" to "h-main",
+            "/cache/com/example/lib-linuxx64/1.0.0/lib-linuxx64-1.0.0-cinterop-something.klib" to
+              "h-cinterop",
+          ),
+      )
+
+    val sink = RecordingResolverProgressSink()
+
+    val result = resolveNative(config, "/cache", deps, progress = sink)
+    assertNotNull(result.get())
+
+    val artifactStarts = sink.events.filterIsInstance<RecordedProgressEvent.ArtifactStart>()
+    assertEquals(
+      listOf(RecordedProgressEvent.ArtifactStart(1, 1, "com.example:lib", "1.0.0")),
+      artifactStarts,
+      "Multi-klib variant must emit exactly one ArtifactStart with total=1",
+    )
+  }
+
+  private fun platformModuleJsonMulti(
+    klibs: List<Pair<String, String>>,
+    dependencies: List<NativeDependency> = emptyList(),
+  ): String {
+    val filesJson =
+      klibs.joinToString(",\n") { (url, sha256) ->
+        """
+              {
+                "name": "$url",
+                "url": "$url",
+                "sha256": "$sha256"
+              }
+            """
+          .trimIndent()
+      }
+    val depsJson =
+      dependencies.joinToString(",\n") { d ->
+        """
+              {
+                "group": "${d.group}",
+                "module": "${d.module}",
+                "version": { "requires": "${d.version}" }
+              }
+            """
+          .trimIndent()
+      }
+    return """
+            {
+              "formatVersion": "1.1",
+              "variants": [
+                {
+                  "name": "linuxX64ApiElements-published",
+                  "attributes": {
+                    "org.gradle.category": "library",
+                    "org.gradle.usage": "kotlin-api",
+                    "org.jetbrains.kotlin.native.target": "linux_x64",
+                    "org.jetbrains.kotlin.platform.type": "native"
+                  },
+                  "dependencies": [$depsJson],
+                  "files": [$filesJson]
+                }
+              ]
+            }
+        """
+      .trimIndent()
+  }
+
   private fun platformModuleJson(klibFileName: String, klibSha256: String): String =
     """
             {

@@ -66,7 +66,7 @@ fun buildModuleCachePath(coord: Coordinate): String = buildRelativePath(coord, "
 // may publish a platform klib plus cinterop sub-klibs whose file names carry
 // a `-cinterop-<name>` suffix (e.g. `ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib`).
 // The actual file name comes from `GradleFile.url` in the .module metadata;
-// callers pass it as `fileName`. See issue #430 and ADR 0010.
+// callers pass it as `fileName`. See ADR 0010.
 fun buildKlibDownloadUrl(coord: Coordinate, baseUrl: String, fileName: String): String {
   val groupPath = coord.group.replace('.', '/')
   return "$baseUrl/$groupPath/${coord.artifact}/${coord.version}/$fileName"

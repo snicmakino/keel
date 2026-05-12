@@ -89,8 +89,9 @@ fun resolveNative(
   // Pre-count uncached klib nodes so the total `M` is known before any
   // emission. Nodes whose redirect metadata is missing are excluded from
   // `M` here; the main loop returns `MetadataParseFailed` for them before
-  // any emission happens. Multi-klib variants (#430) count as one node:
-  // progress ticks per node, not per klib file.
+  // any emission happens. A variant with multiple klibs (platform klib +
+  // cinterop sub-klibs) counts as a single node — progress ticks per
+  // artifact, not per klib file, so the M/N counter stays artifact-shaped.
   val total =
     nodes.count { node ->
       val resolved = processed["${node.groupArtifact}:${node.version}"] ?: return@count false
@@ -152,7 +153,14 @@ fun resolveNative(
               return Err(ResolveError.HashComputeFailed(node.groupArtifact, it))
             }
           if (actualHash != klibFile.sha256) {
-            return Err(ResolveError.Sha256Mismatch(node.groupArtifact, klibFile.sha256, actualHash))
+            return Err(
+              ResolveError.Sha256Mismatch(
+                groupArtifact = node.groupArtifact,
+                expected = klibFile.sha256,
+                actual = actualHash,
+                fileName = klibFile.url,
+              )
+            )
           }
 
           resolvedDeps.add(

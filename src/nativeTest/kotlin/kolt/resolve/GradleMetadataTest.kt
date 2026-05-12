@@ -618,7 +618,7 @@ class GradleMetadataTest {
   // ktor-utils-linuxx64-3.4.3.module ships the linuxX64ApiElements-published
   // variant with two .klib files in `files[]`: the platform klib plus a
   // cinterop sub-klib (here, threadUtils). The parser must collect both so
-  // konanc can link the cinterop dependency at build time. See issue #430.
+  // konanc can link the cinterop dependency at build time.
   @Test
   fun parseNativeArtifactReturnsAllKlibFilesPerVariant() {
     val json =

@@ -43,7 +43,7 @@ data class NativeRedirect(val group: String, val module: String, val version: St
 // `ktor-utils-linuxx64-3.4.3.klib` together with
 // `ktor-utils-linuxx64-3.4.3-cinterop-threadUtils.klib`). All sub-klibs must
 // be fetched and passed to konanc as `-l` so manifest-declared cinterop
-// dependencies link correctly. See issue #430 and ADR 0010.
+// dependencies link correctly. See ADR 0010.
 data class NativeArtifact(val klibFiles: List<KlibFile>, val dependencies: List<NativeDependency>)
 
 data class KlibFile(val url: String, val sha256: String)

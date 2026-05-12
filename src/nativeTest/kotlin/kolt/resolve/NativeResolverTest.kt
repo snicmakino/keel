@@ -61,9 +61,9 @@ class NativeResolverTest {
     assertFalse(resolved.deps[0].transitive)
   }
 
-  // Layer 2 (#430): a single Klib node with two klib files (main + cinterop
+  // A single Klib node with two klib files (platform klib + cinterop
   // sub-klib) must download both, sha-verify both, and emit one ResolvedDep
-  // per klib so konanc receives `-l <main> -l <cinterop>` at link time.
+  // per klib so konanc receives `-l <platform> -l <cinterop>` at link time.
   @Test
   fun resolvesAllKlibsForVariantWithCinteropSubKlib() {
     val config =
@@ -1155,7 +1155,7 @@ class NativeResolverTest {
   // Multi-klib platform module shaped after ktor-utils-linuxx64-3.4.3.module:
   // a single linuxX64ApiElements-published variant whose `files[]` lists the
   // platform klib plus one or more cinterop sub-klibs. Each entry is
-  // (url, sha256). See issue #430.
+  // (url, sha256).
   private fun platformModuleJsonMulti(
     klibs: List<Pair<String, String>>,
     dependencies: List<NativeDependency> = emptyList(),

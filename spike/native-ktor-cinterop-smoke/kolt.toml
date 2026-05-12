@@ -14,12 +14,10 @@ test_sources = []
 [repositories]
 maven_central = "https://repo1.maven.org/maven2"
 
-# Issue #430: io.ktor:ktor-utils-linuxx64 publishes both the platform klib
-# and a `cinterop-threadUtils` sub-klib in its linuxX64ApiElements-published
-# variant. Pre-#430, kolt's native resolver fetched only the first .klib in
-# `files[]` and dropped the cinterop sub-klib; konanc then emitted stubs for
-# the cinterop-declared symbols and the binary failed at runtime with
-# `IrLinkageError`. Depending on ktor-utils alone is enough to exercise the
-# multi-klib resolution path.
+# io.ktor:ktor-utils-linuxx64 publishes both the platform klib and a
+# `cinterop-threadUtils` sub-klib in its linuxX64ApiElements-published
+# variant. Depending on ktor-utils alone exercises kolt's multi-klib
+# resolution path — the resolver must fetch every `.klib` in `files[]`
+# and pass them all to konanc as `-l`. See ADR 0010.
 [dependencies]
 "io.ktor:ktor-utils" = "3.4.3"

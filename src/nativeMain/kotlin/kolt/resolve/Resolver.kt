@@ -29,8 +29,16 @@ sealed class RepositoryDownloadFailure {
 sealed class ResolveError {
   data class InvalidDependency(val input: String) : ResolveError()
 
-  data class Sha256Mismatch(val groupArtifact: String, val expected: String, val actual: String) :
-    ResolveError()
+  // `fileName` disambiguates which file mismatched when a single coordinate
+  // owns several artifacts on disk (Kotlin/Native variants can publish a
+  // platform klib plus cinterop sub-klibs). Null for JVM jars and bundle
+  // resolution where the coordinate maps to exactly one file.
+  data class Sha256Mismatch(
+    val groupArtifact: String,
+    val expected: String,
+    val actual: String,
+    val fileName: String? = null,
+  ) : ResolveError()
 
   data class DownloadFailed(val groupArtifact: String, val failure: RepositoryDownloadFailure) :
     ResolveError()
@@ -71,7 +79,12 @@ fun formatResolveError(error: ResolveError): RenderedDiagnostic =
     is ResolveError.Sha256Mismatch ->
       RenderedDiagnostic(
         severity = Severity.Error,
-        headline = "sha256 mismatch for ${error.groupArtifact}",
+        headline =
+          buildString {
+            append("sha256 mismatch for ")
+            append(error.groupArtifact)
+            error.fileName?.let { append(" (").append(it).append(')') }
+          },
         context = listOf("expected: ${error.expected}", "got:      ${error.actual}"),
       )
     is ResolveError.DownloadFailed ->
