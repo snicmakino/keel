@@ -101,7 +101,7 @@ Each implementation sub-task pairs the failing test (RED) and its passing implem
   - _Requirements: 2.2, 2.3_
   - _Boundary: KtomlMessageParse, ConfigParseMessageFormatTest_
 
-- [ ] 3.2 Implement `LocalOverlay` decoder and decode tests
+- [x] 3.2 Implement `LocalOverlay` decoder and decode tests
   - Add `LocalOverlay.kt` with `RawLocalOverlayConfig` (all nullable fields: `test`, `run`, `repositories`) and `parseLocalOverlay(tomlString, path)` returning `Result<RawLocalOverlayConfig, ConfigError>`.
   - `parseLocalOverlay` consumes the path-threaded wrapper from 3.1 so overlay errors are attributed to `kolt.local.toml`.
   - Add `LocalTomlOverlayDecodeTest.kt` covering: TOML syntax error attribution (R1.3), root-scope unknown section `[build]` and bare `name = "…"` (R2.2), nested-scope unknown sub-key `[run.foo]` (R2.3).

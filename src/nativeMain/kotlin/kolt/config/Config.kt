@@ -161,12 +161,12 @@ private data class RawBuildSection(
 )
 
 @Serializable
-private data class RawTestSection(
+internal data class RawTestSection(
   @SerialName("sys_props") val sysProps: Map<String, RawSysPropValue> = emptyMap()
 )
 
 @Serializable
-private data class RawRunSection(
+internal data class RawRunSection(
   @SerialName("sys_props") val sysProps: Map<String, RawSysPropValue> = emptyMap()
 )
 
