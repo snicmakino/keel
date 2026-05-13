@@ -142,7 +142,7 @@ Each implementation sub-task pairs the failing test (RED) and its passing implem
 
 - [ ] 4. Surface overlay in CLI help and architecture documentation
 
-- [ ] 4.1 (P) Update `printUsage` `-D` line and add `kolt.local.toml` description
+- [x] 4.1 (P) Update `printUsage` `-D` line and add `kolt.local.toml` description
   - Update the existing `-D<key>=<value>` description so it reads as the third layer of a three-layer override (`kolt.toml` ← `kolt.local.toml` ← `-D`).
   - Add a short note in the flags section that describes `kolt.local.toml` as a per-project optional overlay file restricted to `[test.sys_props]`, `[run.sys_props]`, and `[repositories.<name>]`.
   - **Observable done**: a snapshot test (or direct invocation in CI) of `kolt --help` includes both the three-layer order and the `kolt.local.toml` mention.
