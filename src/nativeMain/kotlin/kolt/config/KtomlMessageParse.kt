@@ -91,6 +91,11 @@ internal fun buildKtomlParseError(
         keyPath != null &&
         REPOSITORIES_HEADER_REGEX.containsMatchIn(tomlString)
     ) {
+      // Match `[repositories]` followed by either the offending key directly
+      // on the next non-empty line OR after at most one preceding flat-form
+      // entry (so a hint still fires for the second offending key in a
+      // multi-entry flat block). A wider gap means the key is unlikely to
+      // belong to this `[repositories]` table — keep the hint conservative.
       val nameRegex =
         Regex(
           "(?ms)^\\s*\\[repositories\\]\\s*\\R(?:[^\\[]*?\\R)?\\s*\"?" +
