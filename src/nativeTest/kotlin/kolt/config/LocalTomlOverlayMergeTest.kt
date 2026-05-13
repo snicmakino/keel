@@ -424,4 +424,36 @@ class LocalTomlOverlayMergeTest {
       "overlay literal must be preserved verbatim; no env interpolation occurs at parse time",
     )
   }
+
+  @Test
+  fun parseConfigOverlayMergesWhenBaseKeyIsQuotedButOverlayKeyIsBare() {
+    val base =
+      baseToml +
+        """
+          [repositories."central"]
+          url = "https://repo1.maven.org/maven2"
+        """
+          .trimIndent()
+    val overlay =
+      """
+        [repositories.central]
+        url = "https://mirror.example.com/m2"
+      """
+        .trimIndent()
+
+    val config =
+      assertNotNull(
+        parseConfig(
+            base,
+            path = "kolt.toml",
+            overlayString = overlay,
+            overlayPath = "kolt.local.toml",
+          )
+          .get(),
+        "merging quoted-base + bare-overlay key must succeed without falsely " +
+          "rejecting 'central' as an overlay-only name",
+      )
+
+    assertEquals("https://mirror.example.com/m2", config.repositories["central"]?.url)
+  }
 }

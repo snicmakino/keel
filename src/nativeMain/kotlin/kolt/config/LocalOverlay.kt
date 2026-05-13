@@ -74,12 +74,20 @@ private fun mergeSysProps(
   return merged
 }
 
+// ktoml preserves surrounding quotes on bare-quoted map keys (`[repositories."x"]`
+// decodes the key as the literal `"x"`). `liftRepositoriesMap` strips them on
+// the post-merge lift; we strip them on BOTH base and overlay before lookup so
+// `[repositories."central"]` in kolt.toml merges with `[repositories.central]`
+// in kolt.local.toml regardless of which side quoted the name.
 private fun mergeRepositories(
   base: Map<String, RawRepository>,
   overlay: Map<String, RawRepository>,
   overlayPath: String,
 ): Result<Map<String, RawRepository>, ConfigError> {
-  val merged = LinkedHashMap<String, RawRepository>(base)
+  val merged = LinkedHashMap<String, RawRepository>(base.size)
+  for ((rawName, baseRepo) in base) {
+    merged[rawName.removeSurrounding("\"")] = baseRepo
+  }
   for ((rawName, overlayRepo) in overlay) {
     val name = rawName.removeSurrounding("\"")
     val baseRepo = merged[name]
