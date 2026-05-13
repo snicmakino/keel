@@ -455,6 +455,36 @@ class LocalTomlOverlayMergeTest {
     )
   }
 
+  // Parity check for the [run.sys_props] code path. The validator iterates
+  // test then run sysprops with independently-built source maps; a wiring
+  // mistake (feeding `rawBase.test?.sysProps` into the run-path source map)
+  // would slip past the [test.sys_props] cases above. Pin the run-path
+  // attribution directly.
+  @Test
+  fun parseConfigOverlayOnlyRunClasspathRefToMissingBundleNamesOverlayFile() {
+    val overlay =
+      """
+        [run.sys_props]
+        "kolt.X" = { classpath = "missing" }
+      """
+        .trimIndent()
+
+    val err =
+      parseConfig(
+          baseToml,
+          path = "kolt.toml",
+          overlayString = overlay,
+          overlayPath = "kolt.local.toml",
+        )
+        .getError()
+    val parseFailed = assertNotNull(err) as ConfigError.ParseFailed
+    val rendered = renderConfigErrorAsLine(parseFailed)
+    assertTrue(
+      "missing" in rendered && "kolt.local.toml" in rendered,
+      "expected error naming 'missing' and 'kolt.local.toml'; actual: $rendered",
+    )
+  }
+
   // Companion to the overlay-only case: a base-sourced classpath-ref to a
   // missing bundle must still name kolt.toml (not kolt.local.toml), so the
   // source-attribution change does not regress base diagnostics.

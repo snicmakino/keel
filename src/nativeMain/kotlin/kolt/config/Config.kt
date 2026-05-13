@@ -351,8 +351,8 @@ private fun validateNewSchemaTargetCompat(
 }
 
 // Every SysPropValue.ClasspathRef must point at a declared bundle. The
-// offending sysprop key, the missing bundle name, and the source file the
-// entry came from drop into the rendered diagnostic (Req 2.3, Req 3.3).
+// rendered diagnostic surfaces the offending sysprop key, the missing
+// bundle name, and the source file the entry came from (Req 2.3, Req 3.3).
 // `testSysPropSources` / `runSysPropSources` map each sysprop key to the
 // file that contributed it (overlay wins on collision, mirroring the
 // mergeSysProps semantics); the resolved path lands in ParseFailed.path
