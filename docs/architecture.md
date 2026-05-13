@@ -135,7 +135,7 @@ The three layers merge in this order: `kolt.toml` ← `kolt.local.toml` ← `-D`
 Merge semantics per allowlisted section:
 
 - **`[test.sys_props]` / `[run.sys_props]`** — key-replace plus union. A key declared in both files takes the overlay value; keys unique to either file are union-merged. Cross-references (`{ classpath = "<bundle>" }`) resolve against the merged result, so an overlay sys_prop may target a bundle declared only in the base `kolt.toml`.
-- **`[repositories.<name>]`** — field-level merge by name. Matching names merge per field (overlay non-null fields replace base fields); the merged repository keeps its base declaration-list position. An overlay-only repository name is rejected, naming `kolt.local.toml` as the source. See ADR 0034 (private Maven repos, shared with #416) for the field-merge rationale; field-level merge ships in PR-2.
+- **`[repositories.<name>]`** — field-level merge by name. Matching names merge per field (overlay non-null fields replace base fields); the merged repository keeps its base declaration-list position. An overlay-only repository name is rejected, naming `kolt.local.toml` as the source. See [ADR 0034](adr/0034-private-maven-repos.md) (private Maven repos, shared with #416) for the env-agnostic ↔ overlay framing.
 
 The overlay is parsed by the same ktoml pipeline as the base file, so identical strict-mode rules apply (unknown sections fail loudly; the env-agnostic literal rule applies to overlay values too — no `${env.X}` interpolation).
 
