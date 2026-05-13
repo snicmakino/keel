@@ -149,7 +149,7 @@ Each implementation sub-task pairs the failing test (RED) and its passing implem
   - _Requirements: 7.1_
   - _Boundary: Main printUsage_
 
-- [ ] 4.2 (P) Add `## Configuration layers` chapter to `docs/architecture.md`
+- [x] 4.2 (P) Add `## Configuration layers` chapter to `docs/architecture.md`
   - Insert the new chapter between `## Error handling` and `## Configuration change semantics`.
   - Cover: the two on-disk files (shared vs. gitignored), the section allowlist, merge semantics (key-replace for sys_props, field-merge for repositories), the three-layer override order, and a forward reference noting that ADR 0034 (private Maven repos, shared with #416) is authored in PR-2.
   - **Observable done**: `docs/architecture.md` contains the new section in the specified position and forward-references ADR 0034 by number; the in-tree ADR link itself does not need to resolve until PR-2 (6.2) lands.
