@@ -169,7 +169,7 @@ Each implementation sub-task pairs the failing test (RED) and its passing implem
   - _Depends: 3.4_
   - _Boundary: LocalTomlOverlayMergeTest_
 
-- [ ] 5.2 (P) Upgrade self-host `kolt.toml` files and confirm dogfood path
+- [x] 5.2 (P) Upgrade self-host `kolt.toml` files and confirm dogfood path
   - Flip the `[repositories]` declarations in the three top-level `kolt.toml` files (root, `kolt-jvm-compiler-daemon`, `kolt-native-compiler-daemon`) to the sub-table form.
   - Run `kolt build` against each sub-project locally and confirm the existing self-host CI job stays green.
   - **Observable done**: each of the three `kolt.toml` files declares `[repositories.central] url = "…"` and the self-host smoke CI step passes on the PR.
