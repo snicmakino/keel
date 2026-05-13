@@ -253,7 +253,7 @@ private fun liftSysPropsMap(
 // quotes around keys (consistent with cleanedDeps), rejects entries whose
 // url is null or empty, and preserves the trailing-slash normalization that
 // applied to the legacy flat-form string values.
-private fun liftRepositoriesMap(
+internal fun liftRepositoriesMap(
   raw: Map<String, RawRepository>
 ): Result<Map<String, Repository>, ConfigError> {
   val out = LinkedHashMap<String, Repository>(raw.size)
@@ -456,9 +456,38 @@ private fun resolveEffectiveTarget(raw: RawBuildSection): Result<String, ConfigE
 // `path` is the kolt.toml location the caller read `tomlString` from,
 // surfaced verbatim in the rendered diagnostic when populated. Internal
 // validation paths and tests omit it (defaults to null).
-fun parseConfig(tomlString: String, path: String? = null): Result<KoltConfig, ConfigError> {
+//
+// `overlayString` / `overlayPath` carry an optional `kolt.local.toml` payload
+// to merge into the base before validation. The pair must be both null or both
+// non-null; a half-set call is a programmer-error contract surfaced as
+// ParseFailed (exceptions are prohibited).
+fun parseConfig(
+  tomlString: String,
+  path: String? = null,
+  overlayString: String? = null,
+  overlayPath: String? = null,
+): Result<KoltConfig, ConfigError> {
+  if ((overlayString == null) != (overlayPath == null)) {
+    return Err(
+      ConfigError.ParseFailed(
+        "overlayString and overlayPath must be supplied together or both null"
+      )
+    )
+  }
   return try {
-    val raw = toml.decodeFromString(RawKoltConfig.serializer(), tomlString)
+    val rawBase = toml.decodeFromString(RawKoltConfig.serializer(), tomlString)
+    val raw =
+      if (overlayString != null && overlayPath != null) {
+        val rawOverlay =
+          parseLocalOverlay(overlayString, overlayPath).getOrElse {
+            return Err(it)
+          }
+        mergeOverlay(rawBase, rawOverlay, overlayPath).getOrElse {
+          return Err(it)
+        }
+      } else {
+        rawBase
+      }
     // Validation order is load-bearing: tests match on canonical error
     // substrings per design.md §Components → Config parser kind+main rule.
     validateKind(raw.kind).getError()?.let {

@@ -119,7 +119,7 @@ Each implementation sub-task pairs the failing test (RED) and its passing implem
   - _Depends: 3.2_
   - _Boundary: LocalOverlay, LocalTomlOverlayMergeTest_
 
-- [ ] 3.4 Extend `parseConfig` to accept the overlay and run validation on the merged result
+- [x] 3.4 Extend `parseConfig` to accept the overlay and run validation on the merged result
   - Add the `overlayString: String? = null` and `overlayPath: String? = null` parameters to `parseConfig`; default behavior is preserved for callers that omit them.
   - Order: decode base → optionally decode overlay → call `mergeOverlay` → run existing validators on the merged `RawKoltConfig` → lift to `KoltConfig`.
   - Add the post-merge empty-`url` repository validator inside the validation pass: after merge, any `Repository.url` that is absent or empty is rejected with a message naming the offending repository (R5.3).
