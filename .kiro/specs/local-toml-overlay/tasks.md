@@ -162,7 +162,7 @@ Each implementation sub-task pairs the failing test (RED) and its passing implem
 
 - [ ] 5. End-to-end integration and self-host smoke
 
-- [ ] 5.1 Add end-to-end integration tests for the merged config
+- [x] 5.1 Add end-to-end integration tests for the merged config
   - In `LocalTomlOverlayMergeTest.kt`, add: (a) realistic mixed overlay end-to-end (sys_props with a `{ classpath = X }` reference to a bundle declared in base, resolves correctly post-merge — R3.3), (b) overlay `${env.X}` literal rejection via the existing env-agnostic validator (R1.4).
   - **Observable done**: the two new integration tests pass and exercise the post-merge validation pipeline against overlay-sourced values.
   - _Requirements: 1.4, 3.3_
@@ -218,3 +218,6 @@ Each implementation sub-task pairs the failing test (RED) and its passing implem
 
 - **Task 1.3 verdict (consumed by 2.1)**: ktoml 0.7.1 surfaces a legacy flat-form `[repositories]\ncentral = "..."` decode against `Map<String, RawRepository>` as `UnknownNameException` with `Unknown key received: <central> in scope <rootNode>` — byte-identical to a real root-scope typo. Migration-message wiring in 2.1 must use **hint-append** (raw ktoml error preserved + hint paragraph appended) based on an input-content heuristic (`[repositories]` table present plus key in offending position), NOT substitution keyed on the exception. Pinned by `ConfigParseMessageFormatTest.legacyFlatRepositoriesShapeSurfacesAsUnknownNameAtRootScope`.
 - **Task 2.1 follow-up (deferred, non-blocking)**: `src/nativeMain/kotlin/kolt/resolve/Resolver.kt:154` still emits the user-facing string `"no repositories configured (add a `[repositories]` entry to kolt.toml)"`. After the schema flip this hint points at the rejected legacy form. Out of scope for tasks 2.1-2.6 (Resolver.kt was not in design.md's enumerated file list). Recommend folding into the v0.20.0 release-note pass alongside other user-facing hint updates.
+- **Task 5.1 follow-ups (deferred, non-blocking)**:
+  - R1.4 interpretation: `${env.X}` in overlay literals is passed through verbatim (no interpolation, no rejection) per ADR 0032 §2. design.md §Integration Tests line 575 frames it as a rejection, which doesn't match the actual contract. Tests in `LocalTomlOverlayMergeTest.parseConfigOverlayEnvLiteralIsPreservedVerbatim` pin the empirical contract. Reconcile design.md wording in a follow-up; OR build a `${env.X}`-parse-time rejector in a separate spec.
+  - R3.3 negative branch: `validateBundleReferences` (Config.kt:357) does not attribute errors to a source file, so an overlay-only `{ classpath = X }` referencing a missing bundle cannot today be tested to name `kolt.local.toml` in the error. Tighten the validator to surface the originating section's source file as a follow-up.

@@ -4,6 +4,7 @@ import com.github.michaelbull.result.get
 import com.github.michaelbull.result.getError
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -207,6 +208,76 @@ class LocalTomlOverlayMergeTest {
     assertTrue(
       "overlayString" in parseFailed.message && "overlayPath" in parseFailed.message,
       "expected precondition error naming both overlay parameters; actual: ${parseFailed.message}",
+    )
+  }
+
+  @Test
+  fun parseConfigOverlayClasspathRefResolvesAgainstBaseBundle() {
+    val base =
+      baseToml +
+        """
+            [classpaths.bta-impl]
+            "org.jetbrains.kotlin:kotlin-build-tools-impl" = "2.3.20"
+        """
+          .trimIndent()
+    val overlay =
+      """
+        [test.sys_props]
+        "kolt.ic.btaImplClasspath" = { classpath = "bta-impl" }
+      """
+        .trimIndent()
+
+    val config =
+      assertNotNull(
+        parseConfig(
+            base,
+            path = "kolt.toml",
+            overlayString = overlay,
+            overlayPath = "kolt.local.toml",
+          )
+          .get(),
+        "expected overlay classpath-ref to resolve against base bundle post-merge",
+      )
+
+    val value =
+      assertIs<SysPropValue.ClasspathRef>(
+        config.testSection.sysProps["kolt.ic.btaImplClasspath"],
+        "overlay-sourced sysprop must lift to ClasspathRef in the merged config",
+      )
+    assertEquals("bta-impl", value.bundleName)
+  }
+
+  @Test
+  fun parseConfigOverlayEnvLiteralIsPreservedVerbatim() {
+    val overlay =
+      """
+        [test.sys_props]
+        "kolt.fixture.home" = { literal = "${'$'}{env.HOME}/fixtures" }
+      """
+        .trimIndent()
+
+    val config =
+      assertNotNull(
+        parseConfig(
+            baseToml,
+            path = "kolt.toml",
+            overlayString = overlay,
+            overlayPath = "kolt.local.toml",
+          )
+          .get(),
+        "overlay literal containing \${env.X} must pass through the merged-result " +
+          "validation pipeline unchanged (env-agnostic rule = no interpolation performed)",
+      )
+
+    val value =
+      assertIs<SysPropValue.Literal>(
+        config.testSection.sysProps["kolt.fixture.home"],
+        "overlay literal must lift to SysPropValue.Literal",
+      )
+    assertEquals(
+      "\${env.HOME}/fixtures",
+      value.value,
+      "overlay literal must be preserved verbatim; no env interpolation occurs at parse time",
     )
   }
 }
