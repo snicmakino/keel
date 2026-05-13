@@ -129,7 +129,7 @@ Each implementation sub-task pairs the failing test (RED) and its passing implem
   - _Depends: 3.3_
   - _Boundary: Config, LocalTomlOverlayMergeTest_
 
-- [ ] 3.5 Extend `loadProjectConfig` to read the overlay file when present
+- [x] 3.5 Extend `loadProjectConfig` to read the overlay file when present
   - Add a conditional `readFileAsString(KOLT_LOCAL_TOML)` after the base read; on file-not-found, pass `null` as the overlay; on any other IO error, surface it as a config error.
   - **Observable done**: a temp-directory test demonstrates that creating `kolt.local.toml` next to `kolt.toml` causes a subsequent `loadProjectConfig` call to reflect the overlay in the returned `KoltConfig`, while deleting it returns the project to base-only behavior with no error.
   - _Requirements: 1.1, 1.2_
