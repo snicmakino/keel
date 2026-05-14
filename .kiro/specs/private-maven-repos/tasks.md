@@ -5,7 +5,7 @@
 
 ## 1. Foundation: new types and utilities
 
-- [ ] 1.1 (P) `RepositoryAuth` ADT と `AuthStateProjection` を追加
+- [x] 1.1 (P) `RepositoryAuth` ADT と `AuthStateProjection` を追加
   - `src/nativeMain/kotlin/kolt/config/RepositoryAuth.kt` を新規作成: sealed class `RepositoryAuth`、 `Bearer(token: String)` / `Basic(user: String, password: String)` を data class で持ち、 各 variant に `toString()` override を実装して secret を `<redacted>` に置換
   - `RepositoryAuth.toHeaders(): Map<String, String>` を実装し、 Bearer は `mapOf("Authorization" to "Bearer $token")`、 Basic は `mapOf("Authorization" to "Basic ${base64Encode("$user:$password")}")` を返す
   - `src/nativeMain/kotlin/kolt/resolve/AuthStateProjection.kt` を新規作成: sealed class + 3 data object (`NotConfigured` / `ConfiguredToken` / `ConfiguredBasic`)、 `toDisplayString()` で要件 7.3 の 3 文字列を所有 (`kolt.resolve` 配置で renderer 側からの import が自然に閉じる)
