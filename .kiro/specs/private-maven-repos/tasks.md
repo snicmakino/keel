@@ -65,7 +65,7 @@
   - _Boundary: kolt.config.Config (parseConfig)_
   - _Depends: 2.1_
 
-- [ ] 2.5 `repositorySourceMap` helper を追加
+- [x] 2.5 `repositorySourceMap` helper を追加
   - `sysPropSourceMap` (`Config.kt:398-414`) と同型の helper を新規実装、 戻り値型 `Map<repoName, Map<fieldName, String?>>`
   - inner key 集合は `"url" / "token" / "user" / "password"` の 4 種固定、 base 由来 = `basePath`、 overlay 由来 = `overlayPath` (overlay last-write-wins)、 未設定 fields は inner map に key absent
   - 観察可能な完了: 単体 test で base に `url`、 overlay に `token` がある repo について `map["repo"]["url"] == basePath`, `map["repo"]["token"] == overlayPath`, `map["repo"]["user"]` は absent

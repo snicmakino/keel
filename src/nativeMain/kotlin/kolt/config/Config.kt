@@ -439,6 +439,45 @@ private fun validateBundleReferences(
   return Ok(Unit)
 }
 
+// Per-repository, per-field source attribution: maps the lifted repository
+// name (quotes stripped, matching liftRepositoriesMap) to a per-field map
+// from the field name (one of "url" / "token" / "user" / "password") to the
+// file path that contributed it. Overlay last-write-wins, matching
+// mergeRepositories. A field key is absent when neither base nor overlay
+// sets it on that repository. A null inner value means the contributing
+// file path is unknown (only happens when the caller did not pass `path`
+// to parseConfig, e.g. internal tests).
+internal fun repositorySourceMap(
+  baseRepositories: Map<String, RawRepository>,
+  overlayRepositories: Map<String, RawRepository>?,
+  basePath: String?,
+  overlayPath: String?,
+): Map<String, Map<String, String?>> {
+  val out =
+    LinkedHashMap<String, LinkedHashMap<String, String?>>(
+      baseRepositories.size + (overlayRepositories?.size ?: 0)
+    )
+  for ((rawName, repo) in baseRepositories) {
+    val name = rawName.removeSurrounding("\"")
+    val inner = out.getOrPut(name) { LinkedHashMap() }
+    if (repo.url != null) inner["url"] = basePath
+    if (repo.token != null) inner["token"] = basePath
+    if (repo.user != null) inner["user"] = basePath
+    if (repo.password != null) inner["password"] = basePath
+  }
+  if (overlayRepositories != null) {
+    for ((rawName, repo) in overlayRepositories) {
+      val name = rawName.removeSurrounding("\"")
+      val inner = out.getOrPut(name) { LinkedHashMap() }
+      if (repo.url != null) inner["url"] = overlayPath
+      if (repo.token != null) inner["token"] = overlayPath
+      if (repo.user != null) inner["user"] = overlayPath
+      if (repo.password != null) inner["password"] = overlayPath
+    }
+  }
+  return out
+}
+
 // Per-sysprop-key source attribution: maps the lifted key (quotes stripped,
 // matching liftSysPropsMap) to the file that contributed it. Overlay keys
 // override base keys, matching mergeSysProps' last-write-wins semantics. A
