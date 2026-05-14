@@ -129,7 +129,11 @@ class NativeResolverJvmOnlyFallbackTest {
 
         override fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> = Ok(Unit)
 
-        override fun downloadFile(url: String, destPath: String): Result<Unit, DownloadError> {
+        override fun downloadFile(
+          url: String,
+          destPath: String,
+          headers: Map<String, String>?,
+        ): Result<Unit, DownloadError> {
           recordedDownloads.add(url)
           if (destPath == kotlinReflectModulePath) {
             return Err(DownloadError.HttpFailed(url, 404))

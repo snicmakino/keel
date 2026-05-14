@@ -41,11 +41,13 @@ class ResolveErrorFormatTest {
         RepositoryDownloadFailure.AllAttemptsFailed(
           listOf(
             RepositoryAttempt(
-              "https://repo1.maven.org/maven2/com/example/lib/1.0.0/lib-1.0.0.jar",
-              DownloadError.HttpFailed(
-                "https://repo1.maven.org/maven2/com/example/lib/1.0.0/lib-1.0.0.jar",
-                404,
-              ),
+              repositoryName = "central",
+              url = "https://repo1.maven.org/maven2/com/example/lib/1.0.0/lib-1.0.0.jar",
+              error =
+                DownloadError.HttpFailed(
+                  "https://repo1.maven.org/maven2/com/example/lib/1.0.0/lib-1.0.0.jar",
+                  404,
+                ),
             )
           )
         ),
@@ -66,12 +68,14 @@ class ResolveErrorFormatTest {
         RepositoryDownloadFailure.AllAttemptsFailed(
           listOf(
             RepositoryAttempt(
-              "https://repo1.maven.org/maven2/com/example/lib/1.0.0/lib-1.0.0.jar",
-              DownloadError.HttpFailed("u1", 404),
+              repositoryName = "central",
+              url = "https://repo1.maven.org/maven2/com/example/lib/1.0.0/lib-1.0.0.jar",
+              error = DownloadError.HttpFailed("u1", 404),
             ),
             RepositoryAttempt(
-              "https://jitpack.io/com/example/lib/1.0.0/lib-1.0.0.jar",
-              DownloadError.HttpFailed("u2", 404),
+              repositoryName = "jitpack",
+              url = "https://jitpack.io/com/example/lib/1.0.0/lib-1.0.0.jar",
+              error = DownloadError.HttpFailed("u2", 404),
             ),
           )
         ),
@@ -99,11 +103,13 @@ class ResolveErrorFormatTest {
         RepositoryDownloadFailure.AllAttemptsFailed(
           listOf(
             RepositoryAttempt(
-              "https://example.com/lib-1.0.0.jar",
-              DownloadError.NetworkError(
-                "https://example.com/lib-1.0.0.jar",
-                "Could not resolve host",
-              ),
+              repositoryName = "central",
+              url = "https://example.com/lib-1.0.0.jar",
+              error =
+                DownloadError.NetworkError(
+                  "https://example.com/lib-1.0.0.jar",
+                  "Could not resolve host",
+                ),
             )
           )
         ),
@@ -144,8 +150,9 @@ class ResolveErrorFormatTest {
         RepositoryDownloadFailure.AllAttemptsFailed(
           listOf(
             RepositoryAttempt(
-              "https://repo1.maven.org/maven2/com/example/lib/1.0.0/lib-1.0.0.jar",
-              DownloadError.WriteFailed("/cache/lib-1.0.0.jar.tmp.42"),
+              repositoryName = "central",
+              url = "https://repo1.maven.org/maven2/com/example/lib/1.0.0/lib-1.0.0.jar",
+              error = DownloadError.WriteFailed("/cache/lib-1.0.0.jar.tmp.42"),
             )
           )
         ),
@@ -163,8 +170,9 @@ class ResolveErrorFormatTest {
         RepositoryDownloadFailure.AllAttemptsFailed(
           listOf(
             RepositoryAttempt(
-              "https://repo1.maven.org/maven2/com/example/lib/maven-metadata.xml",
-              DownloadError.HttpFailed("u", 404),
+              repositoryName = "central",
+              url = "https://repo1.maven.org/maven2/com/example/lib/maven-metadata.xml",
+              error = DownloadError.HttpFailed("u", 404),
             )
           )
         ),

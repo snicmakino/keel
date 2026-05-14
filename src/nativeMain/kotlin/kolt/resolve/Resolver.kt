@@ -11,19 +11,30 @@ import kolt.infra.output.RenderedDiagnostic
 import kolt.infra.output.Severity
 
 // Per-repository attempt captured by `downloadFromRepositories`. The
-// resolver keeps the URL it tried alongside the underlying error so
-// `formatResolveError` can render a per-repo dump (#355). For 404s we
-// continue to the next repo and append; any other error stops the loop
-// and surfaces with the singleton attempts list.
-data class RepositoryAttempt(val url: String, val error: DownloadError)
+// resolver keeps the repository name + URL it tried alongside the underlying
+// error so `formatResolveError` can render a per-repo dump (#355). For 404s
+// we continue to the next repo and append; any other non-auth error stops
+// the loop and surfaces with the singleton attempts list. 401/403 short-
+// circuits to AuthFailed and is never appended here.
+data class RepositoryAttempt(val repositoryName: String, val url: String, val error: DownloadError)
 
-// Splits "no repositories were tried" from "all attempts failed" — the
-// two have different remediations (config fix vs. network/auth) so the
-// formatter renders distinct hints.
+// Splits "no repositories were tried" from "all attempts failed" from
+// "auth blocked the first credentialed try" — each has a distinct
+// remediation (config fix vs. network/404 dump vs. token rotation) so the
+// formatter renders distinct hints. AuthFailed carries an AuthStateProjection
+// (no secrets) rather than the secret-bearing RepositoryAuth so credentials
+// never reach the renderer.
 sealed class RepositoryDownloadFailure {
   data object NoRepositoriesConfigured : RepositoryDownloadFailure()
 
   data class AllAttemptsFailed(val attempts: List<RepositoryAttempt>) : RepositoryDownloadFailure()
+
+  data class AuthFailed(
+    val repositoryName: String,
+    val url: String,
+    val statusCode: Int,
+    val authState: AuthStateProjection,
+  ) : RepositoryDownloadFailure()
 }
 
 sealed class ResolveError {
@@ -156,6 +167,14 @@ private fun repositoryDownloadFailureContext(failure: RepositoryDownloadFailure)
       )
     is RepositoryDownloadFailure.AllAttemptsFailed ->
       failure.attempts.map { "${it.url} -> ${formatAttemptStatus(it.error)}" }
+    // Task 5.1 expands this into the 5-line context (`repository / url /
+    // status / credentials / hint`). Until then, a single placeholder line
+    // keeps the sealed `when` exhaustive without leaking secrets.
+    is RepositoryDownloadFailure.AuthFailed ->
+      listOf(
+        "${failure.repositoryName} (${failure.url}) -> ${failure.statusCode} " +
+          "(${failure.authState.toDisplayString()})"
+      )
   }
 
 enum class Origin {
@@ -185,7 +204,11 @@ interface ResolverDeps {
 
   fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed>
 
-  fun downloadFile(url: String, destPath: String): Result<Unit, DownloadError>
+  fun downloadFile(
+    url: String,
+    destPath: String,
+    headers: Map<String, String>? = null,
+  ): Result<Unit, DownloadError>
 
   fun computeSha256(filePath: String): Result<String, Sha256Error>
 
@@ -201,8 +224,8 @@ internal fun defaultResolverDeps(): ResolverDeps =
 
     override fun ensureDirectoryRecursive(path: String) = kolt.infra.ensureDirectoryRecursive(path)
 
-    override fun downloadFile(url: String, destPath: String) =
-      kolt.infra.downloadFile(url, destPath)
+    override fun downloadFile(url: String, destPath: String, headers: Map<String, String>?) =
+      kolt.infra.downloadFile(url, destPath, headers)
 
     override fun computeSha256(filePath: String) = kolt.infra.computeSha256(filePath)
 

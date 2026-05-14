@@ -187,7 +187,11 @@ class MaterializeProgressTest {
 
         override fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> = Ok(Unit)
 
-        override fun downloadFile(url: String, destPath: String): Result<Unit, DownloadError> {
+        override fun downloadFile(
+          url: String,
+          destPath: String,
+          headers: Map<String, String>?,
+        ): Result<Unit, DownloadError> {
           if (destPath.endsWith(".jar") && url.startsWith(repo1)) {
             return Err(DownloadError.HttpFailed(url, 404))
           }
@@ -256,7 +260,11 @@ class MaterializeProgressTest {
 
       override fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> = Ok(Unit)
 
-      override fun downloadFile(url: String, destPath: String): Result<Unit, DownloadError> {
+      override fun downloadFile(
+        url: String,
+        destPath: String,
+        headers: Map<String, String>?,
+      ): Result<Unit, DownloadError> {
         val forcedError = downloadErrors[url]
         if (forcedError != null) return Err(forcedError)
         cachedFiles.add(destPath)

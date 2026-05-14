@@ -119,7 +119,11 @@ class ResolveNativeProgressTest {
 
         override fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> = Ok(Unit)
 
-        override fun downloadFile(url: String, destPath: String): Result<Unit, DownloadError> {
+        override fun downloadFile(
+          url: String,
+          destPath: String,
+          headers: Map<String, String>?,
+        ): Result<Unit, DownloadError> {
           if (destPath.endsWith(".klib") && url.startsWith(repo1)) {
             return Err(DownloadError.HttpFailed(url, 404))
           }
@@ -308,7 +312,11 @@ class ResolveNativeProgressTest {
 
       override fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> = Ok(Unit)
 
-      override fun downloadFile(url: String, destPath: String): Result<Unit, DownloadError> {
+      override fun downloadFile(
+        url: String,
+        destPath: String,
+        headers: Map<String, String>?,
+      ): Result<Unit, DownloadError> {
         cachedFiles.add(destPath)
         return Ok(Unit)
       }

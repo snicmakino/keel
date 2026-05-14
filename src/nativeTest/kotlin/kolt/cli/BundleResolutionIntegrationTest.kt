@@ -417,7 +417,11 @@ class BundleResolutionIntegrationTest {
 
         override fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> = Ok(Unit)
 
-        override fun downloadFile(url: String, destPath: String): Result<Unit, DownloadError> {
+        override fun downloadFile(
+          url: String,
+          destPath: String,
+          headers: Map<String, String>?,
+        ): Result<Unit, DownloadError> {
           downloadedUrls.add(url)
           cached.add(destPath)
           return Ok(Unit)
@@ -621,7 +625,11 @@ class BundleResolutionIntegrationTest {
 
     override fun ensureDirectoryRecursive(path: String): Result<Unit, MkdirFailed> = Ok(Unit)
 
-    override fun downloadFile(url: String, destPath: String): Result<Unit, DownloadError> {
+    override fun downloadFile(
+      url: String,
+      destPath: String,
+      headers: Map<String, String>?,
+    ): Result<Unit, DownloadError> {
       downloadCount += 1
       cachedFiles.add(destPath)
       return Ok(Unit)

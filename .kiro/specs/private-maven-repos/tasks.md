@@ -122,7 +122,7 @@
 
 ## 4. Resolver layer (signature bump + Authorization propagation)
 
-- [ ] 4.1 `downloadFromRepositories` の signature 変更 + `AuthFailed` variant 追加 + 401/403 hard-error 分岐
+- [x] 4.1 `downloadFromRepositories` の signature 変更 + `AuthFailed` variant 追加 + 401/403 hard-error 分岐
   - signature を `(repos: List<Repository>, destPath: String, urlBuilder: (Repository) -> String, download: (String, String, Map<String, String>?) -> Result<Unit, DownloadError>, onRetry: (Repository) -> Unit = {})` に変更 (既存 5-arg shape を String → Repository に置換)
   - loop body で `repo.auth?.toHeaders()` を計算し `download(url, dest, headers)` に渡す
   - `RepositoryDownloadFailure` に `AuthFailed(repositoryName: String, url: String, statusCode: Int, authState: AuthStateProjection)` variant を追加。 `RepositoryAttempt` には `repositoryName: String` を追加 (既存 url-only から拡張)
@@ -133,7 +133,7 @@
   - _Boundary: kolt.resolve.TransitiveResolver (downloadFromRepositories), kolt.resolve.Resolver (RepositoryDownloadFailure, RepositoryAttempt)_
   - _Depends: 1.1, 2.2, 3.1_
 
-- [ ] 4.2 `TransitiveResolver` の caller migration
+- [x] 4.2 `TransitiveResolver` の caller migration
   - `:20` の `repos = config.repositories.values.map { it.url }.toList()` を `config.repositories.values.toList()` に書き換え (型は `List<Repository>` になる)
   - 4 つの `downloadFromRepositories` 呼び出し (`:69` sources jar fallback, `:128` POM, `:186` module metadata, `:252` binary artifact) で `urlBuilder` lambda を `(Repository) -> String` に書き換え、 lambda body は `repo.url` を使う (`"$repo/"` 禁止規律)
   - 観察可能な完了: `kolt build` compile pass、 既存の `TransitiveResolverTest` が anonymous central 経路で green を維持
@@ -141,7 +141,7 @@
   - _Boundary: kolt.resolve.TransitiveResolver_
   - _Depends: 4.1_
 
-- [ ] 4.3 `NativeResolver` の caller migration
+- [x] 4.3 `NativeResolver` の caller migration
   - `:67` の projection と `:139` / `:395` の 2 caller を `Repository` typed に switch
   - `urlBuilder` lambda 内は `repo.url` のみを URL 構築に使う
   - 観察可能な完了: `kolt build` compile pass、 既存の `NativeResolverTest` が klib 経路で green を維持
@@ -149,7 +149,7 @@
   - _Boundary: kolt.resolve.NativeResolver_
   - _Depends: 4.1_
 
-- [ ] 4.4 `BundleResolver` の caller migration + `resolveSingleArtifact` signature bump
+- [x] 4.4 `BundleResolver` の caller migration + `resolveSingleArtifact` signature bump
   - `:180` の projection と `:124` / `:197` の 2 caller を `Repository` typed に switch
   - `resolveSingleArtifact` (`:106`) の `repos: List<String>` parameter を `List<Repository>` に変更
   - `urlBuilder` lambda 内は `repo.url` のみを URL 構築に使う
@@ -158,7 +158,7 @@
   - _Boundary: kolt.resolve.BundleResolver_
   - _Depends: 4.1_
 
-- [ ] 4.5 CLI commands + ToolResolution + PluginJarFetcher の migration
+- [x] 4.5 CLI commands + ToolResolution + PluginJarFetcher の migration
   - `OutdatedCommand.kt:42` projection + `:82` caller、 `DependencyCommands.kt` の 4 projection (`:57`, `:300`, `:392`, `:412`) + `:165` の caller + `:297` の `resolveSingleArtifact` caller、 `ToolCommands.kt:163` projection、 `ToolResolution.kt:53` の `ensureTool` parameter `repos: List<String>` → `List<Repository>`、 `PluginJarFetcher.kt:147` の `deps.downloadFile(url, jarPath)` 呼び出しを 3-arg 形 `deps.downloadFile(url, jarPath, headers = null)` に変更
   - 観察可能な完了: `kolt build` exit 0、 `kolt test` で既存の `OutdatedCommandTest` / `DependencyCommandsTest` / `ToolResolutionTest` / `PluginJarFetcherTest` が green を維持。 後続 7.2 (`AllCallersTypedTest`) がこの task 完了で初めて compile 成功する
   - _Requirements: 5.3_
