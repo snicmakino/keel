@@ -188,7 +188,7 @@
 
 ## 6. Redaction cross-cutting tests
 
-- [ ] 6.1 `RepositoryAuthRedactionTest` を追加 (Req 8 完備マトリクス)
+- [x] 6.1 `RepositoryAuthRedactionTest` を追加 (Req 8 完備マトリクス)
   - 6 アサーション: (a) 401 fetch の stderr に Bearer token literal が含まれない、 (b) Basic auth 401 の stderr に base64 / user / password literal が含まれない、 (c) `RepositoryAuth.Basic("u","p").toString()` が `<redacted>` placeholder を返し `"p"` を含まない、 (d) `Repository(name="x", url="y", auth=RepositoryAuth.Basic("alice","s3cret")).toString()` が `<redacted>` を含み `"s3cret"` を含まない、 (e) 認証 fetch 成功後の `kolt.lock` に credential field が無い (`Lockfile.kt` の serialized JSON を grep)、 (f) `kolt info` JSON に credential field が無い
   - 観察可能な完了: 6 アサーション全 green
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 10.1, 10.2_
