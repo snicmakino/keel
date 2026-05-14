@@ -105,7 +105,12 @@ data class RunSection(
   @SerialName("sys_props") val sysProps: Map<String, SysPropValue> = emptyMap()
 )
 
-@Serializable data class Repository(val url: String)
+@Serializable
+data class Repository(
+  val name: String,
+  val url: String,
+  @Transient val auth: RepositoryAuth? = null,
+)
 
 @Serializable
 data class KoltConfig(
@@ -117,7 +122,8 @@ data class KoltConfig(
   val fmt: FmtSection = FmtSection(),
   val dependencies: Map<String, String> = emptyMap(),
   @SerialName("test-dependencies") val testDependencies: Map<String, String> = emptyMap(),
-  val repositories: Map<String, Repository> = mapOf("central" to Repository(MAVEN_CENTRAL_BASE)),
+  val repositories: Map<String, Repository> =
+    mapOf("central" to Repository(name = "central", url = MAVEN_CENTRAL_BASE, auth = null)),
   val cinterop: List<CinteropConfig> = emptyList(),
   // [classpaths.<name>] declares a named, resolvable jar bundle independent
   // of [dependencies]. Bundles feed sysprop values via SysPropValue.ClasspathRef
@@ -269,7 +275,7 @@ internal fun liftRepositoriesMap(
     if (url.isNullOrEmpty()) {
       return Err(ConfigError.ParseFailed("repository '$name' has no url"))
     }
-    out[name] = Repository(url.trimEnd('/'))
+    out[name] = Repository(name = name, url = url.trimEnd('/'), auth = null)
   }
   return Ok(out)
 }

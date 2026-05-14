@@ -84,7 +84,10 @@ class BtaImplFetcherTest {
       config.dependencies,
     )
     assertEquals("jvm", config.build.target)
-    assertEquals(Repository(MAVEN_CENTRAL_BASE), config.repositories["central"])
+    assertEquals(
+      Repository(name = "central", url = MAVEN_CENTRAL_BASE),
+      config.repositories["central"],
+    )
   }
 
   @Test

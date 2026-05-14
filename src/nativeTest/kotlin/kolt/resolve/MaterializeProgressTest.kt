@@ -166,7 +166,11 @@ class MaterializeProgressTest {
     val config =
       testConfig(
         dependencies = mapOf("com.example:lib" to "1.0.0"),
-        repositories = mapOf("primary" to Repository(repo1), "fallback" to Repository(repo2)),
+        repositories =
+          mapOf(
+            "primary" to Repository(name = "primary", url = repo1),
+            "fallback" to Repository(name = "fallback", url = repo2),
+          ),
       )
     val pomXml =
       """

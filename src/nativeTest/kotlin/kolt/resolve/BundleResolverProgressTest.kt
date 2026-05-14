@@ -97,7 +97,11 @@ class BundleResolverProgressTest {
   @Test
   fun lockReuseWithOneEvictedJarEmitsOneOfOne() {
     val config =
-      testConfig().copy(repositories = mapOf("primary" to Repository("https://repo.example.com")))
+      testConfig()
+        .copy(
+          repositories =
+            mapOf("primary" to Repository(name = "primary", url = "https://repo.example.com"))
+        )
 
     // Two bundle deps locked: one cached, one evicted.
     val cachedDep =

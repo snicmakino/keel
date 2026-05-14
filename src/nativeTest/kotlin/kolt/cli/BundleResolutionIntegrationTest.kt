@@ -398,7 +398,11 @@ class BundleResolutionIntegrationTest {
   @Test
   fun materialiseBundleJarsFromLockBuildsUrlFromCachePathNotGroupArtifact() {
     val config =
-      testConfig().copy(repositories = mapOf("central" to Repository("https://example.org/m2")))
+      testConfig()
+        .copy(
+          repositories =
+            mapOf("central" to Repository(name = "central", url = "https://example.org/m2"))
+        )
 
     val redirectedRelativePath = "org/example/lib-jvm/1.0.0/lib-jvm-1.0.0.jar"
     val redirectedCachePath = "/cache/$redirectedRelativePath"

@@ -37,7 +37,10 @@ class RepositorySchemaMigrationTest {
 
     val config = assertNotNull(parseConfig(toml).get())
     assertEquals(1, config.repositories.size)
-    assertEquals(Repository("https://repo1.maven.org/maven2"), config.repositories["central"])
+    assertEquals(
+      Repository(name = "central", url = "https://repo1.maven.org/maven2"),
+      config.repositories["central"],
+    )
   }
 
   @Test

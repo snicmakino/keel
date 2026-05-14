@@ -1393,7 +1393,7 @@ class TransitiveResolverTest {
     val config =
       testConfig(
         dependencies = mapOf("com.example:lib" to "1.0.0"),
-        repositories = mapOf("myrepo" to Repository(customRepoBase)),
+        repositories = mapOf("myrepo" to Repository(name = "myrepo", url = customRepoBase)),
       )
     val pomXml =
       """
@@ -1444,7 +1444,10 @@ class TransitiveResolverTest {
       testConfig(
         dependencies = mapOf("com.example:lib" to "1.0.0"),
         repositories =
-          mapOf("primary" to Repository(repo1Base), "fallback" to Repository(repo2Base)),
+          mapOf(
+            "primary" to Repository(name = "primary", url = repo1Base),
+            "fallback" to Repository(name = "fallback", url = repo2Base),
+          ),
       )
     val pomXml =
       """

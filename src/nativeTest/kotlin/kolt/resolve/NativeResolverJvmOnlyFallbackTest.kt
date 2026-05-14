@@ -37,7 +37,8 @@ class NativeResolverJvmOnlyFallbackTest {
       testConfig(target = "linuxX64")
         .copy(
           dependencies = mapOf("io.ktor:ktor-server-core" to "3.4.3"),
-          repositories = mapOf("central" to Repository("https://repo1.example/")),
+          repositories =
+            mapOf("central" to Repository(name = "central", url = "https://repo1.example/")),
         )
 
     val parentRoot =

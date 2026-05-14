@@ -87,7 +87,11 @@ class ResolveNativeProgressTest {
       testConfig(
         target = "linuxX64",
         dependencies = mapOf("com.example:lib" to "1.0.0"),
-        repositories = mapOf("primary" to Repository(repo1), "fallback" to Repository(repo2)),
+        repositories =
+          mapOf(
+            "primary" to Repository(name = "primary", url = repo1),
+            "fallback" to Repository(name = "fallback", url = repo2),
+          ),
       )
 
     val rootModule = rootModuleJson("com.example", "lib-linuxx64", "1.0.0")

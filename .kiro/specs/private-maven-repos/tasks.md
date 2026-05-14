@@ -39,7 +39,7 @@
   - _Boundary: kolt.config.RawRepository_
   - _Depends: 1.2_
 
-- [ ] 2.2 `Repository` (typed) を `name` + `auth` で拡張、 default と synthetic 構築サイトを更新
+- [x] 2.2 `Repository` (typed) を `name` + `auth` で拡張、 default と synthetic 構築サイトを更新
   - `Repository` data class に `val name: String` (required) と `@Transient val auth: RepositoryAuth? = null` を追加 (`@Transient` で `RepositoryAuth` の非 `@Serializable` 性と整合させる)
   - `KoltConfig.repositories` の default 値 (`Config.kt:120`) を `mapOf("central" to Repository(name = "central", url = MAVEN_CENTRAL_BASE, auth = null))` に更新
   - `BtaImplFetcher.kt:54` の synthetic `Repository(MAVEN_CENTRAL_BASE)` 呼び出しを `Repository(name = "central", url = MAVEN_CENTRAL_BASE, auth = null)` に更新
