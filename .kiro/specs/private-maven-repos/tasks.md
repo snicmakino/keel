@@ -91,7 +91,7 @@
   - _Boundary: kolt.config (test)_
   - _Depends: 2.4, 2.6_
 
-- [ ] 2.8 `RepositoryUrlUserinfoTest` を追加
+- [x] 2.8 `RepositoryUrlUserinfoTest` を追加
   - 4 ケース: (a) `https://u:p@host/x` reject、 (b) `https://u@host/x` reject、 (c) `https://host/foo@bar/baz` accept (path 内 `@`)、 (d) rejection message が userinfo character (`u`, `p`, `:`, `@`) を含まない
   - 観察可能な完了: 4 ケース全 green
   - _Requirements: 3.1, 3.2, 3.3_
