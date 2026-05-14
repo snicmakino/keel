@@ -100,7 +100,7 @@
 
 ## 3. Infra layer
 
-- [ ] 3.1 `Downloader.downloadFile` を `headers` parameter + libcurl slist + redirect policy で拡張
+- [x] 3.1 `Downloader.downloadFile` を `headers` parameter + libcurl slist + redirect policy で拡張
   - signature を `downloadFile(url: String, destPath: String, headers: Map<String, String>? = null): Result<Unit, DownloadError>` に変更
   - `headers` が non-null のとき `curl_slist_append` で `"$name: $value"` 形式のヘッダを追加し `CURLOPT_HTTPHEADER` にセット
   - `CURLOPT_UNRESTRICTED_AUTH = 0L` を明示的に設定し、 cross-origin redirect で `Authorization` ヘッダが forward されない動作を確定させる
