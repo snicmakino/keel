@@ -111,7 +111,7 @@
   - _Boundary: kolt.infra.Downloader_
   - _Depends: 1.3_
 
-- [ ] 3.2 `DownloaderAuthHeaderTest` (loopback HTTP fixture server + redirect policy) を追加
+- [x] 3.2 `DownloaderAuthHeaderTest` (loopback HTTP fixture server + redirect policy) を追加
   - `testfixture/LoopbackHttpServer.kt` を `UnixEchoServer` パターンで実装 (再利用可能、 anonymous + Bearer / Basic + 302 redirect target を提供する 2 ポート server)
   - 4 サブテスト: (a) `RepositoryAuth.Bearer` で `Authorization: Bearer <token>` が server に到達、 (b) `RepositoryAuth.Basic` で正しい base64 `Authorization: Basic ...` が server に到達、 (c) `headers == null` で server の access log に Authorization ヘッダの行が出現しない (空 `Authorization:` も無い、 slist 自体組まれない)、 (d) cross-origin 302 で redirect target の access log に Authorization ヘッダなし
   - libcurl resource leak の単体検査は Kotlin/Native ランタイムにヒープ計測手段がないため、 観察可能な test として組まない。 `finally` block で `curl_slist_free_all` が呼ばれる規律はコードレビューで担保 ([[feedback_sdd_test_inflation]])
