@@ -213,7 +213,7 @@
   - _Boundary: cross-cutting (compile gate)_
   - _Depends: 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 7.3 Self-host smoke gate確認
+- [x] 7.3 Self-host smoke gate確認
   - `kolt build` を kolt 自身の 4 つの `kolt.toml` (`/kolt.toml`, `/kolt-jvm-compiler-daemon/kolt.toml`, `/kolt-native-compiler-daemon/kolt.toml`, `/spike/native-ktor-cinterop-smoke/kolt.toml`) に対して実行し、 新しい `liftRepositoriesMap` validators (userinfo / mutex / env-reject / name invariant) がいずれもホットパスで pass することを確認
   - CI `.github/workflows/self-host-smoke.yml` の `self-host-post` job が green であることを最終ゲートとする ([[feedback_subagent_smoke_misses_ci]])
   - 観察可能な完了: 4 ファイルすべてでローカル `kolt build` exit 0、 CI `self-host-post` job green
