@@ -278,6 +278,138 @@ class ResolveErrorFormatTest {
     assertEquals("resolved com.example:lib:1.0 is rejected by constraint '<2.0'", diag.headline)
   }
 
+  // Task 5.1: AuthFailed 5-line context rendering under the
+  // DownloadFailed / MetadataDownloadFailed outer headlines.
+  @Test
+  fun authFailedPom401NotConfiguredRendersFiveLineContextWithConfigHint() {
+    val error =
+      ResolveError.DownloadFailed(
+        "com.example:lib",
+        RepositoryDownloadFailure.AuthFailed(
+          repositoryName = "private",
+          url = "https://private.example.com/com/example/lib/1.0.0/lib-1.0.0.pom",
+          statusCode = 401,
+          authState = AuthStateProjection.NotConfigured,
+        ),
+      )
+    val diag = formatResolveError(error)
+    assertEquals("failed to download com.example:lib", diag.headline)
+    assertEquals(
+      listOf(
+        "repository: private",
+        "url: https://private.example.com/com/example/lib/1.0.0/lib-1.0.0.pom",
+        "status: 401 Unauthorized",
+        "credentials: not configured",
+        "hint: the repository requires authentication; add credentials to kolt.local.toml",
+      ),
+      diag.context,
+    )
+  }
+
+  @Test
+  fun authFailedMetadata401ConfiguredTokenRendersInvalidOrExpiredHint() {
+    val error =
+      ResolveError.MetadataDownloadFailed(
+        "com.example:lib",
+        RepositoryDownloadFailure.AuthFailed(
+          repositoryName = "private",
+          url = "https://private.example.com/com/example/lib/maven-metadata.xml",
+          statusCode = 401,
+          authState = AuthStateProjection.ConfiguredToken,
+        ),
+      )
+    val diag = formatResolveError(error)
+    assertEquals("could not fetch metadata for com.example:lib", diag.headline)
+    assertEquals(
+      listOf(
+        "repository: private",
+        "url: https://private.example.com/com/example/lib/maven-metadata.xml",
+        "status: 401 Unauthorized",
+        "credentials: configured (token, from kolt.local.toml)",
+        "hint: the credentials may be invalid or expired",
+      ),
+      diag.context,
+    )
+  }
+
+  @Test
+  fun authFailed403NotConfiguredRendersAuthRequiredHint() {
+    val error =
+      ResolveError.DownloadFailed(
+        "com.example:lib",
+        RepositoryDownloadFailure.AuthFailed(
+          repositoryName = "private",
+          url = "https://private.example.com/com/example/lib/1.0.0/lib-1.0.0.jar",
+          statusCode = 403,
+          authState = AuthStateProjection.NotConfigured,
+        ),
+      )
+    val diag = formatResolveError(error)
+    assertEquals("failed to download com.example:lib", diag.headline)
+    assertEquals(
+      listOf(
+        "repository: private",
+        "url: https://private.example.com/com/example/lib/1.0.0/lib-1.0.0.jar",
+        "status: 403 Forbidden",
+        "credentials: not configured",
+        "hint: authentication is required",
+      ),
+      diag.context,
+    )
+  }
+
+  @Test
+  fun authFailedPom403ConfiguredBasicRendersLackPermissionHint() {
+    val error =
+      ResolveError.DownloadFailed(
+        "com.example:lib",
+        RepositoryDownloadFailure.AuthFailed(
+          repositoryName = "private",
+          url = "https://private.example.com/com/example/lib/1.0.0/lib-1.0.0.pom",
+          statusCode = 403,
+          authState = AuthStateProjection.ConfiguredBasic,
+        ),
+      )
+    val diag = formatResolveError(error)
+    assertEquals("failed to download com.example:lib", diag.headline)
+    assertEquals(
+      listOf(
+        "repository: private",
+        "url: https://private.example.com/com/example/lib/1.0.0/lib-1.0.0.pom",
+        "status: 403 Forbidden",
+        "credentials: configured (basic, from kolt.local.toml)",
+        "hint: the credentials are valid but lack permission for this repository",
+      ),
+      diag.context,
+    )
+  }
+
+  // Defensive: even if a userinfo-bearing URL leaks into AuthFailed.url at
+  // construction time, the formatter re-applies redactUrlUserinfo so the
+  // rendered context never carries `user:password@host` slugs.
+  @Test
+  fun authFailedReRedactsUserinfoInUrlField() {
+    val error =
+      ResolveError.DownloadFailed(
+        "com.example:lib",
+        RepositoryDownloadFailure.AuthFailed(
+          repositoryName = "private",
+          url = "https://alice:s3cret@private.example.com/lib-1.0.0.pom",
+          statusCode = 401,
+          authState = AuthStateProjection.ConfiguredBasic,
+        ),
+      )
+    val diag = formatResolveError(error)
+    val rendered = diag.context.joinToString("\n")
+    assertTrue(rendered.none { it == '@' } || !rendered.contains("alice"))
+    assertTrue(!rendered.contains("alice"), "userinfo username must not appear")
+    assertTrue(!rendered.contains("s3cret"), "userinfo password must not appear")
+    assertTrue(
+      diag.context.contains("url: https://private.example.com/lib-1.0.0.pom"),
+      "url line must be redacted: ${diag.context}",
+    )
+  }
+
   @Test
   fun severityIsAlwaysError() {
     val variants =

@@ -9,6 +9,7 @@ import kolt.infra.OpenFailed
 import kolt.infra.Sha256Error
 import kolt.infra.output.RenderedDiagnostic
 import kolt.infra.output.Severity
+import kolt.infra.redactUrlUserinfo
 
 // Per-repository attempt captured by `downloadFromRepositories`. The
 // resolver keeps the repository name + URL it tried alongside the underlying
@@ -167,14 +168,42 @@ private fun repositoryDownloadFailureContext(failure: RepositoryDownloadFailure)
       )
     is RepositoryDownloadFailure.AllAttemptsFailed ->
       failure.attempts.map { "${it.url} -> ${formatAttemptStatus(it.error)}" }
-    // Task 5.1 expands this into the 5-line context (`repository / url /
-    // status / credentials / hint`). Until then, a single placeholder line
-    // keeps the sealed `when` exhaustive without leaking secrets.
+    // Defensive double-redaction: `failure.url` is already redacted at
+    // construction (TransitiveResolver passes it through redactUrlUserinfo),
+    // but we re-apply here so any future caller path cannot leak userinfo
+    // into the renderer. The operation is idempotent.
     is RepositoryDownloadFailure.AuthFailed ->
       listOf(
-        "${failure.repositoryName} (${failure.url}) -> ${failure.statusCode} " +
-          "(${failure.authState.toDisplayString()})"
+        "repository: ${failure.repositoryName}",
+        "url: ${redactUrlUserinfo(failure.url)}",
+        "status: ${failure.statusCode} ${reasonPhrase(failure.statusCode)}",
+        "credentials: ${failure.authState.toDisplayString()}",
+        "hint: ${formatAuthHint(failure.statusCode, failure.authState)}",
       )
+  }
+
+private fun reasonPhrase(statusCode: Int): String =
+  when (statusCode) {
+    401 -> "Unauthorized"
+    403 -> "Forbidden"
+    else -> ""
+  }
+
+private fun formatAuthHint(statusCode: Int, authState: AuthStateProjection): String =
+  when (authState) {
+    AuthStateProjection.NotConfigured ->
+      when (statusCode) {
+        401 -> "the repository requires authentication; add credentials to kolt.local.toml"
+        403 -> "authentication is required"
+        else -> ""
+      }
+    AuthStateProjection.ConfiguredToken,
+    AuthStateProjection.ConfiguredBasic ->
+      when (statusCode) {
+        401 -> "the credentials may be invalid or expired"
+        403 -> "the credentials are valid but lack permission for this repository"
+        else -> ""
+      }
   }
 
 enum class Origin {

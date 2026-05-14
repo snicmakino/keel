@@ -167,7 +167,7 @@
 
 ## 5. Renderer layer
 
-- [ ] 5.1 `repositoryDownloadFailureContext` に `AuthFailed` 分岐 + hint matrix を追加
+- [x] 5.1 `repositoryDownloadFailureContext` に `AuthFailed` 分岐 + hint matrix を追加
   - `Resolver.kt:151-159` の helper を sealed `when` で `AuthFailed` 分岐を追加、 5 行の context list (`repository: <name>` / `url: <redacted>` / `status: <code> <reason>` / `credentials: <state>` / `hint: <state-specific>`) を生成
   - outer `formatResolveError` の `ResolveError` 分岐 (`Resolver.kt:75-138`) には触れない — `AuthFailed` は `RepositoryDownloadFailure` の variant なので、 既存の `ResolveError.DownloadFailed.context = repositoryDownloadFailureContext(error.failure)` 経由で headline (`failed to download <coordinate>` / `could not fetch metadata for <coordinate>`) と組み合わさる
   - hint 文言の 4 行 matrix を `formatAuthHint(statusCode, authState): String` で実装 (要件 7.4 のテーブル)
