@@ -205,7 +205,7 @@
   - _Boundary: kolt.config (test)_
   - _Depends: 2.6_
 
-- [ ] 7.2 `AllCallersTypedTest` (compile gate smoke) を追加
+- [x] 7.2 `AllCallersTypedTest` (compile gate smoke) を追加
   - 10 `downloadFromRepositories` call sites (`TransitiveResolver` 4 + `NativeResolver` 2 + `BundleResolver` 2 + `OutdatedCommand` 1 + `DependencyCommands` 1) と 9 projection sites (`TransitiveResolver:20`, `NativeResolver:67`, `BundleResolver:180`, `OutdatedCommand:42`, `ToolCommands:163`, `DependencyCommands:57/:300/:392/:412`) と `ensureTool` (`ToolResolution:53`) / `resolveSingleArtifact` (`BundleResolver:106`) の各 signature bump が `kolt build` のコンパイルを通ることを確認する
   - test 自体は no-op assertion で、 `kolt build` succeed が観察可能な合格条件
   - 観察可能な完了: `kolt build` exit 0 + this test file compiles & loads
