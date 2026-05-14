@@ -14,7 +14,7 @@
   - _Requirements: 1.5, 5.1, 5.2, 7.3, 8.1, 8.2_
   - _Boundary: kolt.config.RepositoryAuth, kolt.resolve.AuthStateProjection_
 
-- [ ] 1.2 (P) `RawCredentialField` と uniform inline-table custom serializer を追加
+- [x] 1.2 (P) `RawCredentialField` と uniform inline-table custom serializer を追加
   - `RawCredentialField` を sealed class + `Literal(value)` / `Env(varName)` 2 variants で導入
   - `RawCredentialFieldShape(literal: String? = null, env: String? = null)` を all-nullable fields trick で構築、 `RawCredentialFieldSerializer` を `SysPropValueSerializer` と同型の custom KSerializer で実装し、 `setFields.size != 1` のとき `SerializationException` を throw
   - `serialize` も `SysPropValueSerializer.kt:36-44` と同型の真面目な実装にする (error("...") にしない)
