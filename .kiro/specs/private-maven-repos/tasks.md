@@ -31,7 +31,7 @@
 
 ## 2. Config layer
 
-- [ ] 2.1 `RawRepository` に credential field を追加
+- [x] 2.1 `RawRepository` に credential field を追加
   - `RawRepository` data class に `token: RawCredentialField? = null`, `user: RawCredentialField? = null`, `password: RawCredentialField? = null` を追加
   - 既存の `RawRepository(url = MAVEN_CENTRAL_BASE)` 形 (`Config.kt:185-186` の default) との互換を維持
   - 観察可能な完了: 既存の `RepositorySchemaMigrationTest` がそのまま緑のままで、 credential field 込みの `[repositories.x] url = "..."; token = { literal = "abc" }` が decode 成功する

@@ -170,7 +170,13 @@ internal data class RawRunSection(
   @SerialName("sys_props") val sysProps: Map<String, RawSysPropValue> = emptyMap()
 )
 
-@Serializable internal data class RawRepository(val url: String? = null)
+@Serializable
+internal data class RawRepository(
+  val url: String? = null,
+  val token: RawCredentialField? = null,
+  val user: RawCredentialField? = null,
+  val password: RawCredentialField? = null,
+)
 
 @Serializable
 internal data class RawKoltConfig(
