@@ -197,7 +197,7 @@
 
 ## 7. Migration verification and self-host smoke
 
-- [ ] 7.1 `RepositorySchemaMigrationTest` を Req 9.x で拡張
+- [x] 7.1 `RepositorySchemaMigrationTest` を Req 9.x で拡張
   - 既存の flat-string-map rejection をそのまま、 migration hint の text を新 schema (`[repositories.<name>] url = "..."`) に追従する形で pin
   - 追加: `central = "https://u:p@host/x"` 形式の flat-form + URL userinfo が rejection されるとき message が userinfo character を含まないことを assert (Req 9.3)
   - 観察可能な完了: `RepositorySchemaMigrationTest` の全ケース green
